@@ -1,0 +1,13 @@
+# Dependencies and build output
+node_modules/
+public/
+content/
+
+# Quartz plugin cache and build artifacts
+.quartz/
+.quartz-cache/
+prof/
+tsconfig.tsbuildinfo
+
+# macOS
+.DS_Store
