@@ -6,10 +6,11 @@
 # are generic placeholders so the repository itself remains public-safe.
 #
 # Enabled capabilities are deliberately limited to the shared release scope:
-# responsive browsing (explorer + folder/content pages), local full-text
+# responsive browsing (explorer + folder/content/tag pages), local full-text
 # search, and Obsidian/Tolaria-compatible wikilinks. Graph views, backlinks,
 # comments, analytics, RSS/sitemap output, editing, and other digital-garden
-# features are excluded.
+# features are excluded (tag pages are now in scope; see
+# docs/adr-0001-knowledge-web-publisher.md).
 configuration:
   pageTitle: Knowledge Web
   pageTitleSuffix: ""
@@ -154,5 +155,8 @@ layout:
         right: []
     content: {}
     folder:
+      positions:
+        right: []
+    tag:
       positions:
         right: []
