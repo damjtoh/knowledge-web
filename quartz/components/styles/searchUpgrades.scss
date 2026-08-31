@@ -1,0 +1,10 @@
+.search .result-card .search-folder {
+  margin: 0.25rem 0 0.45rem;
+  font-size: 0.8rem;
+  color: var(--gray);
+  line-height: 1.2;
+}
+
+.search .result-card .search-folder:empty {
+  display: none;
+}

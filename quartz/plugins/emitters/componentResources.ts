@@ -8,10 +8,13 @@ import spaRouterScript from "../../components/scripts/spa.inline"
 import popoverScript from "../../components/scripts/popover.inline"
 // @ts-ignore
 import folderFiltersScript from "../../components/scripts/folderFilters.inline"
+// @ts-ignore
+import searchUpgradesScript from "../../components/scripts/searchUpgrades.inline"
 import baseStyles from "../../styles/base.scss"
 import customStyles from "../../styles/custom.scss"
 import popoverStyle from "../../components/styles/popover.scss"
 import folderFiltersStyle from "../../components/styles/folderFilters.scss"
+import searchUpgradesStyle from "../../components/styles/searchUpgrades.scss"
 import { BuildCtx } from "../../util/ctx"
 import { QuartzComponent } from "../../components/types"
 import { normalizeResource } from "../../util/resources"
@@ -264,6 +267,10 @@ function addGlobalPageResources(ctx: BuildCtx, componentResources: ComponentReso
   // folder filters (client-side filter + tag facets + sort) progressively enhanced over static listing
   componentResources.afterDOMLoaded.push(folderFiltersScript)
   componentResources.css.push(folderFiltersStyle)
+
+  // search upgrades: tag: filter, tags searchable, title boost, folder context
+  componentResources.afterDOMLoaded.push(searchUpgradesScript)
+  componentResources.css.push(searchUpgradesStyle)
 
   if (cfg.enableSPA) {
     componentResources.afterDOMLoaded.push(spaRouterScript)
