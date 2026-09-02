@@ -6,11 +6,14 @@
 # are generic placeholders so the repository itself remains public-safe.
 #
 # Enabled capabilities are deliberately limited to the shared release scope:
-# responsive browsing (explorer + folder/content/tag pages), local full-text
+# responsive browsing (collection + folder/content/tag pages), local full-text
 # search, and Obsidian/Tolaria-compatible wikilinks. Graph views, backlinks,
 # comments, analytics, RSS/sitemap output, editing, and other digital-garden
 # features are excluded (tag pages are now in scope; see
 # docs/adr-0001-knowledge-web-publisher.md).
+# Primary navigation is the Knowledge Vault collection navigation; the raw
+# file explorer is disabled by default (storage layout remains available only
+# via folder pages and direct URLs, not as primary navigation).
 configuration:
   pageTitle: Knowledge Web
   pageTitleSuffix: ""
@@ -101,7 +104,7 @@ plugins:
   - source: github:quartz-community/folder-page
     enabled: true
   - source: github:quartz-community/explorer
-    enabled: true
+    enabled: false
     layout:
       position: left
       priority: 50

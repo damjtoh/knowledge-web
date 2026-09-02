@@ -568,6 +568,18 @@ function CollectionNavComponent(props) {
 }
 
 CollectionNavComponent.css = `
+#quartz-body {
+  min-width: 0;
+}
+#quartz-body .center,
+#quartz-body .left.sidebar,
+#quartz-body .right.sidebar,
+#quartz-body .page-header,
+#quartz-body .page-footer {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: break-word;
+}
 .kv-collections-nav {
   width: 100%;
   max-width: 100%;
@@ -870,6 +882,7 @@ DashboardContentComponent.css = `
   box-sizing: border-box;
   padding: 1rem;
   overflow-wrap: break-word;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-areas:
     "search"
     "open"
@@ -879,6 +892,17 @@ DashboardContentComponent.css = `
 }
 .kv-dashboard * {
   box-sizing: border-box;
+  min-width: 0;
+}
+#quartz-body {
+  min-width: 0;
+}
+#quartz-body .center,
+#quartz-body .left.sidebar,
+#quartz-body .right.sidebar {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: break-word;
 }
 .kv-dashboard-header {
   border-bottom: 1px solid var(--lightgray);

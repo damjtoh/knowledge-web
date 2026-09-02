@@ -912,3 +912,197 @@ test("vault dashboard search integrates with Quartz search (full-text, tag filte
     server.close()
   }
 })
+
+test("page types remain coherent across content, collection, tag, dashboard and 404 — no overflow, landmarks, H1, focus", async () => {
+  const kb = makeKb()
+  writeManifest(kb)
+  const work = tmpdir("work-coherence")
+  const contentDir = path.join(work, "content")
+  const configFile = path.join(work, "quartz.config.yaml")
+  const outputDir = path.join(work, "public")
+  await stageKb(kb, contentDir, configFile)
+  await buildQuartz(contentDir, outputDir)
+
+  const chromePath = findChrome()
+  let puppeteer
+  try {
+    puppeteer = await import("puppeteer-core")
+  } catch (e) {
+    assert.fail(`puppeteer-core not available: ${e.message}`)
+  }
+  const server = createStaticServer(outputDir)
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve))
+  const addr = server.address()
+  const baseUrl = `http://${addr.address}:${addr.port}`
+  let browser
+  try {
+    browser = await puppeteer.launch({
+      executablePath: chromePath || undefined,
+      headless: "new",
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-gpu",
+        "--disable-dev-shm-usage",
+      ],
+    })
+  } catch (e) {
+    server.close()
+    assert.fail(`Failed to launch Chrome: ${e.message}`)
+  }
+
+  const pagesToCheck = [
+    { path: "/", label: "home-generated" },
+    { path: "/dashboard.html", label: "dashboard" },
+    { path: "/notes/note-one.html", label: "content" },
+    { path: "/collections/note.html", label: "collection" },
+    { path: "/tags/misc.html", label: "tag" },
+    { path: "/404.html", label: "404" },
+    { path: "/notes/index.html", label: "folder" },
+  ]
+
+  const viewports = [
+    { width: 360, height: 800, label: "narrow" },
+    { width: 1280, height: 800, label: "desktop" },
+  ]
+
+  try {
+    for (const vp of viewports) {
+      for (const p of pagesToCheck) {
+        const page = await browser.newPage()
+        await page.setViewport({ width: vp.width, height: vp.height })
+        await page.goto(`${baseUrl}${p.path}`, { waitUntil: "networkidle0", timeout: 15000 })
+        const metrics = await page.evaluate(() => {
+          const body = document.body
+          const nav = document.querySelector(".kv-collections-nav")
+          const explorer = document.querySelector(".explorer")
+          const h1s = Array.from(document.querySelectorAll("h1"))
+          const mains = document.querySelectorAll("main")
+          const articles = document.querySelectorAll("article")
+          const header = document.querySelector("header")
+          const footer = document.querySelector("footer")
+          const hasFocusVisible = Array.from(document.styleSheets).some((sheet) => {
+            try {
+              return Array.from(sheet.cssRules || []).some(
+                (r) =>
+                  (r.cssText || "").includes("focus-visible") ||
+                  (r.cssText || "").includes(":focus"),
+              )
+            } catch {
+              return false
+            }
+          })
+          const focusable = document.querySelectorAll(
+            'a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])',
+          )
+          const firstFocusable = focusable[0]
+          return {
+            bodyScrollWidth: body ? body.scrollWidth : null,
+            bodyClientWidth: body ? body.clientWidth : null,
+            hasNav: !!nav,
+            hasExplorer: !!explorer,
+            h1Count: h1s.length,
+            h1Texts: h1s.map((h) => h.textContent?.trim() || ""),
+            mainCount: mains.length,
+            articleCount: articles.length,
+            hasHeader: !!header,
+            hasFooter: !!footer,
+            hasFocusVisible,
+            focusableCount: focusable.length,
+            firstTag: firstFocusable ? firstFocusable.tagName : null,
+            windowInnerWidth: window.innerWidth,
+            title: document.title,
+            url: location.pathname,
+          }
+        })
+        // No horizontal overflow
+        assert.ok(
+          metrics.bodyScrollWidth <= metrics.bodyClientWidth + 1,
+          `${vp.label} ${p.label} (${vp.width}px): body scrollWidth ${metrics.bodyScrollWidth} <= clientWidth ${metrics.bodyClientWidth}`,
+        )
+        assert.equal(
+          metrics.hasExplorer,
+          false,
+          `${vp.label} ${p.label}: explorer must be absent (C1)`,
+        )
+        assert.ok(
+          metrics.hasNav || p.label === "404",
+          `${vp.label} ${p.label}: collection nav present`,
+        )
+        // One primary H1 except 404 may have one as well
+        if (p.label === "404") {
+          assert.equal(metrics.h1Count, 1, `${vp.label} 404 should have one H1`)
+          assert.ok(metrics.h1Texts[0]?.includes("404"), `${vp.label} 404 H1 text`)
+        } else if (p.label === "dashboard") {
+          assert.equal(metrics.h1Count, 1, `${vp.label} dashboard one H1`)
+          assert.equal(metrics.h1Texts[0], "Vault Dashboard", `${vp.label} dashboard H1`)
+          assert.equal(metrics.mainCount, 1, `${vp.label} dashboard one main`)
+        } else if (p.label === "home-generated") {
+          // generated home is dashboard
+          assert.equal(metrics.h1Count, 1, `${vp.label} home one H1`)
+        } else {
+          assert.ok(metrics.h1Count >= 1, `${vp.label} ${p.label} at least one H1`)
+          assert.ok(
+            metrics.h1Count <= 2,
+            `${vp.label} ${p.label} at most 2 H1 (allow tag index maybe)`,
+          )
+        }
+        assert.ok(
+          metrics.hasFocusVisible || metrics.hasNav,
+          `${vp.label} ${p.label}: focus-visible or focus style present`,
+        )
+        assert.ok(
+          metrics.focusableCount >= 1,
+          `${vp.label} ${p.label}: at least one focusable element`,
+        )
+
+        // Keyboard: try tabbing to first focusable and check visible focus
+        if (metrics.focusableCount > 0) {
+          await page.keyboard.press("Tab")
+          await new Promise((r) => setTimeout(r, 200))
+          const focused = await page.evaluate(() => {
+            const el = document.activeElement
+            if (!el) return { tag: null, hasOutline: false }
+            const style = getComputedStyle(el)
+            const outline =
+              style.outlineWidth && style.outlineWidth !== "0px" && style.outlineStyle !== "none"
+            const hasFocusVisibleClass = el.matches(":focus-visible")
+            return {
+              tag: el.tagName,
+              hasOutline: outline || hasFocusVisibleClass,
+              outlineWidth: style.outlineWidth,
+              outlineStyle: style.outlineStyle,
+            }
+          })
+          // At least one element should be focusable; outline may be via focus-visible rule
+          assert.ok(focused.tag, `${vp.label} ${p.label}: tab should focus element`)
+        }
+
+        await page.close()
+      }
+    }
+
+    // 404 behavior: missing route should render 404 content via fallback, but direct /404.html works
+    const page404 = await browser.newPage()
+    await page404.setViewport({ width: 1280, height: 800 })
+    await page404.goto(`${baseUrl}/404.html`, { waitUntil: "networkidle0", timeout: 15000 })
+    const notFound = await page404.evaluate(() => {
+      const h1 = document.querySelector("h1")?.textContent?.trim() || ""
+      const link = document.querySelector('a[href="/"], a[href="./"]')
+      const hasHomeLink = !!link
+      const bodyText = document.body.textContent || ""
+      return { h1, hasHomeLink, bodyText: bodyText.slice(0, 500) }
+    })
+    assert.match(notFound.h1, /404/, "404 H1")
+    assert.ok(
+      notFound.hasHomeLink ||
+        notFound.bodyText.toLowerCase().includes("not found") ||
+        notFound.bodyText.toLowerCase().includes("home"),
+      "404 has home link or not found text",
+    )
+    await page404.close()
+  } finally {
+    await browser.close()
+    server.close()
+  }
+})

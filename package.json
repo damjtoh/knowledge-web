@@ -17,9 +17,9 @@
     "docs": "node ./quartz/bootstrap-cli.mjs build --serve -d docs",
     "check": "tsc --noEmit && npx prettier . --check",
     "format": "npx prettier . --write",
-    "test": "tsx --test",
-    "test:contract": "node --test 'tests/*.test.mjs'",
-    "test:browser": "node --test tests/knowledge-vault-layout.test.mjs",
+    "test": "tsx --test --test-concurrency=1",
+    "test:contract": "node --test --test-concurrency=1 'tests/*.test.mjs'",
+    "test:browser": "node --test --test-concurrency=1 tests/knowledge-vault-layout.test.mjs",
     "profile": "0x -D prof node ./quartz/bootstrap-cli.mjs build --concurrency=1",
     "install-plugins": "node scripts/pin-plugins.mjs && node ./quartz/bootstrap-cli.mjs plugin install",
     "prebuild": "npm run install-plugins"

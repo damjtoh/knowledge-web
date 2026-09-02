@@ -271,6 +271,18 @@ function CollectionNavComponent(props) {
 }
 
 CollectionNavComponent.css = `
+#quartz-body {
+  min-width: 0;
+}
+#quartz-body .center,
+#quartz-body .left.sidebar,
+#quartz-body .right.sidebar,
+#quartz-body .page-header,
+#quartz-body .page-footer {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: break-word;
+}
 .kv-collections-nav {
   width: 100%;
   max-width: 100%;
