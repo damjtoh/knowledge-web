@@ -108,6 +108,12 @@
       "resolved": "https://github.com/quartz-community/note-properties.git",
       "commit": "3cb40141e792a8a9ba9f99553cd436f36411bf8d",
       "installedAt": "2026-06-03T13:32:35.812Z"
+    },
+    "knowledge-vault": {
+      "source": "./plugins/knowledge-vault",
+      "resolved": "./plugins/knowledge-vault",
+      "commit": "local",
+      "installedAt": "2026-09-02T00:00:00.000Z"
     }
   }
 }

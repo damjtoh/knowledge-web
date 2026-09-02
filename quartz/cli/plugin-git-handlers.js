@@ -26,6 +26,78 @@ const INTERNAL_EXPORTS = new Set(["manifest", "default"])
 
 const execAsync = promisify(execCb)
 
+export function resolveLocalAbsolute(entry) {
+  const raw = entry.resolved ?? entry.source
+  if (!raw) return null
+  let url
+  try {
+    url = getSourceUrl(raw)
+  } catch {
+    return null
+  }
+  if (!url) return null
+
+  let subdir = entry.subdir
+  if (!subdir) {
+    try {
+      const parsed = parseGitSource(raw)
+      subdir = parsed.subdir
+    } catch {}
+  }
+  if (!subdir && entry.source && entry.source !== raw) {
+    try {
+      const parsedSrc = parseGitSource(entry.source)
+      if (parsedSrc.subdir) subdir = parsedSrc.subdir
+    } catch {}
+  }
+
+  const appendSubdir = (base) => (subdir ? path.join(base, subdir) : base)
+
+  if (path.isAbsolute(url)) {
+    const candidate = appendSubdir(url)
+    if (fs.existsSync(candidate)) return candidate
+    const src = entry.source
+    if (src && src !== raw) {
+      let srcUrl
+      try {
+        srcUrl = getSourceUrl(src)
+      } catch {
+        srcUrl = null
+      }
+      if (srcUrl) {
+        const fallbackBase = path.isAbsolute(srcUrl) ? srcUrl : path.resolve(srcUrl)
+        let fallbackSubdir = subdir
+        if (!fallbackSubdir) {
+          try {
+            const parsedSrc = parseGitSource(src)
+            fallbackSubdir = parsedSrc.subdir
+          } catch {}
+        }
+        const fallbackCandidate = fallbackSubdir
+          ? path.join(fallbackBase, fallbackSubdir)
+          : fallbackBase
+        if (fs.existsSync(fallbackCandidate)) return fallbackCandidate
+      }
+    }
+    return candidate
+  }
+  return appendSubdir(path.resolve(url))
+}
+
+function isLocalSymlinkCorrect(linkPath, expectedAbsolute) {
+  try {
+    const stat = fs.lstatSync(linkPath)
+    if (!stat.isSymbolicLink()) return false
+    const target = fs.readlinkSync(linkPath)
+    const targetAbsolute = path.isAbsolute(target)
+      ? target
+      : path.resolve(path.dirname(linkPath), target)
+    return targetAbsolute === expectedAbsolute || target === expectedAbsolute
+  } catch {
+    return false
+  }
+}
+
 async function cloneWithSubdirAsync({ url, ref, subdir, pluginDir }) {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "quartz-plugin-"))
   try {
@@ -583,7 +655,7 @@ export async function handlePluginInstallUnified({
             )
             lockfile.plugins[name] = {
               source: entry.source,
-              resolved: url,
+              resolved: entry.source,
               commit: "local",
               ...(subdir && { subdir }),
               installedAt: new Date().toISOString(),
@@ -620,7 +692,7 @@ export async function handlePluginInstallUnified({
           symlinkOrCopySync(resolvedPath, pluginDir)
           lockfile.plugins[name] = {
             source: entry.source,
-            resolved: resolvedPath,
+            resolved: entry.source,
             commit: "local",
             ...(subdir && { subdir }),
             installedAt: new Date().toISOString(),
@@ -800,13 +872,14 @@ export async function handlePluginInstallUnified({
 
       if (entry.commit === "local") {
         try {
-          if (!fs.existsSync(entry.resolved)) {
+          const localPath = resolveLocalAbsolute(entry)
+          if (!localPath || !fs.existsSync(localPath)) {
             console.log(styleText("red", `  ✗ ${name}: local path missing: ${entry.resolved}`))
             failed++
             continue
           }
           fs.mkdirSync(path.dirname(pluginDir), { recursive: true })
-          symlinkOrCopySync(entry.resolved, pluginDir)
+          symlinkOrCopySync(localPath, pluginDir)
           console.log(styleText("green", `✓ ${name} restored (local symlink)`))
           restoredPlugins.push({ name, pluginDir })
           installed++
@@ -1025,9 +1098,10 @@ export async function handlePluginInstallUnified({
 
     if (entry.commit === "local") {
       try {
+        const localPath = resolveLocalAbsolute(entry)
         if (fs.existsSync(pluginDir)) {
           const stat = fs.lstatSync(pluginDir)
-          if (stat.isSymbolicLink() && fs.readlinkSync(pluginDir) === entry.resolved) {
+          if (stat.isSymbolicLink() && isLocalSymlinkCorrect(pluginDir, localPath)) {
             console.log(styleText("gray", `  ✓ ${name} (local) already linked`))
             installed++
             continue
@@ -1035,13 +1109,13 @@ export async function handlePluginInstallUnified({
           if (stat.isSymbolicLink()) fs.unlinkSync(pluginDir)
           else fs.rmSync(pluginDir, { recursive: true })
         }
-        if (!fs.existsSync(entry.resolved)) {
+        if (!localPath || !fs.existsSync(localPath)) {
           console.log(styleText("red", `  ✗ ${name}: local path missing: ${entry.resolved}`))
           failed++
           continue
         }
         fs.mkdirSync(path.dirname(pluginDir), { recursive: true })
-        symlinkOrCopySync(entry.resolved, pluginDir)
+        symlinkOrCopySync(localPath, pluginDir)
         console.log(styleText("green", `  ✓ ${name} (local) linked`))
         pluginsToBuild.push({ name, pluginDir })
         installed++
@@ -1221,7 +1295,7 @@ export async function handlePluginAdd(
         symlinkOrCopySync(resolvedPath, pluginDir)
         lockfile.plugins[name] = {
           source,
-          resolved: resolvedPath,
+          resolved: source,
           commit: "local",
           ...(subdir && { subdir }),
           installedAt: new Date().toISOString(),
