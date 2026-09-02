@@ -534,45 +534,69 @@ function validateCategory(
 /**
  * Find the factory function from a plugin module by export convention.
  * Prefers `default` export, then `plugin` named export, then the sole exported function.
- * For multi-export modules with an expectedCategory, probes candidate functions to find
- * the one matching the category shape.
+ * For multi-export modules with an expectedCategory, selects via explicit static
+ * `quartzCategory` metadata without invoking candidates to avoid repeat side effects.
  */
-function findFactory(
+export function findFactory(
   module: Record<string, unknown>,
   expectedCategory?: ProcessingCategory,
 ): Function | null {
-  if (typeof module.default === "function") {
-    return module.default as Function
-  }
-  if (typeof module.plugin === "function") {
-    return module.plugin as Function
-  }
-
   const exportedFunctions = Object.entries(module).filter(
     ([key, value]) => typeof value === "function" && !key.startsWith("__"),
   )
 
-  if (exportedFunctions.length === 1) {
-    return exportedFunctions[0][1] as Function
+  // When no expected category is requested, preserve historic preference for
+  // default/plugin and fall back to sole export.
+  if (!expectedCategory) {
+    if (typeof module.default === "function") {
+      return module.default as Function
+    }
+    if (typeof module.plugin === "function") {
+      return module.plugin as Function
+    }
+    if (exportedFunctions.length === 1) {
+      return exportedFunctions[0][1] as Function
+    }
+    return null
   }
 
-  // Multiple exports: probe candidates to find the one matching the expected category.
-  // This is the only code path that calls factory() for discovery, and only when
-  // there is no default/plugin export and multiple functions are exported.
-  if (exportedFunctions.length > 1 && expectedCategory) {
-    for (const [, fn] of exportedFunctions) {
-      try {
-        const instance = (fn as Function)()
-        if (
-          instance &&
-          typeof instance === "object" &&
-          validateCategory(instance, expectedCategory)
-        ) {
-          return fn as Function
-        }
-      } catch {
-        // This export doesn't work without args — skip it
+  const candidates: Function[] = []
+  if (typeof module.default === "function") candidates.push(module.default as Function)
+  if (typeof module.plugin === "function" && module.plugin !== module.default)
+    candidates.push(module.plugin as Function)
+  for (const [, fn] of exportedFunctions) {
+    if (fn !== module.default && fn !== module.plugin) candidates.push(fn as Function)
+  }
+  if (candidates.length === 1) {
+    return candidates[0]
+  }
+
+  // Prefer explicit static category marker without invoking candidates.
+  // This keeps Knowledge Vault's transformer vs pageType disambiguated
+  // without executing factories during discovery.
+  for (const fn of candidates) {
+    const cat = (fn as unknown as Record<string, unknown>).quartzCategory
+    if (cat === expectedCategory) {
+      return fn
+    }
+  }
+
+  // Fallback: for plugins without markers, probe candidate factories once
+  // to find the one matching the expected category shape. This preserves
+  // historical behavior for multi-export plugins like note-properties while
+  // avoiding the previous double-invocation per candidate.
+  for (const fn of candidates) {
+    try {
+      const instance = (fn as Function)(undefined)
+      if (
+        instance &&
+        typeof instance === "object" &&
+        validateCategory(instance as Record<string, unknown>, expectedCategory)
+      ) {
+        return fn
       }
+    } catch {
+      // factory may require specific args or throw — continue to next candidate
     }
   }
 

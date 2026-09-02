@@ -1,7 +1,6 @@
-import type { QuartzTransformerPlugin, QuartzPageTypePlugin } from "@quartz-community/types"
-export const KnowledgeVault: QuartzTransformerPlugin
-export const Collections: QuartzPageTypePlugin
-export default KnowledgeVault
+import type { QuartzComponentConstructor } from "@quartz-community/types"
+export const CollectionNav: QuartzComponentConstructor
+export default CollectionNav
 export const FALLBACK_SLUG: string
 export const FALLBACK_LABEL: string
 export const COLLECTIONS_PREFIX: string

@@ -63,6 +63,9 @@ plugins:
   - source: ./plugins/knowledge-vault
     enabled: true
     order: 10
+    layout:
+      position: left
+      priority: 15
   # Wikilinks (Obsidian/Tolaria-compatible) must be transformed before link
   # resolution, so this stays ahead of crawl-links.
   - source: github:quartz-community/obsidian-flavored-markdown

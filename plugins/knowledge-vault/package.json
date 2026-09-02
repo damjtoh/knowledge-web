@@ -1,12 +1,16 @@
 {
   "name": "knowledge-vault",
   "version": "0.1.0",
-  "description": "Knowledge Vault presentation plugin for Quartz — readable Tolaria first-H1 titles",
+  "description": "Knowledge Vault presentation plugin for Quartz — readable Tolaria first-H1 titles, type collections, and collection navigation",
   "type": "module",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./components": {
+      "types": "./dist/components/index.d.ts",
+      "import": "./dist/components/index.js"
     }
   },
   "main": "./dist/index.js",
@@ -16,13 +20,29 @@
     "@quartz-community/types": "github:quartz-community/types",
     "@quartz-community/utils": "github:quartz-community/utils"
   },
+  "peerDependencies": {
+    "preact": "^10.0.0"
+  },
   "quartz": {
     "name": "knowledge-vault",
     "displayName": "Knowledge Vault",
-    "category": "transformer",
+    "category": [
+      "transformer",
+      "pageType",
+      "component"
+    ],
     "version": "1.0.0",
     "quartzVersion": ">=5.0.0",
     "defaultOrder": 10,
-    "defaultEnabled": true
+    "defaultEnabled": true,
+    "components": {
+      "CollectionNav": {
+        "displayName": "Collection Navigation",
+        "description": "Primary collection navigation derived from type frontmatter",
+        "version": "1.0.0",
+        "defaultPosition": "left",
+        "defaultPriority": 15
+      }
+    }
   }
 }

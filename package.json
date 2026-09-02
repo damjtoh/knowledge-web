@@ -19,6 +19,7 @@
     "format": "npx prettier . --write",
     "test": "tsx --test",
     "test:contract": "node --test 'tests/*.test.mjs'",
+    "test:browser": "node --test tests/knowledge-vault-layout.test.mjs",
     "profile": "0x -D prof node ./quartz/bootstrap-cli.mjs build --concurrency=1",
     "install-plugins": "node scripts/pin-plugins.mjs && node ./quartz/bootstrap-cli.mjs plugin install",
     "prebuild": "npm run install-plugins"
@@ -84,6 +85,7 @@
     "@types/yargs": "^17.0.35",
     "esbuild": "^0.27.2",
     "prettier": "^3.8.1",
+    "puppeteer-core": "^22.15.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   }

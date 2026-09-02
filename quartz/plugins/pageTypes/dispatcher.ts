@@ -191,6 +191,10 @@ export const PageTypeDispatcher: QuartzEmitterPlugin<Partial<DispatcherOptions>>
             frontmatter: { title: vp.title, tags: [] },
             ...vp.data,
           })
+          // Mark all generated pages with metadata so collection helpers can
+          // exclude them via page metadata instead of filename/path heuristics.
+          // Authored typed index notes retain filePath and are not marked.
+          vfile.data.isVirtualPage = true
           if (vpSlug !== "404") {
             ctx.virtualPages.push([tree, vfile])
           }
@@ -285,6 +289,7 @@ export const PageTypeDispatcher: QuartzEmitterPlugin<Partial<DispatcherOptions>>
             frontmatter: { title: vp.title, tags: [] },
             ...vp.data,
           })
+          vfile.data.isVirtualPage = true
           if (vpSlug !== "404") {
             ctx.virtualPages.push([tree, vfile])
           }
