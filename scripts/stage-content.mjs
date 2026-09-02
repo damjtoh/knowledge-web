@@ -303,7 +303,7 @@ function maybeGenerateLandingPage(contentDir, selections, title, yaml) {
   }
   const lines = [
     "---",
-    yaml.stringify({ title, unlisted: true }).trimEnd(),
+    yaml.stringify({ title, synthetic: true }).trimEnd(),
     "---",
     ``,
     `# ${title}`,

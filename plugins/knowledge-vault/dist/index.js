@@ -499,19 +499,54 @@ const CollectionContent = () => CollectionContentComponent
 function CollectionNavComponent(props) {
   const { fileData, allFiles } = props
   const collections = buildCollectionsFromFiles(allFiles ?? [])
-  if (collections.length === 0) return null
-
-  // For navigation, sort alphabetically by label including fallback
+  const dashboardSlug = getDashboardSlug(allFiles ?? [])
+  const dashboardHref = resolveRelative(fileData.slug ?? "index", dashboardSlug)
+  const isDashboardActive = (fileData.slug ?? "") === dashboardSlug
+  const hasCollections = collections.length > 0
+  if (!hasCollections) {
+    return h(
+      "nav",
+      { class: "kv-collections-nav", "aria-label": "Collections" },
+      h("h2", { class: "kv-collections-nav-title" }, "Collections"),
+      h(
+        "ul",
+        null,
+        h(
+          "li",
+          { key: "__dashboard" },
+          h(
+            "a",
+            {
+              href: dashboardHref,
+              class: isDashboardActive ? "active internal kv-dash-link" : "internal kv-dash-link",
+              "aria-current": isDashboardActive ? "page" : undefined,
+            },
+            "Dashboard",
+          ),
+        ),
+      ),
+    )
+  }
   const sorted = [...collections].sort((a, b) => a.label.localeCompare(b.label))
-
   return h(
     "nav",
     { class: "kv-collections-nav", "aria-label": "Collections" },
     h("h2", { class: "kv-collections-nav-title" }, "Collections"),
-    h(
-      "ul",
-      null,
-      sorted.map((col) => {
+    h("ul", null, [
+      h(
+        "li",
+        { key: "__dashboard" },
+        h(
+          "a",
+          {
+            href: dashboardHref,
+            class: isDashboardActive ? "active internal kv-dash-link" : "internal kv-dash-link",
+            "aria-current": isDashboardActive ? "page" : undefined,
+          },
+          "Dashboard",
+        ),
+      ),
+      ...sorted.map((col) => {
         const href = resolveRelative(fileData.slug ?? "index", `${COLLECTIONS_PREFIX}${col.slug}`)
         const isActive = (fileData.slug ?? "") === `${COLLECTIONS_PREFIX}${col.slug}`
         return h(
@@ -528,7 +563,7 @@ function CollectionNavComponent(props) {
           ),
         )
       }),
-    ),
+    ]),
   )
 }
 
@@ -1124,6 +1159,9 @@ function VaultPageBodyComponent(props) {
   if (slug === DASHBOARD_SLUG || slug.startsWith(`${DASHBOARD_SLUG}/`)) {
     return DashboardContentComponent(props)
   }
+  if (slug === "index" && fileData.frontmatter?.synthetic === true) {
+    return DashboardContentComponent(props)
+  }
   return CollectionContentComponent(props)
 }
 VaultPageBodyComponent.css = CollectionContentComponent.css + "\n" + DashboardContentComponent.css
@@ -1195,11 +1233,12 @@ KnowledgeVault.quartzCategory = "transformer"
 export const Collections = (opts) => ({
   name: "KnowledgeVaultCollections",
   priority: 5,
-  match: ({ fileData }) =>
+  match: ({ slug, fileData }) =>
     !!fileData &&
     ((typeof fileData.collection === "object" && fileData.collection !== null) ||
       !!fileData.isDashboard ||
-      !!fileData.dashboard),
+      !!fileData.dashboard ||
+      (slug === "index" && fileData.frontmatter?.synthetic === true)),
   generate({ content, cfg }) {
     const allFiles = content.map((c) => c[1].data).filter((d) => d.unlisted !== true)
     // buildCollectionsFromFiles already accounts for authored route occupancy

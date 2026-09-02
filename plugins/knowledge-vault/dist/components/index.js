@@ -4,6 +4,39 @@ import { resolveRelative } from "@quartz-community/utils"
 export const FALLBACK_SLUG = "other"
 export const FALLBACK_LABEL = "Other"
 export const COLLECTIONS_PREFIX = "collections/"
+export const DASHBOARD_SLUG = "dashboard"
+
+export function getDashboardSlug(allFiles) {
+  const authored = new Set()
+  for (const file of allFiles) {
+    if (!file || typeof file.slug !== "string") continue
+    if (file.unlisted === true || file.frontmatter?.unlisted === true) continue
+    if (file.isVirtualPage || file._isVirtualPage || file._virtualPage) continue
+    const isTagVirtualMarker = file.tag !== undefined || file._isTagPage
+    if (isTagVirtualMarker) continue
+    if (file.collection !== undefined) continue
+    if (file.frontmatter?.synthetic === true) continue
+    const slug = file.slug
+    if (slug === DASHBOARD_SLUG || slug === `${DASHBOARD_SLUG}/index`) {
+      authored.add(DASHBOARD_SLUG)
+    } else if (slug.startsWith(`${DASHBOARD_SLUG}-`)) {
+      const rest = slug.slice(`${DASHBOARD_SLUG}-`.length)
+      const m = rest.match(/^(\d+)(\/index)?$/)
+      if (m) {
+        authored.add(`${DASHBOARD_SLUG}-${m[1]}`)
+      }
+    }
+    if (slug.startsWith(`${DASHBOARD_SLUG}/`) && slug !== `${DASHBOARD_SLUG}/index`) {
+    }
+  }
+  let candidate = DASHBOARD_SLUG
+  let counter = 2
+  while (authored.has(candidate)) {
+    candidate = `${DASHBOARD_SLUG}-${counter}`
+    counter++
+  }
+  return candidate
+}
 
 export function normalizeType(raw) {
   if (typeof raw !== "string") return null
@@ -169,16 +202,54 @@ export function buildCollectionsFromFiles(allFiles) {
 function CollectionNavComponent(props) {
   const { fileData, allFiles } = props
   const collections = buildCollectionsFromFiles(allFiles ?? [])
-  if (collections.length === 0) return null
+  const dashboardSlug = getDashboardSlug(allFiles ?? [])
+  const dashboardHref = resolveRelative(fileData.slug ?? "index", dashboardSlug)
+  const isDashboardActive = (fileData.slug ?? "") === dashboardSlug
+  const hasCollections = collections.length > 0
+  if (!hasCollections) {
+    return h(
+      "nav",
+      { class: "kv-collections-nav", "aria-label": "Collections" },
+      h("h2", { class: "kv-collections-nav-title" }, "Collections"),
+      h(
+        "ul",
+        null,
+        h(
+          "li",
+          { key: "__dashboard" },
+          h(
+            "a",
+            {
+              href: dashboardHref,
+              class: isDashboardActive ? "active internal kv-dash-link" : "internal kv-dash-link",
+              "aria-current": isDashboardActive ? "page" : undefined,
+            },
+            "Dashboard",
+          ),
+        ),
+      ),
+    )
+  }
   const sorted = [...collections].sort((a, b) => a.label.localeCompare(b.label))
   return h(
     "nav",
     { class: "kv-collections-nav", "aria-label": "Collections" },
     h("h2", { class: "kv-collections-nav-title" }, "Collections"),
-    h(
-      "ul",
-      null,
-      sorted.map((col) => {
+    h("ul", null, [
+      h(
+        "li",
+        { key: "__dashboard" },
+        h(
+          "a",
+          {
+            href: dashboardHref,
+            class: isDashboardActive ? "active internal kv-dash-link" : "internal kv-dash-link",
+            "aria-current": isDashboardActive ? "page" : undefined,
+          },
+          "Dashboard",
+        ),
+      ),
+      ...sorted.map((col) => {
         const href = resolveRelative(fileData.slug ?? "index", `${COLLECTIONS_PREFIX}${col.slug}`)
         const isActive = (fileData.slug ?? "") === `${COLLECTIONS_PREFIX}${col.slug}`
         return h(
@@ -195,7 +266,7 @@ function CollectionNavComponent(props) {
           ),
         )
       }),
-    ),
+    ]),
   )
 }
 
