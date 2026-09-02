@@ -168,3 +168,6 @@ layout:
     tag:
       positions:
         right: []
+    collection:
+      exclude:
+        - article-title
