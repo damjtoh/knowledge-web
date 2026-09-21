@@ -50,13 +50,14 @@ RUN git init -q \
 RUN npm ci && npm run install-plugins
 
 # Stage the Knowledge Base: manifest validation, allowlisted content copy,
-# landing page generation, site identity injection.
+# landing page generation, generated site identity emission. Staging never
+# mutates quartz.config.yaml or another tracked configuration file.
 WORKDIR /kb
 COPY . .
 RUN node /publisher/scripts/stage-content.mjs \
     --kb-root /kb \
     --content-dir /publisher/content \
-    --config-file /publisher/quartz.config.yaml
+    --identity-file /publisher/site-identity.json
 
 WORKDIR /publisher
 RUN npm run build
@@ -72,12 +73,15 @@ CMD ["nginx", "-g", "daemon off;"]
 Notes:
 
 - The Docker build context is the private Knowledge Base repository, but only
-  allowlisted content enters the image. Unselected repository files exist in
-  the build context and nowhere else.
+  allowlisted content plus generated `site-identity.json` enter the build.
+  Unselected repository files exist in the build context and nowhere else.
 - The runtime image contains static files only: no database, no writable
   volume, no Git, no sync worker, no API.
 - Keep `ARG PUBLISHER_REV` explicit so a rebuild cannot change behavior
   because a remote branch or tag moved.
+- Quartz will be replaced by a custom static knowledge reader (see
+  ADR-0002). The publisher, allowlist, staging, canonical Markdown/Git, and
+  stateless runtime boundaries are retained.
 
 ## 3. Runtime contract
 
@@ -110,5 +114,6 @@ npm run build
 npm run serve   # local preview at http://localhost:8080
 ```
 
-The staged build tree lives in the Publisher checkout (`content/`, `public/`,
-`.quartz/`), never in the Knowledge Base.
+The staged build tree plus generated site identity live in the Publisher
+checkout (`content/`, `site-identity.json`, `public/`, `.quartz/`), never in
+the Knowledge Base.

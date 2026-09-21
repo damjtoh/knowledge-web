@@ -109,23 +109,23 @@ select:
 
 /**
  * Run staging with an isolated build tree: the content directory and the
- * Quartz config file are always temporary copies, so tests can never write
- * into (or mutate) the Publisher's own tracked files.
+ * generated site identity file are always temporary paths, so tests can never
+ * write into (or mutate) the Publisher's own tracked files.
  */
-async function stageValid(kb, { contentDir, configFile } = {}) {
+async function stageValid(kb, { contentDir, identityFile } = {}) {
   const tempRoot = tmpdir("stage")
+  const resolvedContent = contentDir ?? path.join(tempRoot, "content")
+  const resolvedIdentity = identityFile ?? path.join(tempRoot, "site-identity.json")
   const args = [
     "--kb-root",
     kb,
     "--content-dir",
-    contentDir ?? path.join(tempRoot, "content"),
-    "--config-file",
-    configFile ?? path.join(tempRoot, "quartz.config.yaml"),
+    resolvedContent,
+    "--identity-file",
+    resolvedIdentity,
   ]
-  if (!configFile) {
-    fs.copyFileSync(TRACKED_CONFIG, args[args.indexOf("--config-file") + 1])
-  }
-  return runStage(args)
+  const result = await runStage(args)
+  return { result, contentDir: resolvedContent, identityFile: resolvedIdentity }
 }
 
 after(() => {
@@ -140,7 +140,8 @@ test("stages only selected content with byte preservation and a synthetic landin
   writeManifest(kb, validManifest)
   const contentDir = path.join(tmpdir("out"), "content")
 
-  const { stdout } = await stageValid(kb, { contentDir })
+  const { result } = await stageValid(kb, { contentDir })
+  const { stdout } = result
 
   assert.match(stdout, /generated synthetic landing page content\/index\.md/)
   assert.equal(
@@ -173,24 +174,123 @@ test("keeps an authored root index instead of generating a landing page", async 
   )
   const contentDir = path.join(tmpdir("out"), "content")
 
-  const { stdout } = await stageValid(kb, { contentDir })
+  const { result } = await stageValid(kb, { contentDir })
+  const { stdout } = result
   assert.match(stdout, /provides a root index\.md; no landing page generated/)
   assert.equal(sha256(path.join(contentDir, "index.md")), sha256(path.join(kb, "index.md")))
 })
 
-test("injects manifest title and canonical hostname into the Quartz config", async () => {
+test("emits deterministic generated site identity outside the staged content tree", async () => {
+  const kb = makeKb()
+  writeManifest(kb, validManifest)
+  const outRoot = tmpdir("out")
+  const contentDir = path.join(outRoot, "content")
+  const identityFile = path.join(outRoot, "site-identity.json")
+
+  const { result } = await stageValid(kb, { contentDir, identityFile })
+  assert.match(result.stdout, /emitted site identity/)
+
+  assert.ok(fs.existsSync(identityFile), "site identity file must exist")
+  const raw = fs.readFileSync(identityFile, "utf8")
+  const parsed = JSON.parse(raw)
+  assert.deepEqual(Object.keys(parsed), ["title", "canonicalHostname"])
+  assert.equal(parsed.title, "Example Garden")
+  assert.equal(parsed.canonicalHostname, "garden.example.com")
+  // Deterministic formatting: stable key order, 2-space indent, trailing newline.
+  assert.equal(raw, `${JSON.stringify(parsed, null, 2)}\n`)
+
+  // Outside the staged content tree: not inside contentDir and not staged as content.
+  assert.ok(
+    !identityFile.startsWith(`${contentDir}${path.sep}`),
+    "identity must live outside the staged content tree",
+  )
+  assert.ok(!fs.existsSync(path.join(contentDir, "site-identity.json")))
+
+  // Deterministic across runs: staging again produces byte-identical identity.
+  const secondRoot = tmpdir("out2")
+  const secondContent = path.join(secondRoot, "content")
+  const secondIdentity = path.join(secondRoot, "site-identity.json")
+  await stageValid(kb, { contentDir: secondContent, identityFile: secondIdentity })
+  assert.equal(
+    sha256(secondIdentity),
+    sha256(identityFile),
+    "site identity must be deterministic across runs",
+  )
+})
+
+test("leaves the tracked Quartz configuration byte-identical after staging", async () => {
   const kb = makeKb()
   writeManifest(kb, validManifest)
   const contentDir = path.join(tmpdir("out"), "content")
-  const configFile = path.join(tmpdir("out"), "quartz.config.yaml")
-  fs.copyFileSync(path.join(PUBLISHER_ROOT, "quartz.config.yaml"), configFile)
+  const identityFile = path.join(tmpdir("out"), "site-identity.json")
 
-  await runStage(["--kb-root", kb, "--content-dir", contentDir, "--config-file", configFile])
+  const before = sha256(TRACKED_CONFIG)
+  await stageValid(kb, { contentDir, identityFile })
 
-  const { parse } = await import("yaml")
-  const config = parse(fs.readFileSync(configFile, "utf8"))
-  assert.equal(config.configuration.pageTitle, "Example Garden")
-  assert.equal(config.configuration.baseUrl, "garden.example.com")
+  assert.equal(sha256(TRACKED_CONFIG), before, "tracked config must be unchanged after staging")
+  assert.equal(
+    sha256(TRACKED_CONFIG),
+    trackedConfigHashBefore,
+    "tracked config must match pre-test hash",
+  )
+  const tracked = fs.readFileSync(TRACKED_CONFIG, "utf8")
+  assert.match(tracked, /pageTitle: Knowledge Web/, "tracked config stays generic")
+  assert.match(tracked, /baseUrl: localhost/, "tracked hostname stays generic")
+  assert.ok(!tracked.includes("Shared Vault"), "no staging residue in tracked config")
+  assert.ok(!tracked.includes("shared.dami.dev"), "no staging hostname in tracked config")
+})
+
+test("rejects legacy --config-file without mutating tracked configuration", async () => {
+  const kb = makeKb()
+  writeManifest(kb, validManifest)
+  const contentDir = path.join(tmpdir("out"), "content")
+  const legacyConfig = path.join(tmpdir("out"), "quartz.config.yaml")
+  fs.copyFileSync(TRACKED_CONFIG, legacyConfig)
+
+  const before = sha256(TRACKED_CONFIG)
+  let failed = false
+  try {
+    await runStage(["--kb-root", kb, "--content-dir", contentDir, "--config-file", legacyConfig])
+  } catch (error) {
+    failed = true
+    assert.match(error.stderr, /--config-file is no longer supported/)
+  }
+  assert.ok(failed, "legacy --config-file must be rejected")
+  assert.equal(sha256(TRACKED_CONFIG), before, "tracked config unchanged on legacy rejection")
+  assert.ok(!fs.existsSync(contentDir), "no partial content on legacy rejection")
+})
+
+test("rejects a site identity file inside the staged content tree or Knowledge Base", async () => {
+  const kb = makeKb()
+  writeManifest(kb, validManifest)
+  const contentDir = path.join(tmpdir("out"), "content")
+
+  const insideContent = path.join(contentDir, "site-identity.json")
+  let failedContent = false
+  try {
+    await runStage(["--kb-root", kb, "--content-dir", contentDir, "--identity-file", insideContent])
+  } catch (error) {
+    failedContent = true
+    assert.match(error.stderr, /outside the staged content tree/)
+  }
+  assert.ok(failedContent, "identity inside content tree must be rejected")
+
+  const insideKb = path.join(kb, "site-identity.json")
+  let failedKb = false
+  try {
+    await runStage([
+      "--kb-root",
+      kb,
+      "--content-dir",
+      path.join(tmpdir("out2"), "content"),
+      "--identity-file",
+      insideKb,
+    ])
+  } catch (error) {
+    failedKb = true
+    assert.match(error.stderr, /must not be inside the Knowledge Base root/)
+  }
+  assert.ok(failedKb, "identity inside KB root must be rejected")
 })
 
 async function expectRejection(kb, contentDir, label, messagePattern) {

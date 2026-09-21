@@ -41,9 +41,11 @@ select:
   titles, body text, and wikilinks are carried into the build tree untouched.
   The Publisher never rewrites canonical files and never writes into the
   Knowledge Base.
-- `title` and `canonicalHostname` are injected into the shared Quartz
-  configuration at build time, so each Web Projection displays its own
-  identity.
+- `title` and `canonicalHostname` are emitted as deterministic generated site
+  identity JSON outside the staged content tree (default
+  `site-identity.json`), so each Web Projection carries its own identity
+  without modifying `quartz.config.yaml` or another tracked configuration
+  file. See ADR-0002 for the Quartz replacement.
 
 ## Validation rules
 
@@ -77,3 +79,19 @@ generates a synthetic landing page **only inside the build tree** (never in
 the Knowledge Base). It carries the manifest title and links to each
 top-level selection. When a selected root `index.md` exists, it is used
 verbatim and nothing is generated.
+
+## Generated site identity
+
+A successful stage writes `site-identity.json` outside the staged content
+tree (default `<publisher>/site-identity.json`, override with
+`--identity-file`). The file is deterministic JSON with stable key order:
+
+```json
+{
+  "title": "Example Garden",
+  "canonicalHostname": "garden.example.com"
+}
+```
+
+The reader build consumes staged content plus this identity file. Staging
+never modifies `quartz.config.yaml` or another tracked configuration file.

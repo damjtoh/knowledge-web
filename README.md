@@ -54,14 +54,15 @@ Excluded (intentionally absent):
 ## Repository layout
 
 ```text
-quartz/                    Quartz v5 source (pinned, see docs/UPSTREAM.md)
-scripts/stage-content.mjs  Manifest validation + content staging + identity injection
+quartz/                    Quartz v5 source (pinned, see docs/UPSTREAM.md; replacement planned, see docs/adr-0002-quartz-replacement-reader.md)
+scripts/stage-content.mjs  Manifest validation + content staging + generated site identity
 tests/                     Focused contract tests (synthetic fixtures only)
-quartz.config.yaml         Shared Quartz configuration (pageTitle/baseUrl injected per site)
+quartz.config.yaml         Shared Quartz configuration (generic placeholders; staging never mutates it)
+site-identity.json         Generated site identity (title, canonicalHostname; gitignored build output)
 package.json               npm scripts; deps pinned by package-lock.json
 quartz.lock.json           Community plugin pins (exact commits)
 nginx.conf                 Minimal stateless runtime configuration for consumers
-docs/                      Manifest contract, adoption guide, vocabulary, ADR, provenance
+docs/                      Manifest contract, adoption guide, vocabulary, ADRs, provenance
 ```
 
 ## Building a site
@@ -75,9 +76,14 @@ npm run build                 # emits the static site into public/
 
 `stage-content.mjs` validates the manifest, copies only allowlisted content
 byte-for-byte into the isolated `content/` build tree, generates a synthetic
-landing page only when no selected root `index.md` exists, and injects the
-manifest title and hostname into `quartz.config.yaml`. The Knowledge Base is
-never modified.
+landing page only when no selected root `index.md` exists, and emits
+deterministic generated site identity (`site-identity.json`) outside the
+staged tree. Staging never modifies `quartz.config.yaml` or another tracked
+configuration file. The Knowledge Base is never modified. Quartz will be
+replaced by a custom static knowledge reader (see
+docs/adr-0002-quartz-replacement-reader.md); the publisher, allowlist,
+staging, canonical Markdown/Git, and stateless runtime boundaries are
+retained.
 
 ## Testing
 
@@ -91,6 +97,7 @@ npm run test:contract   # node --test tests/ — contract boundary tests
 - [Adoption guide for Knowledge Bases](docs/adoption.md)
 - [Canonical vocabulary](docs/vocabulary.md)
 - [Architectural decision record](docs/adr-0001-knowledge-web-publisher.md)
+- [Quartz replacement decision](docs/adr-0002-quartz-replacement-reader.md)
 - [Provenance and pinning](docs/UPSTREAM.md)
 
 ## License

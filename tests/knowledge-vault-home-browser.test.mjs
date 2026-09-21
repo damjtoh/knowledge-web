@@ -32,11 +32,10 @@ after(() => {
   for (const dir of tmpRoots) fs.rmSync(dir, { recursive: true, force: true })
 })
 
-async function stageKb(kb, contentDir, configFile) {
-  fs.copyFileSync(TRACKED_CONFIG, configFile)
+async function stageKb(kb, contentDir, identityFile) {
   await execFileAsync(
     process.execPath,
-    [STAGE_SCRIPT, "--kb-root", kb, "--content-dir", contentDir, "--config-file", configFile],
+    [STAGE_SCRIPT, "--kb-root", kb, "--content-dir", contentDir, "--identity-file", identityFile],
     { cwd: PUBLISHER_ROOT },
   )
 }
@@ -166,9 +165,9 @@ test("home modes: generated and authored root navigate to dashboard and collecti
 
     const work = tmpdir(`work-${mode}`)
     const contentDir = path.join(work, "content")
-    const configFile = path.join(work, "quartz.config.yaml")
+    const identityFile = path.join(work, "site-identity.json")
     const outputDir = path.join(work, "public")
-    await stageKb(kb, contentDir, configFile)
+    await stageKb(kb, contentDir, identityFile)
     await buildQuartz(contentDir, outputDir)
 
     const server = createStaticServer(outputDir)

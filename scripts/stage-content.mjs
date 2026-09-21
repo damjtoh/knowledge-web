@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
  * Knowledge Web Publisher — Publication Manifest validation, content staging,
- * and site identity injection.
+ * and generated site identity.
  *
- * This is the single build entrypoint consumers run before `npm run build`.
- * It:
+ * This is the single build entrypoint consumers run before the static reader
+ * build. It:
  *   1. Loads and validates the Knowledge Base's Publication Manifest
  *      (site title, canonical hostname, explicit content allowlist).
  *   2. Rejects invalid manifests before any build output is produced:
@@ -14,15 +14,17 @@
  *      build content directory. The Knowledge Base is never modified.
  *   4. Generates a synthetic landing page in the build tree only when the
  *      selected content has no root `index.md`.
- *   5. Injects the manifest title and canonical hostname into the shared
- *      Quartz configuration used by the build.
+ *   5. Emits deterministic generated site identity (title and canonical
+ *      hostname) as JSON outside the staged content tree. Staging never
+ *      modifies `quartz.config.yaml` or another tracked configuration file.
+ *      See docs/adr-0002-quartz-replacement-reader.md.
  *
  * Usage:
  *   node scripts/stage-content.mjs \
  *     --kb-root <Knowledge Base root> \
  *     [--manifest <path, default <kb-root>/publication.manifest.yaml>] \
  *     [--content-dir <path, default ./content>] \
- *     [--config-file <path, default ./quartz.config.yaml>]
+ *     [--identity-file <path, default ./site-identity.json>]
  */
 
 import fs from "node:fs"
@@ -31,6 +33,7 @@ import { fileURLToPath } from "node:url"
 
 const PUBLISHER_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const DEFAULT_MANIFEST_NAME = "publication.manifest.yaml"
+const TRACKED_QUARTZ_CONFIG = path.join(PUBLISHER_ROOT, "quartz.config.yaml")
 
 // A canonical hostname: DNS labels separated by dots, no scheme, port, path,
 // userinfo, or whitespace. At least one dot is required so single-label names
@@ -53,7 +56,7 @@ function die() {
 }
 
 function parseArgs(argv) {
-  const args = { kbRoot: null, manifest: null, contentDir: null, configFile: null }
+  const args = { kbRoot: null, manifest: null, contentDir: null, identityFile: null }
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
     const value = argv[i + 1]
@@ -70,8 +73,15 @@ function parseArgs(argv) {
         args.contentDir = value
         i++
         break
+      case "--identity-file":
+        args.identityFile = value
+        i++
+        break
       case "--config-file":
-        args.configFile = value
+        fail(
+          "--config-file is no longer supported: staging no longer mutates Quartz configuration; " +
+            "use --identity-file to emit generated site identity JSON outside the staged content tree",
+        )
         i++
         break
       default:
@@ -320,14 +330,24 @@ function maybeGenerateLandingPage(contentDir, selections, title, yaml) {
   console.log("  ✓ generated synthetic landing page content/index.md (no selected root index)")
 }
 
-function injectSiteIdentity(configFile, title, canonicalHostname, yaml) {
-  const config = yaml.parse(fs.readFileSync(configFile, "utf8"))
-  config.configuration.pageTitle = title
-  config.configuration.baseUrl = canonicalHostname
-  fs.writeFileSync(configFile, yaml.stringify(config))
-  const rel = path.relative(process.cwd(), configFile)
+/**
+ * Emit deterministic generated site identity outside the staged content tree.
+ * The file carries only the manifest title and canonical hostname, with
+ * stable key order and formatting. It never modifies a tracked config file.
+ */
+function writeSiteIdentity(identityFile, title, canonicalHostname) {
+  const payload = {
+    title: title.trim(),
+    canonicalHostname: canonicalHostname.trim(),
+  }
+  const body = `${JSON.stringify(payload, null, 2)}\n`
+  const tmpFile = `${identityFile}.staging-${process.pid}`
+  fs.mkdirSync(path.dirname(identityFile), { recursive: true })
+  fs.writeFileSync(tmpFile, body)
+  fs.renameSync(tmpFile, identityFile)
+  const rel = path.relative(process.cwd(), identityFile)
   console.log(
-    `  ✓ injected site identity (${title} @ ${canonicalHostname}) into ${rel || configFile}`,
+    `  ✓ emitted site identity (${payload.title} @ ${payload.canonicalHostname}) to ${rel || identityFile}`,
   )
 }
 
@@ -354,15 +374,12 @@ async function main() {
   const contentDir = args.contentDir
     ? path.resolve(args.contentDir)
     : path.join(PUBLISHER_ROOT, "content")
-  const configFile = args.configFile
-    ? path.resolve(args.configFile)
-    : path.join(PUBLISHER_ROOT, "quartz.config.yaml")
+  const identityFile = args.identityFile
+    ? path.resolve(args.identityFile)
+    : path.join(PUBLISHER_ROOT, "site-identity.json")
 
   if (!fs.existsSync(kbRoot)) {
     fail(`Knowledge Base root does not exist: ${kbRoot}`)
-  }
-  if (!fs.existsSync(configFile)) {
-    fail(`Quartz config file does not exist: ${configFile}`)
   }
 
   const yaml = await loadYaml()
@@ -378,6 +395,30 @@ async function main() {
     if (isInside(kbRootReal, contentReal)) {
       fail(`content directory ${contentDir} must not be inside the Knowledge Base root ${kbRoot}`)
     }
+  }
+
+  // Generated site identity must live outside the staged content tree and
+  // outside the Knowledge Base, and must never overwrite tracked config.
+  if (kbRootReal) {
+    const identityParent = path.dirname(identityFile)
+    let identityParentReal
+    try {
+      identityParentReal = fs.realpathSync(identityParent)
+    } catch {
+      identityParentReal = path.resolve(identityParent)
+    }
+    const identityReal = path.join(identityParentReal, path.basename(identityFile))
+    if (isInside(kbRootReal, identityReal)) {
+      fail(
+        `site identity file ${identityFile} must not be inside the Knowledge Base root ${kbRoot}`,
+      )
+    }
+    if (identityReal === TRACKED_QUARTZ_CONFIG) {
+      fail(`site identity file must not overwrite the tracked Quartz configuration`)
+    }
+  }
+  if (identityFile === contentDir || identityFile.startsWith(contentDir + path.sep)) {
+    fail(`site identity file ${identityFile} must be outside the staged content tree ${contentDir}`)
   }
 
   if (errors.length > 0) die()
@@ -413,9 +454,11 @@ async function main() {
   console.log(`  ✓ staged ${countFiles(contentDir)} files into ${contentDir}`)
 
   maybeGenerateLandingPage(contentDir, selections, manifest.title, yaml)
-  injectSiteIdentity(configFile, manifest.title, manifest.canonicalHostname, yaml)
+  writeSiteIdentity(identityFile, manifest.title, manifest.canonicalHostname)
 
-  console.log("✓ staging complete; run `npm run build` to emit the static site")
+  console.log(
+    "✓ staging complete; staged content plus generated site identity are ready for the reader build",
+  )
 }
 
 main().catch((error) => {

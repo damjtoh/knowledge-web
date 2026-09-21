@@ -85,11 +85,10 @@ function writeManifest(kb) {
   )
 }
 
-async function stageKb(kb, contentDir, configFile) {
-  fs.copyFileSync(TRACKED_CONFIG, configFile)
+async function stageKb(kb, contentDir, identityFile) {
   await execFileAsync(
     process.execPath,
-    [STAGE_SCRIPT, "--kb-root", kb, "--content-dir", contentDir, "--config-file", configFile],
+    [STAGE_SCRIPT, "--kb-root", kb, "--content-dir", contentDir, "--identity-file", identityFile],
     {
       cwd: PUBLISHER_ROOT,
     },
@@ -257,9 +256,9 @@ test("collection nav has no horizontal overflow at narrow and desktop widths", a
   writeManifest(kb)
   const work = tmpdir("work")
   const contentDir = path.join(work, "content")
-  const configFile = path.join(work, "quartz.config.yaml")
+  const identityFile = path.join(work, "site-identity.json")
   const outputDir = path.join(work, "public")
-  await stageKb(kb, contentDir, configFile)
+  await stageKb(kb, contentDir, identityFile)
   await buildQuartz(contentDir, outputDir)
 
   const chromePath = findChrome()
@@ -357,9 +356,9 @@ test("vault dashboard has no horizontal overflow and meaningful section order at
   writeManifestForDashboard(kb)
   const work = tmpdir("work-dashboard")
   const contentDir = path.join(work, "content")
-  const configFile = path.join(work, "quartz.config.yaml")
+  const identityFile = path.join(work, "site-identity.json")
   const outputDir = path.join(work, "public")
-  await stageKb(kb, contentDir, configFile)
+  await stageKb(kb, contentDir, identityFile)
   await buildQuartz(contentDir, outputDir)
 
   const chromePath = findChrome()
@@ -515,9 +514,9 @@ test("vault dashboard has exactly one H1 and one main landmark (browser)", async
   writeManifestForDashboard(kb)
   const work = tmpdir("work-dashboard-h1")
   const contentDir = path.join(work, "content")
-  const configFile = path.join(work, "quartz.config.yaml")
+  const identityFile = path.join(work, "site-identity.json")
   const outputDir = path.join(work, "public")
-  await stageKb(kb, contentDir, configFile)
+  await stageKb(kb, contentDir, identityFile)
   await buildQuartz(contentDir, outputDir)
 
   const chromePath = findChrome()
@@ -692,12 +691,11 @@ test("vault dashboard search integrates with Quartz search (full-text, tag filte
   )
   const work = tmpdir("work-dashboard-search")
   const contentDir = path.join(work, "content")
-  const configFile = path.join(work, "quartz.config.yaml")
+  const identityFile = path.join(work, "site-identity.json")
   const outputDir = path.join(work, "public")
-  fs.copyFileSync(TRACKED_CONFIG, configFile)
   await execFileAsync(
     process.execPath,
-    [STAGE_SCRIPT, "--kb-root", kb, "--content-dir", contentDir, "--config-file", configFile],
+    [STAGE_SCRIPT, "--kb-root", kb, "--content-dir", contentDir, "--identity-file", identityFile],
     { cwd: PUBLISHER_ROOT },
   )
   await buildQuartz(contentDir, outputDir)
@@ -918,9 +916,9 @@ test("page types remain coherent across content, collection, tag, dashboard and 
   writeManifest(kb)
   const work = tmpdir("work-coherence")
   const contentDir = path.join(work, "content")
-  const configFile = path.join(work, "quartz.config.yaml")
+  const identityFile = path.join(work, "site-identity.json")
   const outputDir = path.join(work, "public")
-  await stageKb(kb, contentDir, configFile)
+  await stageKb(kb, contentDir, identityFile)
   await buildQuartz(contentDir, outputDir)
 
   const chromePath = findChrome()

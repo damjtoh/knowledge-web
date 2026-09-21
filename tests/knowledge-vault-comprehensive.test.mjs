@@ -35,11 +35,10 @@ after(() => {
   for (const dir of tmpRoots) fs.rmSync(dir, { recursive: true, force: true })
 })
 
-async function stageKb(kb, contentDir, configFile) {
-  fs.copyFileSync(TRACKED_CONFIG, configFile)
+async function stageKb(kb, contentDir, identityFile) {
   await execFileAsync(
     process.execPath,
-    [STAGE_SCRIPT, "--kb-root", kb, "--content-dir", contentDir, "--config-file", configFile],
+    [STAGE_SCRIPT, "--kb-root", kb, "--content-dir", contentDir, "--identity-file", identityFile],
     { cwd: PUBLISHER_ROOT },
   )
 }
@@ -349,9 +348,9 @@ test("comprehensive synthetic vault — titles, dashboard, collections, search, 
   writeManifest(kb, false)
   const work = tmpdir("work-gen")
   const contentDir = path.join(work, "content")
-  const configFile = path.join(work, "quartz.config.yaml")
+  const identityFile = path.join(work, "site-identity.json")
   const outputDir = path.join(work, "public")
-  await stageKb(kb, contentDir, configFile)
+  await stageKb(kb, contentDir, identityFile)
   // byte preservation
   assert.equal(
     sha256(path.join(contentDir, "notes/task-open-recent.md")),
@@ -520,9 +519,9 @@ test("comprehensive synthetic vault — titles, dashboard, collections, search, 
   writeManifest(kb2, true)
   const work2 = tmpdir("work-auth")
   const contentDir2 = path.join(work2, "content")
-  const configFile2 = path.join(work2, "quartz.config.yaml")
+  const identityFile2 = path.join(work2, "site-identity.json")
   const outputDir2 = path.join(work2, "public")
-  await stageKb(kb2, contentDir2, configFile2)
+  await stageKb(kb2, contentDir2, identityFile2)
   assert.equal(
     sha256(path.join(contentDir2, "index.md")),
     sha256(path.join(kb2, "index.md")),

@@ -2,6 +2,7 @@
 node_modules/
 public/
 content/
+site-identity.json
 
 # Quartz plugin cache and build artifacts
 .quartz/
