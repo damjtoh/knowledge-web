@@ -42,6 +42,7 @@
   "dependencies": {
     "@clack/prompts": "^0.11.0",
     "@floating-ui/dom": "^1.7.4",
+    "@flowershow/remark-wiki-link": "^3.4.0",
     "@myriaddreamin/rehype-typst": "^0.6.0",
     "@napi-rs/simple-git": "0.1.22",
     "ansi-truncate": "^1.4.0",
@@ -59,6 +60,8 @@
     "preact-render-to-string": "^6.6.5",
     "pretty-bytes": "^7.1.0",
     "pretty-time": "^1.1.0",
+    "rehype-stringify": "^10.0.1",
+    "remark-gfm": "^4.0.1",
     "remark-parse": "^11.0.0",
     "remark-rehype": "^11.1.2",
     "rfdc": "^1.4.1",
