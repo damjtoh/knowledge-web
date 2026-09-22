@@ -590,11 +590,11 @@ test("neutral synthetic corpus builds a complete static export with authored and
     "static output carries no service worker or search index",
   )
 
-  // Quartz and its rollback build stay available and unchanged.
+  // Quartz and its rollback build stay available and unchanged. Root
+  // package files are Publisher machinery (Step 7 reader scripts live
+  // there), so only the Quartz rollback paths are checked here.
   const quartzTouched = porcelain.filter((line) =>
-    / (quartz\/|plugins\/|quartz\.config\.yaml|quartz\.lock\.json|nginx\.conf|package\.json|package-lock\.json)$/.test(
-      line.trim(),
-    ),
+    / (quartz\/|plugins\/|quartz\.config\.yaml|quartz\.lock\.json|nginx\.conf)$/.test(line.trim()),
   )
   assert.deepEqual(
     quartzTouched,
