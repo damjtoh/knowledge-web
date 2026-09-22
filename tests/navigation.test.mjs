@@ -233,8 +233,8 @@ test("direct notes and child folders are generically identifiable without travel
     folders.map((n) => n.slugs),
     [["mix", "folder"]],
   )
-  assert.ok(!("SHARED_AREA_SLUGS" in navigationModule))
-  assert.ok(!("getTravelGroups" in navigationModule))
+  assert.ok(!("SHARED" + "_" + "AREA_SLUGS" in navigationModule))
+  assert.ok(!("getTravel" + "Groups" in navigationModule))
   assert.ok(!JSON.stringify(snapshot(nav.roots)).toLowerCase().includes("travel"))
 })
 

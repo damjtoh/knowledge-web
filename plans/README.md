@@ -8,7 +8,7 @@ after independent review.
 
 | Plan                                      | Title                                          | Priority | Effort | Depends on | Status |
 | ----------------------------------------- | ---------------------------------------------- | -------- | ------ | ---------- | ------ |
-| [001](001-generalize-knowledge-reader.md) | Generalize the reader for every Knowledge Base | P1       | L      | —          | TODO   |
+| [001](001-generalize-knowledge-reader.md) | Generalize the reader for every Knowledge Base | P1       | L      | —          | DONE   |
 
 Status values: `TODO`, `IN PROGRESS`, `DONE`, `BLOCKED` with a reason, or
 `REJECTED` with a rationale.
