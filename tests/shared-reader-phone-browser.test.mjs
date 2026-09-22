@@ -15,7 +15,8 @@
  * The synthetic fixture always runs (no vault needed) and mirrors the real
  * Travel folder shape. When SHARED_KB_ROOT points at the Shared vault, the
  * phone journey also runs against the real corpus (55 selected Markdown +
- * synthetic landing).
+ * synthetic landing). Real-corpus overflow probes derive their routes from
+ * the actual staged content instead of assuming synthetic fixture pages.
  *
  * Run with:
  *   node --test tests/shared-reader-phone-browser.test.mjs
@@ -571,6 +572,146 @@ async function runOverflowProbes(page, baseUrl, label) {
   assert.ok(media.unresolved, `${label}: unresolved wikilink stays visible`)
 }
 
+/**
+ * Real-corpus overflow probes (item 04a).
+ *
+ * The synthetic fixture ships dedicated probe routes (a long-title slug and
+ * a Terradets page with tables, code, and images); the real corpus has no
+ * such fixtures, so probe routes derive from the actual staged content:
+ * - the deepest staged route keeps full breadcrumb ancestry;
+ * - the staged note with the longest H1 wraps inside the viewport;
+ * - the first staged notes carrying a table or an image keep that element
+ *   contained (each probe first asserts the element rendered, so a missing
+ *   feature fails loudly instead of passing vacuously).
+ * Fenced code blocks get the same treatment only when staged content
+ * actually has some; the real corpus currently has none, and the synthetic
+ * fixture keeps covering code containment. Every probed page also asserts
+ * no page-level horizontal overflow.
+ */
+function listStagedMarkdown(contentDir) {
+  const out = []
+  const walk = (dir, rel) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const relPath = rel ? `${rel}/${entry.name}` : entry.name
+      if (entry.isDirectory()) walk(path.join(dir, entry.name), relPath)
+      else if (entry.isFile() && /\.mdx?$/.test(entry.name)) out.push(relPath)
+    }
+  }
+  walk(contentDir, "")
+  return out.sort()
+}
+
+function routeForStagedMarkdown(rel) {
+  if (rel === "index.md" || rel === "index.mdx") return "/"
+  let route = `/${rel.replace(/\.mdx?$/, "")}`
+  if (route.endsWith("/index")) route = route.slice(0, -"/index".length)
+  return route || "/"
+}
+
+function firstStagedH1(text) {
+  for (const line of text.split("\n")) {
+    const match = /^\s*#\s+(.+?)\s*$/.exec(line)
+    if (match) return match[1].trim()
+  }
+  return ""
+}
+
+function deriveRealProbes(contentDir) {
+  const probes = { deep: null, longTitle: null, table: null, code: null, image: null }
+  for (const rel of listStagedMarkdown(contentDir)) {
+    const text = fs.readFileSync(path.join(contentDir, rel), "utf8")
+    const route = routeForStagedMarkdown(rel)
+    if (route === "/") continue
+    const segments = route.split("/").filter(Boolean).length
+    if (!probes.deep || segments > probes.deep.segments) {
+      probes.deep = { route, segments }
+    }
+    const h1 = firstStagedH1(text)
+    if (h1 && (!probes.longTitle || h1.length > probes.longTitle.title.length)) {
+      probes.longTitle = { route, title: h1 }
+    }
+    if (!probes.table && /^\s*\|.*\|\s*$/m.test(text)) probes.table = { route }
+    if (!probes.code && /^```/m.test(text)) probes.code = { route }
+    if (!probes.image && /!\[[^\]]*\]\(/.test(text)) probes.image = { route }
+  }
+  assert.ok(probes.deep, "staged content has a nested note for breadcrumb probes")
+  assert.ok(probes.longTitle, "staged content has a titled note for title probes")
+  assert.ok(probes.table, "staged content has a table note for containment probes")
+  assert.ok(probes.image, "staged content has an image note for containment probes")
+  return probes
+}
+
+async function runRealOverflowProbes(page, baseUrl, contentDir, label) {
+  const probes = deriveRealProbes(contentDir)
+
+  await goto(page, `${baseUrl}${probes.deep.route}`)
+  const crumbs = await page.evaluate(() =>
+    Array.from(document.querySelectorAll(".reader-breadcrumbs li")).map((li) => ({
+      text: li.textContent?.trim() || "",
+    })),
+  )
+  assert.ok(
+    crumbs.length >= probes.deep.segments + 1,
+    `${label}: deep note keeps full breadcrumb ancestry (${probes.deep.route})`,
+  )
+  const crumbWidths = await page.evaluate(() => ({
+    list: document.querySelector(".reader-breadcrumbs ol")?.scrollWidth || 0,
+    inner: window.innerWidth,
+  }))
+  assert.ok(
+    crumbWidths.list <= crumbWidths.inner + 1,
+    `${label}: breadcrumbs wrap inside the viewport`,
+  )
+  await assertNoPageOverflow(page, `${label} deep note`)
+
+  await goto(page, `${baseUrl}${probes.longTitle.route}`)
+  const longTitle = await page.evaluate(() => ({
+    h1: document.querySelector("article h1")?.textContent?.trim() || "",
+    width: document.querySelector("article h1")?.getBoundingClientRect().width || 0,
+    inner: window.innerWidth,
+  }))
+  assert.equal(
+    longTitle.h1,
+    probes.longTitle.title,
+    `${label}: probe note carries the longest staged title (${probes.longTitle.route})`,
+  )
+  assert.ok(
+    longTitle.width <= longTitle.inner + 1,
+    `${label}: long title wraps without obscuring content`,
+  )
+  await assertNoPageOverflow(page, `${label} long title`)
+
+  await goto(page, `${baseUrl}${probes.table.route}`)
+  const table = await page.evaluate(() => {
+    const el = document.querySelector("article table")
+    return { present: !!el, client: el?.clientWidth || 0, inner: window.innerWidth }
+  })
+  assert.ok(table.present, `${label}: probe note renders a table (${probes.table.route})`)
+  assert.ok(table.client <= table.inner + 1, `${label}: wide table is contained locally`)
+  await assertNoPageOverflow(page, `${label} table note`)
+
+  await goto(page, `${baseUrl}${probes.image.route}`)
+  const image = await page.evaluate(() => ({
+    present: !!document.querySelector("article img"),
+    width: document.querySelector("article img")?.getBoundingClientRect().width || 0,
+    inner: window.innerWidth,
+  }))
+  assert.ok(image.present, `${label}: probe note renders an image (${probes.image.route})`)
+  assert.ok(image.width <= image.inner + 1, `${label}: wide image is contained locally`)
+  await assertNoPageOverflow(page, `${label} image note`)
+
+  if (probes.code) {
+    await goto(page, `${baseUrl}${probes.code.route}`)
+    const code = await page.evaluate(() => {
+      const el = document.querySelector("article pre")
+      return { present: !!el, client: el?.clientWidth || 0, inner: window.innerWidth }
+    })
+    assert.ok(code.present, `${label}: probe note renders a code block (${probes.code.route})`)
+    assert.ok(code.client <= code.inner + 1, `${label}: code block is contained locally`)
+    await assertNoPageOverflow(page, `${label} code note`)
+  }
+}
+
 /** Keyboard: Tab reaches Browse, Enter opens it, Escape closes it. */
 async function runKeyboardChecks(page, baseUrl, label) {
   await goto(page, `${baseUrl}/`)
@@ -750,7 +891,7 @@ async function buildAndServe(kbRoot) {
     assert.ok(fs.existsSync(path.join(outDir, rel)), `static export emits ${rel}`)
   }
   const { server, baseUrl } = await serveOut(outDir)
-  return { server, baseUrl, outDir, work }
+  return { server, baseUrl, outDir, work, contentDir }
 }
 
 const NARROW_PHONE = { width: 360, height: 800, isMobile: true, hasTouch: true }
@@ -846,7 +987,7 @@ test("real Shared phone journey covers Browse open/close and home to note", asyn
       await runPhoneJourney(page, built.baseUrl, expect, "real narrow phone")
     })
     await withPage(browser, LARGER_PHONE, async (page) => {
-      await runOverflowProbes(page, built.baseUrl, "real larger phone")
+      await runRealOverflowProbes(page, built.baseUrl, built.contentDir, "real larger phone")
       await goto(page, `${built.baseUrl}/travel/upcoming/terradets-2026`)
       await page.reload({ waitUntil: "networkidle0", timeout: 15000 })
       assert.equal(
