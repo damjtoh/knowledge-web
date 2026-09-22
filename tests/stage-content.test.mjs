@@ -193,9 +193,20 @@ test("emits deterministic generated site identity outside the staged content tre
   assert.ok(fs.existsSync(identityFile), "site identity file must exist")
   const raw = fs.readFileSync(identityFile, "utf8")
   const parsed = JSON.parse(raw)
-  assert.deepEqual(Object.keys(parsed), ["title", "canonicalHostname"])
+  assert.deepEqual(Object.keys(parsed), ["title", "canonicalHostname", "navigation"])
   assert.equal(parsed.title, "Example Garden")
   assert.equal(parsed.canonicalHostname, "garden.example.com")
+  // Derived navigation follows select order: notes directory then about.md.
+  assert.deepEqual(parsed.navigation, [
+    { path: "notes", kind: "directory" },
+    { path: "about.md", kind: "markdown" },
+  ])
+  for (const entry of parsed.navigation) {
+    assert.deepEqual(Object.keys(entry), ["path", "kind"])
+    assert.ok(!path.isAbsolute(entry.path), "navigation paths stay relative")
+    assert.ok(!entry.path.includes(".."), "navigation paths never traverse")
+    assert.ok(!entry.path.includes("\\"), "navigation paths use forward slashes")
+  }
   // Deterministic formatting: stable key order, 2-space indent, trailing newline.
   assert.equal(raw, `${JSON.stringify(parsed, null, 2)}\n`)
 
@@ -459,4 +470,249 @@ test("rejects a content directory inside the Knowledge Base root", async () => {
     assert.match(error.stderr, /must not be inside the Knowledge Base root/)
   }
   assert.ok(failed, "expected rejection: content dir inside KB root")
+})
+
+/** Read generated navigation roots from an identity file. */
+function readNavigation(identityFile) {
+  const parsed = JSON.parse(fs.readFileSync(identityFile, "utf8"))
+  return parsed.navigation
+}
+
+/** Add an asset-only directory (no Markdown) to a synthetic Knowledge Base. */
+function addAssetDir(kb, name = "assets") {
+  const dir = path.join(kb, name)
+  fs.mkdirSync(dir, { recursive: true })
+  fs.writeFileSync(path.join(dir, "logo.png"), "fake-png-bytes")
+  return name
+}
+
+async function expectNavigationRejection(kb, manifestText, label, messagePattern) {
+  const outRoot = tmpdir("out")
+  const contentDir = path.join(outRoot, "content")
+  const identityFile = path.join(outRoot, "site-identity.json")
+  writeManifest(kb, manifestText)
+  let failed = false
+  try {
+    await stageValid(kb, { contentDir, identityFile })
+  } catch (error) {
+    failed = true
+    assert.match(error.stderr, messagePattern)
+  }
+  assert.ok(failed, `expected navigation rejection: ${label}`)
+  assert.ok(!fs.existsSync(contentDir), `no partial content for: ${label}`)
+  assert.ok(!fs.existsSync(identityFile), `no partial identity for: ${label}`)
+  assert.ok(
+    !fs.existsSync(`${contentDir}.staging-${process.pid}`),
+    `no leftover staging dir for: ${label}`,
+  )
+}
+
+test("emits explicit navigation in manifest order with normalized paths and kinds", async () => {
+  const kb = makeKb()
+  writeManifest(
+    kb,
+    `title: Example Garden\ncanonicalHostname: garden.example.com\nselect:\n  - notes\n  - about.md\nnavigation:\n  - ./about.md\n  - notes//\n`,
+  )
+  const outRoot = tmpdir("out")
+  const contentDir = path.join(outRoot, "content")
+  const identityFile = path.join(outRoot, "site-identity.json")
+  await stageValid(kb, { contentDir, identityFile })
+  // Explicit order differs from select order; paths normalize like select.
+  assert.deepEqual(readNavigation(identityFile), [
+    { path: "about.md", kind: "markdown" },
+    { path: "notes", kind: "directory" },
+  ])
+  const parsed = JSON.parse(fs.readFileSync(identityFile, "utf8"))
+  assert.deepEqual(Object.keys(parsed), ["title", "canonicalHostname", "navigation"])
+  for (const entry of parsed.navigation) assert.deepEqual(Object.keys(entry), ["path", "kind"])
+})
+
+test("derives navigation from select order when navigation is absent", async () => {
+  const kb = makeKb()
+  writeManifest(
+    kb,
+    `title: Example Garden\ncanonicalHostname: garden.example.com\nselect:\n  - about.md\n  - notes\n`,
+  )
+  const outRoot = tmpdir("out")
+  const contentDir = path.join(outRoot, "content")
+  const identityFile = path.join(outRoot, "site-identity.json")
+  await stageValid(kb, { contentDir, identityFile })
+  assert.deepEqual(readNavigation(identityFile), [
+    { path: "about.md", kind: "markdown" },
+    { path: "notes", kind: "directory" },
+  ])
+})
+
+test("derived navigation filters asset-only selections", async () => {
+  const kb = makeKb()
+  addAssetDir(kb, "assets")
+  fs.writeFileSync(path.join(kb, "logo.png"), "fake-png-bytes")
+  writeManifest(
+    kb,
+    `title: Example Garden\ncanonicalHostname: garden.example.com\nselect:\n  - assets\n  - logo.png\n  - notes\n  - about.md\n`,
+  )
+  const outRoot = tmpdir("out")
+  const contentDir = path.join(outRoot, "content")
+  const identityFile = path.join(outRoot, "site-identity.json")
+  await stageValid(kb, { contentDir, identityFile })
+  // Asset-only directory and file selections stay staged but never become roots.
+  assert.ok(fs.existsSync(path.join(contentDir, "assets", "logo.png")))
+  assert.ok(fs.existsSync(path.join(contentDir, "logo.png")))
+  assert.deepEqual(readNavigation(identityFile), [
+    { path: "notes", kind: "directory" },
+    { path: "about.md", kind: "markdown" },
+  ])
+})
+
+test("emits deterministic navigation with relative public paths only", async () => {
+  const kb = makeKb()
+  writeManifest(
+    kb,
+    `title: Example Garden\ncanonicalHostname: garden.example.com\nselect:\n  - notes\n  - about.md\nnavigation:\n  - about.md\n  - notes\n`,
+  )
+  const outRoot = tmpdir("out")
+  const contentDir = path.join(outRoot, "content")
+  const identityFile = path.join(outRoot, "site-identity.json")
+  await stageValid(kb, { contentDir, identityFile })
+  const raw = fs.readFileSync(identityFile, "utf8")
+  const parsed = JSON.parse(raw)
+  assert.deepEqual(Object.keys(parsed), ["title", "canonicalHostname", "navigation"])
+  assert.equal(raw, `${JSON.stringify(parsed, null, 2)}\n`)
+  for (const entry of parsed.navigation) {
+    assert.deepEqual(Object.keys(entry), ["path", "kind"])
+    assert.ok(!path.isAbsolute(entry.path))
+    assert.ok(!entry.path.includes(kb))
+    assert.ok(!entry.path.includes(".."))
+  }
+  assert.ok(!raw.includes(kb), "identity must not leak the Knowledge Base root")
+  const secondRoot = tmpdir("out2")
+  const secondContent = path.join(secondRoot, "content")
+  const secondIdentity = path.join(secondRoot, "site-identity.json")
+  await stageValid(kb, { contentDir: secondContent, identityFile: secondIdentity })
+  assert.equal(sha256(secondIdentity), sha256(identityFile))
+})
+
+test("rejects navigation outside the allowlist", async () => {
+  const kb = makeKb()
+  await expectNavigationRejection(
+    kb,
+    `title: Example Garden\ncanonicalHostname: garden.example.com\nselect:\n  - notes\nnavigation:\n  - about.md\n`,
+    "outside allowlist",
+    /not covered by the allowlist/,
+  )
+})
+
+test("rejects duplicate normalized navigation entries", async () => {
+  const kb = makeKb()
+  await expectNavigationRejection(
+    kb,
+    `title: Example Garden\ncanonicalHostname: garden.example.com\nselect:\n  - notes\n  - about.md\nnavigation:\n  - notes\n  - notes/\n`,
+    "normalized duplicates",
+    /duplicates/,
+  )
+})
+
+test("rejects unsafe navigation paths with select safety rules", async () => {
+  const kbAbsolute = makeKb()
+  await expectNavigationRejection(
+    kbAbsolute,
+    `title: Example Garden\ncanonicalHostname: garden.example.com\nselect:\n  - notes\nnavigation:\n  - /etc/passwd\n`,
+    "absolute navigation",
+    /absolute path/,
+  )
+  const kbTraversal = makeKb()
+  await expectNavigationRejection(
+    kbTraversal,
+    `title: Example Garden\ncanonicalHostname: garden.example.com\nselect:\n  - notes\nnavigation:\n  - ../secret\n`,
+    "traversing navigation",
+    /traverses above/,
+  )
+  const kbGit = makeKb()
+  await expectNavigationRejection(
+    kbGit,
+    `title: Example Garden\ncanonicalHostname: garden.example.com\nselect:\n  - notes\nnavigation:\n  - .git\n`,
+    "git navigation",
+    /Git directory/,
+  )
+})
+
+test("rejects invalid navigation shape and empty entries", async () => {
+  const kbEmpty = makeKb()
+  await expectNavigationRejection(
+    kbEmpty,
+    `title: Example Garden\ncanonicalHostname: garden.example.com\nselect:\n  - notes\nnavigation: []\n`,
+    "empty navigation",
+    /non-empty list/,
+  )
+  const kbString = makeKb()
+  await expectNavigationRejection(
+    kbString,
+    `title: Example Garden\ncanonicalHostname: garden.example.com\nselect:\n  - notes\nnavigation: notes\n`,
+    "non-list navigation",
+    /non-empty list/,
+  )
+  const kbBlank = makeKb()
+  await expectNavigationRejection(
+    kbBlank,
+    `title: Example Garden\ncanonicalHostname: garden.example.com\nselect:\n  - notes\nnavigation:\n  - ""\n`,
+    "empty-string navigation",
+    /non-empty string/,
+  )
+})
+
+test("rejects navigation entries missing from the staged tree", async () => {
+  const kb = makeKb()
+  await expectNavigationRejection(
+    kb,
+    `title: Example Garden\ncanonicalHostname: garden.example.com\nselect:\n  - notes\nnavigation:\n  - notes/missing.md\n`,
+    "missing staged path",
+    /does not exist in the staged tree/,
+  )
+})
+
+test("rejects explicit non-Markdown navigation files", async () => {
+  const kb = makeKb()
+  addAssetDir(kb, "assets")
+  await expectNavigationRejection(
+    kb,
+    `title: Example Garden\ncanonicalHostname: garden.example.com\nselect:\n  - assets\n  - notes\nnavigation:\n  - assets/logo.png\n`,
+    "non-Markdown file",
+    /not a Markdown file/,
+  )
+})
+
+test("rejects navigation directories without staged Markdown descendants", async () => {
+  const kb = makeKb()
+  addAssetDir(kb, "assets")
+  await expectNavigationRejection(
+    kb,
+    `title: Example Garden\ncanonicalHostname: garden.example.com\nselect:\n  - assets\n  - notes\nnavigation:\n  - assets\n`,
+    "asset-only directory",
+    /no staged Markdown/,
+  )
+})
+
+test("navigation failure leaves no partial replacement over prior output", async () => {
+  const kb = makeKb()
+  writeManifest(kb, validManifest)
+  const outRoot = tmpdir("out")
+  const contentDir = path.join(outRoot, "content")
+  const identityFile = path.join(outRoot, "site-identity.json")
+  await stageValid(kb, { contentDir, identityFile })
+  const contentHashBefore = sha256(path.join(contentDir, "about.md"))
+  const identityBefore = fs.readFileSync(identityFile, "utf8")
+  writeManifest(
+    kb,
+    `title: Example Garden\ncanonicalHostname: garden.example.com\nselect:\n  - notes\nnavigation:\n  - about.md\n`,
+  )
+  let failed = false
+  try {
+    await stageValid(kb, { contentDir, identityFile })
+  } catch (error) {
+    failed = true
+    assert.match(error.stderr, /not covered by the allowlist/)
+  }
+  assert.ok(failed, "expected navigation rejection over prior output")
+  assert.equal(sha256(path.join(contentDir, "about.md")), contentHashBefore)
+  assert.equal(fs.readFileSync(identityFile, "utf8"), identityBefore)
 })
