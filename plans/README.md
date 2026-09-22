@@ -6,9 +6,9 @@ after independent review.
 
 ## Execution order and status
 
-| Plan | Title | Priority | Effort | Depends on | Status |
-|---|---|---|---|---|---|
-| [001](001-generalize-knowledge-reader.md) | Generalize the reader for every Knowledge Base | P1 | L | — | TODO |
+| Plan                                      | Title                                          | Priority | Effort | Depends on | Status |
+| ----------------------------------------- | ---------------------------------------------- | -------- | ------ | ---------- | ------ |
+| [001](001-generalize-knowledge-reader.md) | Generalize the reader for every Knowledge Base | P1       | L      | —          | TODO   |
 
 Status values: `TODO`, `IN PROGRESS`, `DONE`, `BLOCKED` with a reason, or
 `REJECTED` with a rationale.

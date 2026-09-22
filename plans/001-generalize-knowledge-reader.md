@@ -199,14 +199,14 @@ Rules:
 
 Run from the repository root unless noted.
 
-| Purpose | Command | Expected result |
-|---|---|---|
-| Install root | `npm ci` | exit 0 |
-| Install reader | `cd reader && npm ci` | exit 0 |
-| Check | `npm run check` | TypeScript and Prettier exit 0 |
-| Focused | `npm test -- tests/stage-content.test.mjs tests/knowledge-reader-contract.test.mjs tests/navigation.test.mjs tests/wiki-aliases.test.mjs` | all pass, no skips |
-| Browser | `npm test -- tests/knowledge-reader-static.test.mjs tests/knowledge-reader-journey-browser.test.mjs tests/knowledge-reader-phone-browser.test.mjs` | synthetic cases pass |
-| Real vault | `KNOWLEDGE_BASE_ROOT=<vault> npm test -- tests/knowledge-reader-static.test.mjs tests/knowledge-reader-journey-browser.test.mjs tests/knowledge-reader-phone-browser.test.mjs` | real and synthetic cases pass |
+| Purpose        | Command                                                                                                                                                                        | Expected result                |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------ |
+| Install root   | `npm ci`                                                                                                                                                                       | exit 0                         |
+| Install reader | `cd reader && npm ci`                                                                                                                                                          | exit 0                         |
+| Check          | `npm run check`                                                                                                                                                                | TypeScript and Prettier exit 0 |
+| Focused        | `npm test -- tests/stage-content.test.mjs tests/knowledge-reader-contract.test.mjs tests/navigation.test.mjs tests/wiki-aliases.test.mjs`                                      | all pass, no skips             |
+| Browser        | `npm test -- tests/knowledge-reader-static.test.mjs tests/knowledge-reader-journey-browser.test.mjs tests/knowledge-reader-phone-browser.test.mjs`                             | synthetic cases pass           |
+| Real vault     | `KNOWLEDGE_BASE_ROOT=<vault> npm test -- tests/knowledge-reader-static.test.mjs tests/knowledge-reader-journey-browser.test.mjs tests/knowledge-reader-phone-browser.test.mjs` | real and synthetic cases pass  |
 
 Generated `content/`, `site-identity.json`, `reader/.source/`, `reader/.next/`,
 and `reader/out/` stay ignored and clean up after tests.
