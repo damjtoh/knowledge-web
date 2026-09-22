@@ -205,8 +205,32 @@ test("real Shared corpus builds a complete static export with a readable Travel 
   const travel = readOut(outDir, "travel.html")
   assert.match(
     travel,
-    /\[\[Japan\]\]/,
-    "body wikilinks render as authored text (item 02 resolves them)",
+    /<code>\[\[Japan\]\]<\/code>/,
+    "wikilink-like text inside code spans stays literal",
+  )
+
+  // Item 02: real title, filename, path, and nested-index body wikilinks resolve.
+  const runway = readOut(outDir, "finance/build-argentina-financial-runway.html")
+  assert.match(
+    runway,
+    /<a href="\/finance\/fire-and-savings-plan" class="internal"[^>]*>FIRE and Savings Plan<\/a>/,
+    "real title-based body wikilink resolves to its reader page",
+  )
+  assert.match(
+    runway,
+    /<a href="\/finance\/choose-long-term-housing-strategy" class="internal"/,
+    "second real title-based body wikilink resolves",
+  )
+  const home = readOut(outDir, "index.html")
+  assert.match(
+    home,
+    /<a href="\/travel" class="internal"/,
+    "synthetic landing nested-index/title link resolves",
+  )
+  assert.match(
+    home,
+    /<a href="\/inbox" class="internal"/,
+    "synthetic landing filename/path link resolves",
   )
 
   // C7: generated Shared identity appears in document metadata.
@@ -303,11 +327,28 @@ test("non-Markdown staged files are excluded while code blocks and titles render
       "const alias = '[[Guide Title]]';",
       "```",
       "",
+      "See [[Plain H1]] for the title link.",
+      "",
+      "See [[plain]] for the filename link.",
+      "",
+      "See [[notes/plain]] for the path link.",
+      "",
+      "See [[Plain H1|custom label]] for the alias link.",
+      "",
+      "See [[Plain H1#Details]] for the heading link.",
+      "",
+      "See [[Plain H1#Details|section label]] for the heading alias link.",
+      "",
+      "See [[Missing Page]] for the unresolved link.",
+      "",
       "See https://example.com for details.",
       "",
     ].join("\n"),
   )
-  fs.writeFileSync(path.join(kb, "notes", "plain.md"), "# Plain H1\n\nJust a body.\n")
+  fs.writeFileSync(
+    path.join(kb, "notes", "plain.md"),
+    "# Plain H1\n\nJust a body.\n\n## Details\n\nSection content.\n",
+  )
   fs.writeFileSync(
     path.join(kb, "notes", "untitled.md"),
     ["---", 'title: ""', "---", "", "No heading here, only body text.", ""].join("\n"),
@@ -357,8 +398,45 @@ test("non-Markdown staged files are excluded while code blocks and titles render
   const untitled = readOut(outDir, "notes/untitled.html")
   assert.match(
     untitled,
-    /<title>notes\/untitled \| Fixture Garden<\/title>/,
-    "title falls back to the route when no title exists",
+    /<title>untitled \| Fixture Garden<\/title>/,
+    "title falls back to the filename when no title exists",
+  )
+
+  // Item 02: synthetic title, filename, path, alias, heading, unresolved, and literal evidence.
+  assert.match(
+    guide,
+    /<a href="\/notes\/plain" class="internal"[^>]*>Plain H1<\/a>/,
+    "title-based body wikilink resolves",
+  )
+  assert.match(
+    guide,
+    /<a href="\/notes\/plain" class="internal"[^>]*>plain<\/a>/,
+    "filename body wikilink resolves",
+  )
+  assert.match(
+    guide,
+    /<a href="\/notes\/plain" class="internal"[^>]*>notes\/plain<\/a>/,
+    "path body wikilink resolves",
+  )
+  assert.match(
+    guide,
+    /<a href="\/notes\/plain" class="internal"[^>]*>custom label<\/a>/,
+    "label alias preserves authored text",
+  )
+  assert.match(
+    guide,
+    /<a href="\/notes\/plain#Details" class="internal"/,
+    "heading fragment preserves authored target",
+  )
+  assert.match(
+    guide,
+    /<a href="\/notes\/plain#Details" class="internal"[^>]*>section label<\/a>/,
+    "heading fragment with alias preserves authored text",
+  )
+  assert.match(
+    guide,
+    /<a href="Missing Page" class="internal new"[^>]*>Missing Page<\/a>/,
+    "missing targets render unresolved without failing the build",
   )
 
   // C6: attachments are staged content but never become pages.

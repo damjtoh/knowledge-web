@@ -90,12 +90,13 @@ test("Next.js emits a serverless static export (C3)", () => {
   assert.match(config, /output:\s*["']export["']/, "next config must set output: 'export'")
 })
 
-test("docTitle reads the pipeline title with a route fallback", () => {
+test("docTitle reads the pipeline title with a filename fallback", () => {
   assert.equal(docTitle({ title: "Terradets" }, ["travel", "x"]), "Terradets")
   assert.equal(docTitle({ title: "  Shared Vault  " }, ["index"]), "Shared Vault")
-  assert.equal(docTitle({}, ["travel", "upcoming", "x"]), "travel/upcoming/x")
+  assert.equal(docTitle({}, ["travel", "upcoming", "x"]), "x")
   assert.equal(docTitle({ title: "" }, ["inbox"]), "inbox")
   assert.equal(docTitle({ title: "   " }, ["inbox"]), "inbox")
-  assert.equal(docTitle(null, ["pets", "otto"]), "pets/otto")
+  assert.equal(docTitle(null, ["pets", "otto"]), "otto")
   assert.equal(docTitle("Terradets", ["x"]), "x")
+  assert.equal(docTitle({}, []), "index")
 })
