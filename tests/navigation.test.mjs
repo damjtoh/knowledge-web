@@ -12,6 +12,7 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 import {
   buildReaderNavigation,
+  findActiveRoot,
   getDirectNotes,
   getChildFolders,
   humanizeSegment,
@@ -395,4 +396,38 @@ test("navigation never serializes page data, so circular and BigInt values do no
   assert.doesNotThrow(() => buildReaderNavigation([big, circular], roots))
   const nav = buildReaderNavigation([circular, big], roots)
   assert.equal(nav.find(["dup"]).title, "Same")
+})
+
+test("nested roots select the exact root, otherwise the longest prefix, keeping order", () => {
+  const pages = [
+    makePage(["notes"], "Notes Index"),
+    makePage(["notes", "projects"], "Projects Index"),
+    makePage(["notes", "projects", "alpha"], "Alpha"),
+    makePage(["notes", "plain"], "Plain"),
+  ]
+  const nav = buildReaderNavigation(pages, [dirRoot("notes"), dirRoot("notes/projects")])
+  assert.deepEqual(
+    nav.roots.map((r) => r.slugs),
+    [["notes"], ["notes", "projects"]],
+  )
+  const exact = findActiveRoot(nav.roots, "/notes/projects")
+  assert.ok(exact)
+  assert.deepEqual(exact.slugs, ["notes", "projects"])
+  const deep = findActiveRoot(nav.roots, "/notes/projects/alpha")
+  assert.ok(deep)
+  assert.deepEqual(deep.slugs, ["notes", "projects"])
+  assert.deepEqual(
+    getDirectNotes(deep).map((n) => n.slugs),
+    [["notes", "projects", "alpha"]],
+  )
+  const broad = findActiveRoot(nav.roots, "/notes/plain")
+  assert.ok(broad)
+  assert.deepEqual(broad.slugs, ["notes"])
+  const reversed = buildReaderNavigation(pages, [dirRoot("notes/projects"), dirRoot("notes")])
+  assert.deepEqual(
+    reversed.roots.map((r) => r.slugs),
+    [["notes", "projects"], ["notes"]],
+  )
+  assert.deepEqual(findActiveRoot(reversed.roots, "/notes/projects")?.slugs, ["notes", "projects"])
+  assert.deepEqual(findActiveRoot(nav.roots, "/missing"), undefined)
 })

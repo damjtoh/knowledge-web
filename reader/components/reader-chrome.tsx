@@ -3,29 +3,23 @@
 import { useEffect, useRef, useState } from "react"
 import { usePathname } from "next/navigation"
 import Sidebar from "./sidebar"
-import type { AreaEntry, PageRef } from "../lib/navigation"
-
-export interface TravelGroupList {
-  upcoming: PageRef[]
-  past: PageRef[]
-  preferences: PageRef[]
-  more: PageRef[]
-}
+import type { NavigationNode } from "../lib/navigation"
+import { findActiveRoot } from "../lib/navigation"
 
 function normalize(path: string | null): string {
   if (!path || path === "/") return "/"
   return path.endsWith("/") && path.length > 1 ? path.slice(0, -1) : path
 }
 
-function GroupLinks({ heading, pages }: { heading: string; pages: PageRef[] }) {
-  if (pages.length === 0) return null
+function GroupLinks({ heading, nodes }: { heading: string; nodes: NavigationNode[] }) {
+  if (nodes.length === 0) return null
   return (
     <section aria-label={heading} className="reader-group reader-nav-group">
       <h2>{heading}</h2>
       <ul className="reader-group-list">
-        {pages.map((page) => (
-          <li key={page.url}>
-            <a href={page.url}>{page.title}</a>
+        {nodes.map((node) => (
+          <li key={node.url}>
+            <a href={node.url}>{node.title}</a>
           </li>
         ))}
       </ul>
@@ -34,23 +28,22 @@ function GroupLinks({ heading, pages }: { heading: string; pages: PageRef[] }) {
 }
 
 /**
- * Reader shell: site header with a phone-only Browse toggle, the Shared
- * area sidebar (persistent on desktop, collapsible panel on phones), the
+ * Reader shell: site header with a phone-only Browse toggle, the published
+ * section sidebar (persistent on desktop, collapsible panel on phones), the
  * reading column, and the footer.
  *
- * There is one navigation model: the same area entries and the same Travel
- * folder groups feed desktop and phone. The toggle keeps no URL or history
- * state, so browser Back always moves through real page history.
+ * There is one navigation model: the same generic tree feeds desktop and
+ * phone. On phones the Browse panel adds the active root's direct-note and
+ * child-folder groups. The toggle keeps no URL or history state, so browser
+ * Back always moves through real page history.
  */
 export default function ReaderChrome({
   title,
-  areas,
-  travelGroups,
+  roots,
   children,
 }: {
   title: string
-  areas: AreaEntry[]
-  travelGroups: TravelGroupList
+  roots: NavigationNode[]
   children: React.ReactNode
 }) {
   const [browseOpen, setBrowseOpen] = useState(false)
@@ -76,7 +69,9 @@ export default function ReaderChrome({
     return () => document.removeEventListener("keydown", onKeyDown)
   }, [browseOpen])
 
-  const inTravel = pathname === "/travel" || pathname.startsWith("/travel/")
+  const activeRoot = findActiveRoot(roots, pathname)
+  const directNotes = activeRoot ? activeRoot.children.filter((child) => !child.isFolder) : []
+  const childFolders = activeRoot ? activeRoot.children.filter((child) => child.isFolder) : []
 
   return (
     <div className="reader-chrome" data-browse={browseOpen ? "open" : "closed"}>
@@ -97,13 +92,11 @@ export default function ReaderChrome({
       </header>
       <div className="reader-shell">
         <aside id="reader-browse-panel" className="reader-sidebar">
-          <Sidebar areas={areas} />
-          {inTravel ? (
-            <nav aria-label="Travel sections" className="reader-nav-travel">
-              <GroupLinks heading="Upcoming trips" pages={travelGroups.upcoming} />
-              <GroupLinks heading="Past trips" pages={travelGroups.past} />
-              <GroupLinks heading="Preferences" pages={travelGroups.preferences} />
-              <GroupLinks heading="More in Travel" pages={travelGroups.more} />
+          <Sidebar roots={roots} />
+          {activeRoot && (directNotes.length > 0 || childFolders.length > 0) ? (
+            <nav aria-label={`${activeRoot.title} sections`} className="reader-nav-groups">
+              <GroupLinks heading="Notes" nodes={directNotes} />
+              <GroupLinks heading="Folders" nodes={childFolders} />
             </nav>
           ) : null}
         </aside>

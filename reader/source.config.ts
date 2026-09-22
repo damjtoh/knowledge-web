@@ -9,16 +9,16 @@ import { buildWikiLinkMaps } from "./lib/wiki-aliases.js"
  * Reads ONLY the isolated staged content tree produced by
  * `scripts/stage-content.mjs` (Publication Manifest allowlist authority).
  * It never accepts a Knowledge Base root, manifest path, or vault location:
- * the only input is SHARED_CONTENT_DIR (default: the publisher `./content`
+ * the only input is READER_CONTENT_DIR (default: the publisher `./content`
  * staging tree next to this reader). Non-Markdown staged files are ignored
  * by the collection: only `.md`/`.mdx` files become pages.
  */
 function resolveContentDir(): string {
-  const configured = process.env.SHARED_CONTENT_DIR ?? "../content"
+  const configured = process.env.READER_CONTENT_DIR ?? "../content"
   return path.isAbsolute(configured) ? configured : path.resolve(import.meta.dirname, configured)
 }
 
-export const shared = defineCollections({
+export const content = defineCollections({
   type: "doc",
   dir: resolveContentDir(),
 })

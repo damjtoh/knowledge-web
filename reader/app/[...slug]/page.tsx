@@ -1,14 +1,13 @@
 import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 import { source } from "../../lib/source"
-import { getSiteIdentity, canonicalUrl } from "../../lib/site"
+import { getSiteMetadata, canonicalUrl } from "../../lib/site"
 import { docTitle } from "../../lib/title"
 import {
-  SHARED_AREA_SLUGS,
-  getBreadcrumbs,
-  getChildPages,
-  getTravelGroups,
-  type PageRef,
+  buildReaderNavigation,
+  getDirectNotes,
+  getChildFolders,
+  type NavigationNode,
 } from "../../lib/navigation"
 import Breadcrumbs from "../../components/breadcrumbs"
 
@@ -18,21 +17,29 @@ interface NoteParams {
   slug: string[]
 }
 
-function isArea(slugs: string[]): boolean {
-  return SHARED_AREA_SLUGS.some(
-    (area) => area.length === slugs.length && area.every((seg, i) => seg === slugs[i]),
-  )
+function pageLikes() {
+  return source.getPages().map((page) => ({
+    slugs: page.slugs,
+    url: page.url,
+    data: page.data,
+    path: page.path,
+  }))
 }
 
-function GroupSection({ title, pages }: { title: string; pages: PageRef[] }) {
-  if (pages.length === 0) return null
+function readerNavigation() {
+  const site = getSiteMetadata()
+  return buildReaderNavigation(pageLikes(), site.navigation)
+}
+
+function GroupSection({ title, nodes }: { title: string; nodes: NavigationNode[] }) {
+  if (nodes.length === 0) return null
   return (
     <section aria-label={title} className="reader-group">
       <h2>{title}</h2>
       <ul className="reader-group-list">
-        {pages.map((p) => (
-          <li key={p.url}>
-            <a href={p.url}>{p.title}</a>
+        {nodes.map((node) => (
+          <li key={node.url}>
+            <a href={node.url}>{node.title}</a>
           </li>
         ))}
       </ul>
@@ -41,16 +48,33 @@ function GroupSection({ title, pages }: { title: string; pages: PageRef[] }) {
 }
 
 /**
- * One static page per staged Markdown file. Area indexes render their
- * authored introduction plus folder-grouped children; hubs render their
- * introduction plus direct children; leaves render the note. Navigation
- * uses plain anchors only, so browser Back moves through real history.
+ * One static page per staged Markdown file plus one virtual folder page per
+ * staged folder containing Markdown. Authored indexes own their folder
+ * route and introduction; virtual folders supply a humanized title and
+ * child navigation. Every folder page uses the same generic direct-note
+ * and child-folder groups. Navigation uses plain anchors only, so browser
+ * Back moves through real history.
  */
 export async function generateStaticParams(): Promise<NoteParams[]> {
-  return source
+  const authored = source
     .generateParams()
     .filter((params) => Array.isArray(params.slug) && params.slug.length > 0)
     .map((params) => ({ slug: params.slug as string[] }))
+  const seen = new Set(authored.map((entry) => entry.slug.join("/")))
+  const navigation = readerNavigation()
+  const virtual: NoteParams[] = []
+  const collect = (node: NavigationNode): void => {
+    if (node.slugs.length > 0) {
+      const key = node.slugs.join("/")
+      if (!seen.has(key)) {
+        seen.add(key)
+        virtual.push({ slug: [...node.slugs] })
+      }
+    }
+    for (const child of node.children) collect(child)
+  }
+  for (const root of navigation.roots) collect(root)
+  return [...authored, ...virtual]
 }
 
 export async function generateMetadata({
@@ -59,70 +83,74 @@ export async function generateMetadata({
   params: Promise<NoteParams>
 }): Promise<Metadata> {
   const { slug } = await params
+  const navigation = readerNavigation()
+  const node = navigation.find(slug)
+  const site = getSiteMetadata()
+  if (node) {
+    return {
+      title: node.title,
+      metadataBase: new URL(`https://${site.canonicalHostname}`),
+      alternates: {
+        canonical: canonicalUrl(site.canonicalHostname, node.url),
+      },
+    }
+  }
   const page = source.getPage(slug)
   if (!page) notFound()
-  const identity = getSiteIdentity()
   return {
     title: docTitle(page.data, slug),
-    metadataBase: new URL(`https://${identity.canonicalHostname}`),
+    metadataBase: new URL(`https://${site.canonicalHostname}`),
     alternates: {
-      canonical: canonicalUrl(identity.canonicalHostname, page.url),
+      canonical: canonicalUrl(site.canonicalHostname, page.url),
     },
   }
 }
 
-export default async function NotePage({ params }: { params: Promise<NoteParams> }) {
+export default async function FolderOrNotePage({ params }: { params: Promise<NoteParams> }) {
   const { slug } = await params
+  const navigation = readerNavigation()
+  const node = navigation.find(slug)
+  const crumbs = navigation.breadcrumbs(slug)
+
+  if (node?.page) {
+    const Body = (node.page.data as unknown as { body: React.ComponentType }).body
+    const directNotes = getDirectNotes(node)
+    const childFolders = getChildFolders(node)
+    return (
+      <>
+        <Breadcrumbs items={crumbs} />
+        <article className="reader-article">
+          <Body />
+          <GroupSection title="Notes" nodes={directNotes} />
+          <GroupSection title="Folders" nodes={childFolders} />
+        </article>
+      </>
+    )
+  }
+
+  if (node && node.isFolder) {
+    const directNotes = getDirectNotes(node)
+    const childFolders = getChildFolders(node)
+    return (
+      <>
+        <Breadcrumbs items={crumbs} />
+        <article className="reader-article">
+          <h1>{node.title}</h1>
+          <GroupSection title="Notes" nodes={directNotes} />
+          <GroupSection title="Folders" nodes={childFolders} />
+        </article>
+      </>
+    )
+  }
+
   const page = source.getPage(slug)
   if (!page) notFound()
-  const Body = page.data.body
-  const crumbs = getBreadcrumbs(slug, (s) => source.getPage(s) as never)
-  const allPages = source.getPages().map((p) => ({
-    slugs: p.slugs,
-    url: p.url,
-    data: p.data,
-  }))
-
-  const isTravelArea = slug.length === 1 && slug[0] === "travel"
-  const children = getChildPages(allPages, slug)
-  const showChildren = !isTravelArea && children.length > 0
-  const travelGroups = isTravelArea ? getTravelGroups(allPages) : null
-
+  const Body = (page.data as unknown as { body: React.ComponentType }).body
   return (
     <>
       <Breadcrumbs items={crumbs} />
       <article className="reader-article">
         <Body />
-        {isArea(slug) && travelGroups ? (
-          <>
-            <GroupSection title="Upcoming trips" pages={travelGroups.upcoming} />
-            <GroupSection title="Past trips" pages={travelGroups.past} />
-            <GroupSection title="Preferences" pages={travelGroups.preferences} />
-            <GroupSection title="More in Travel" pages={travelGroups.more} />
-          </>
-        ) : isArea(slug) && children.length > 0 ? (
-          <section aria-label="In this area" className="reader-group">
-            <h2>In this area</h2>
-            <ul className="reader-group-list">
-              {children.map((c) => (
-                <li key={c.url}>
-                  <a href={c.url}>{c.title}</a>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : showChildren ? (
-          <section aria-label="In this section" className="reader-group">
-            <h2>In this section</h2>
-            <ul className="reader-group-list">
-              {children.map((c) => (
-                <li key={c.url}>
-                  <a href={c.url}>{c.title}</a>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
       </article>
     </>
   )

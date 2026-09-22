@@ -271,3 +271,42 @@ export function getDirectNotes(node: NavigationNode): NavigationNode[] {
 export function getChildFolders(node: NavigationNode): NavigationNode[] {
   return node.children.filter((child) => child.isFolder)
 }
+
+function normalizePathname(value: string): string {
+  if (!value || value === "/") return "/"
+  return value.endsWith("/") && value.length > 1 ? value.slice(0, -1) : value
+}
+
+/**
+ * Active published root for a pathname.
+ *
+ * Roots keep metadata order elsewhere; selection here prefers the exact
+ * root when present, otherwise the longest matching root prefix. This keeps
+ * nested configured roots (e.g. `notes` and `notes/projects`) correct: the
+ * deeper root owns its route and its phone groups.
+ */
+export function findActiveRoot(
+  roots: NavigationNode[],
+  pathname: string,
+): NavigationNode | undefined {
+  const current = normalizePathname(pathname)
+  let best: NavigationNode | undefined
+  let bestLength = -1
+  for (const root of roots) {
+    const url = normalizePathname(root.url)
+    if (url === "/") {
+      if (current === "/" && 0 > bestLength) {
+        best = root
+        bestLength = 0
+      }
+      continue
+    }
+    const matches = current === url || current.startsWith(`${url}/`)
+    if (!matches) continue
+    if (url.length > bestLength) {
+      best = root
+      bestLength = url.length
+    }
+  }
+  return best
+}

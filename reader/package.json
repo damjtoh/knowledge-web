@@ -1,6 +1,6 @@
 {
-  "name": "shared-reader",
-  "description": "Shared Web Projection reader: static Next.js reader over isolated staged Shared Markdown (headless Fumadocs MDX content source, no Fumadocs UI)",
+  "name": "knowledge-reader",
+  "description": "Knowledge Web Projection reader: static Next.js reader over isolated staged Markdown (headless Fumadocs MDX content source, no Fumadocs UI)",
   "private": true,
   "version": "0.1.0",
   "type": "module",

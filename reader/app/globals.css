@@ -97,9 +97,9 @@ body {
   background: #ececec;
 }
 
-/* Travel folder groups inside the navigation panel reuse the same
-   grouped links as the Travel area page: one navigation model. */
-.reader-nav-travel {
+/* Generic folder groups inside the navigation panel reuse the same
+   grouped links as folder pages: one navigation model. */
+.reader-nav-groups {
   margin-top: 1.5rem;
 }
 
@@ -297,10 +297,10 @@ body {
   font-size: 0.85rem;
 }
 
-/* Desktop keeps the persistent sidebar; the phone Travel panel stays out
+/* Desktop keeps the persistent sidebar; the phone section panel stays out
    of the way so the desktop experience is unchanged. */
 @media (min-width: 900px) {
-  .reader-nav-travel {
+  .reader-nav-groups {
     display: none;
   }
 }

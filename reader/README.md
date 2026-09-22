@@ -16,8 +16,8 @@ private vault
 ```
 
 The reader never accepts a Knowledge Base root, manifest path, or vault
-location. Its only inputs are `SHARED_CONTENT_DIR` (default `../content`,
-the publisher staging tree) and `SHARED_IDENTITY_FILE` (default
+location. Its only inputs are `READER_CONTENT_DIR` (default `../content`,
+the publisher staging tree) and `READER_SITE_METADATA_FILE` (default
 `../site-identity.json`).
 
 ## Build and preview
@@ -43,8 +43,8 @@ npx serve out
 node --test tests/shared-reader-contract.test.mjs
 
 # Real-corpus production build + output inspection (needs the Shared vault)
-SHARED_KB_ROOT=/path/to/shared-vault node --test tests/shared-reader-static.test.mjs
+KNOWLEDGE_BASE_ROOT=/path/to/shared-vault node --test tests/shared-reader-static.test.mjs
 
 # Production-build browser check of the direct Travel note
-SHARED_KB_ROOT=/path/to/shared-vault node --test tests/shared-reader-note-browser.test.mjs
+KNOWLEDGE_BASE_ROOT=/path/to/shared-vault node --test tests/shared-reader-note-browser.test.mjs
 ```

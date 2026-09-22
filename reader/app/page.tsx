@@ -1,25 +1,49 @@
 import { source } from "../lib/source"
-import { getAreaEntries } from "../lib/navigation"
-import { getSiteIdentity } from "../lib/site"
+import { buildReaderNavigation } from "../lib/navigation"
+import { getSiteMetadata } from "../lib/site"
 
 /**
- * Shared home: exactly the five selected Shared areas.
+ * Generic home: ordered published roots from generated metadata.
  *
- * Labels and routes come from staged area pages; the authored area index
- * supplies the introduction on each area page. Unselected staged trees
- * (for example `mica`) and known sentinels never appear here.
+ * When the staged tree carries an authored root introduction, render it
+ * verbatim. A synthetic generated landing body is suppressed so its list is
+ * not duplicated. The ordered root list always renders from the navigation
+ * tree.
  */
 export default async function HomePage() {
-  const identity = getSiteIdentity()
-  const areas = getAreaEntries((slugs) => source.getPage(slugs) as never)
+  const site = getSiteMetadata()
+  const pages = source.getPages().map((page) => ({
+    slugs: page.slugs,
+    url: page.url,
+    data: page.data,
+    path: page.path,
+  }))
+  const navigation = buildReaderNavigation(pages, site.navigation)
+  const rootPage = source.getPage([])
+  const isSynthetic =
+    rootPage !== undefined &&
+    typeof rootPage.data === "object" &&
+    rootPage.data !== null &&
+    (rootPage.data as unknown as { synthetic?: unknown }).synthetic === true
+  const AuthoredBody =
+    rootPage && !isSynthetic
+      ? (rootPage.data as unknown as { body?: React.ComponentType }).body
+      : undefined
+
   return (
     <article className="reader-article reader-home-article">
-      <h1>{identity.title}</h1>
-      <p>Browse the published household areas.</p>
+      {AuthoredBody ? (
+        <AuthoredBody />
+      ) : (
+        <>
+          <h1>{site.title}</h1>
+          <p>Browse the published sections.</p>
+        </>
+      )}
       <ul className="reader-area-list">
-        {areas.map((area) => (
-          <li key={area.url}>
-            <a href={area.url}>{area.title}</a>
+        {navigation.roots.map((root) => (
+          <li key={root.url}>
+            <a href={root.url}>{root.title}</a>
           </li>
         ))}
       </ul>

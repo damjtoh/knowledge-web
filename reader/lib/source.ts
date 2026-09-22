@@ -1,9 +1,9 @@
 import { loader } from "fumadocs-core/source"
 import { toFumadocsSource } from "fumadocs-mdx/runtime/server"
-import { shared } from "@/.source/server"
+import { content } from "@/.source/server"
 
 /**
- * Headless page source for staged Shared Markdown.
+ * Headless page source for staged Markdown.
  *
  * Fumadocs Core/MDX acts only as the content source: page discovery,
  * Markdown compilation, and route parameters. No Fumadocs UI is used;
@@ -11,5 +11,5 @@ import { shared } from "@/.source/server"
  */
 export const source = loader({
   baseUrl: "/",
-  source: toFumadocsSource(shared, []),
+  source: toFumadocsSource(content, []),
 })
