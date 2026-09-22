@@ -167,6 +167,34 @@ function stagedFileTitle(absPath, fallback) {
   return fallback
 }
 
+/** Count top-level Markdown H1 headings outside fenced code and frontmatter. */
+function countTopLevelH1s(absPath) {
+  let text = ""
+  try {
+    text = fs.readFileSync(absPath, "utf8")
+  } catch {
+    return 0
+  }
+  const lines = text.split("\n")
+  let start = 0
+  if (lines[0]?.trim() === "---") {
+    const close = lines.findIndex((line, index) => index > 0 && line.trim() === "---")
+    if (close !== -1) start = close + 1
+  }
+  let fenced = false
+  let count = 0
+  for (let index = start; index < lines.length; index++) {
+    const line = lines[index]
+    if (/^\s*```/.test(line)) {
+      fenced = !fenced
+      continue
+    }
+    if (fenced) continue
+    if (/^\s*#\s+.+?\s*$/.test(line)) count++
+  }
+  return count
+}
+
 const LONG_TITLE =
   "An extremely long packing checklist title that keeps going SupercalifragilisticexpialidociousSupercalifragilisticexpialidocious"
 const LONG_SLUG = "long-packing-checklist-title-that-keeps-going-for-wrapping-probes"
@@ -293,7 +321,11 @@ function rootRoute(navEntry) {
 /**
  * Derive a folder journey from staged content: prefer a directory root with
  * both direct notes and nested subfolders, else the deepest directory root.
- * Returns areas in metadata order plus the chosen folder and its deepest leaf.
+ * Returns areas in metadata order plus the chosen folder and its deepest
+ * eligible leaf. The leaf prefers staged Markdown with exactly one top-level
+ * H1 so the one-primary-heading landmark check stays meaningful; when no
+ * single-H1 leaf exists the deepest leaf is kept so the check still fails
+ * instead of weakening.
  */
 function deriveJourney(contentDir, metadata) {
   const areas = metadata.navigation.map((entry) => expectedRootTitle(entry, contentDir))
@@ -348,8 +380,7 @@ function deriveJourney(contentDir, metadata) {
   if (!folderEntry) folderEntry = dirRoots[0] ?? metadata.navigation[0]
   const folderTitle = expectedRootTitle(folderEntry, contentDir)
   const folderRoute = rootRoute(folderEntry)
-  let leafRel = null
-  let leafDepth = -1
+  const candidates = []
   const walkFiles = (dir, rel) => {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
       const relPath = rel ? `${rel}/${e.name}` : e.name
@@ -358,15 +389,17 @@ function deriveJourney(contentDir, metadata) {
         const folderPrefix = folderEntry.kind === "directory" ? folderEntry.path : null
         if (folderPrefix && !(relPath === folderPrefix || relPath.startsWith(`${folderPrefix}/`)))
           continue
-        const depth = relPath.split("/").length
-        if (depth > leafDepth) {
-          leafDepth = depth
-          leafRel = relPath
-        }
+        candidates.push(relPath)
       }
     }
   }
   walkFiles(contentDir, "")
+  const depthOf = (relPath) => relPath.split("/").length
+  candidates.sort((a, b) => depthOf(b) - depthOf(a) || (a < b ? -1 : a > b ? 1 : 0))
+  const eligible = candidates.filter(
+    (relPath) => countTopLevelH1s(path.join(contentDir, relPath)) === 1,
+  )
+  const leafRel = (eligible.length > 0 ? eligible : candidates)[0] ?? null
   const leafRoute = leafRel ? routeForStagedMarkdown(leafRel) : folderRoute
   const leafTitle = leafRel
     ? stagedFileTitle(
@@ -457,21 +490,29 @@ async function runJourney(page, baseUrl, expect) {
     page.url().endsWith(expect.folderRoute) || page.url().includes(expect.folderRoute),
     "selecting the folder opens its route",
   )
-  const folder = await page.evaluate(() => ({
-    h1s: Array.from(document.querySelectorAll("article h1")).map((h) => h.textContent?.trim()),
-    h2s: Array.from(document.querySelectorAll("article h2")).map((h) => h.textContent?.trim()),
-    body: document.body.textContent || "",
-    sidebarActive:
-      document.querySelector(".reader-sidebar-nav a.is-active")?.textContent?.trim() || null,
-  }))
+  const folder = await page.evaluate(() => {
+    const groupNodes = document.querySelectorAll("article .reader-group h2")
+    return {
+      h1s: Array.from(document.querySelectorAll("article h1")).map((h) => h.textContent?.trim()),
+      groupHeadings: Array.from(groupNodes).map((h) => h.textContent?.trim()),
+      sidebarActive:
+        document.querySelector(".reader-sidebar-nav a.is-active")?.textContent?.trim() || null,
+    }
+  })
   assert.ok(folder.h1s.includes(expect.folderTitle), `folder H1 (got ${folder.h1s.join("|")})`)
   assert.ok(
-    folder.h2s.includes("Notes") || folder.h2s.includes("Folders"),
-    "folder uses the generic Notes/Folders groups",
+    folder.groupHeadings.length > 0,
+    `folder exposes generic groups (got ${folder.groupHeadings.join("|")})`,
   )
+  for (const heading of folder.groupHeadings) {
+    assert.ok(
+      heading === "Notes" || heading === "Folders",
+      `folder group heading is generic (got ${heading})`,
+    )
+  }
   assert.ok(
-    !/Upcoming trips|Past trips|Preferences/.test(folder.body),
-    "no subject-specific groups",
+    folder.groupHeadings.includes("Notes") || folder.groupHeadings.includes("Folders"),
+    "folder uses the generic Notes/Folders groups",
   )
   assert.equal(folder.sidebarActive, expect.folderTitle, "sidebar identifies the active folder")
 

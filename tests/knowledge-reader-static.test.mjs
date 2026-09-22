@@ -285,15 +285,26 @@ function readMetadata(identityFile) {
   return JSON.parse(fs.readFileSync(identityFile, "utf8"))
 }
 
-/** Virtual folder HTML paths derived from the staged tree (dirs with Markdown, no index). */
-function deriveVirtualHtmls(contentDir) {
+/**
+ * Virtual folder HTML paths at or below generated directory navigation
+ * roots (dirs with Markdown, no index). Ancestors above a configured nested
+ * root never derive folders; Markdown roots create none.
+ */
+function deriveVirtualHtmls(contentDir, navigationRoots = []) {
+  const dirRoots = navigationRoots
+    .filter((entry) => entry && entry.kind === "directory" && typeof entry.path === "string")
+    .map((entry) => entry.path.split(path.sep).join("/"))
+  const isEligible = (dir) => dirRoots.some((root) => dir === root || dir.startsWith(`${root}/`))
   const staged = listFilesRecursive(contentDir)
   const markdown = staged.filter((rel) => /\.md$/i.test(rel))
   const dirs = new Set()
   for (const rel of markdown) {
     const posix = rel.split(path.sep).join("/")
     const parts = posix.split("/").slice(0, -1)
-    for (let i = 1; i <= parts.length; i++) dirs.add(parts.slice(0, i).join("/"))
+    for (let i = 1; i <= parts.length; i++) {
+      const dir = parts.slice(0, i).join("/")
+      if (isEligible(dir)) dirs.add(dir)
+    }
   }
   const virtual = []
   for (const dir of dirs) {
@@ -372,7 +383,7 @@ test("neutral synthetic corpus builds a complete static export with authored and
   // Page-set equality: every staged Markdown file plus every virtual folder
   // has exactly one emitted page, and no non-Markdown file became a page.
   const stagedHtmls = stagedMarkdown.map(expectedHtmlForStagedMarkdown).sort()
-  const virtualHtmls = deriveVirtualHtmls(contentDir)
+  const virtualHtmls = deriveVirtualHtmls(contentDir, metadata.navigation)
   assert.ok(virtualHtmls.includes("notes.html"), "virtual folder notes.html is derived")
   assert.ok(virtualHtmls.includes("orchard.html"), "virtual folder orchard.html is derived")
   assert.ok(virtualHtmls.includes("notes/nest.html"), "nested virtual folder is derived")
@@ -631,7 +642,7 @@ test("generic real corpus builds a complete static export from staged content on
   await buildReader(contentDir, identityFile)
 
   const stagedHtmls = stagedMarkdown.map(expectedHtmlForStagedMarkdown).sort()
-  const virtualHtmls = deriveVirtualHtmls(contentDir)
+  const virtualHtmls = deriveVirtualHtmls(contentDir, metadata.navigation)
   const expectedPages = [...new Set([...stagedHtmls, ...virtualHtmls])].sort()
   for (const rel of expectedPages) {
     assert.ok(

@@ -174,6 +174,34 @@ function stagedFileTitle(absPath, fallback) {
   return fallback
 }
 
+/** Count top-level Markdown H1 headings outside fenced code and frontmatter. */
+function countTopLevelH1s(absPath) {
+  let text = ""
+  try {
+    text = fs.readFileSync(absPath, "utf8")
+  } catch {
+    return 0
+  }
+  const lines = text.split("\n")
+  let start = 0
+  if (lines[0]?.trim() === "---") {
+    const close = lines.findIndex((line, index) => index > 0 && line.trim() === "---")
+    if (close !== -1) start = close + 1
+  }
+  let fenced = false
+  let count = 0
+  for (let index = start; index < lines.length; index++) {
+    const line = lines[index]
+    if (/^\s*```/.test(line)) {
+      fenced = !fenced
+      continue
+    }
+    if (fenced) continue
+    if (/^\s*#\s+.+?\s*$/.test(line)) count++
+  }
+  return count
+}
+
 const LONG_TITLE =
   "An extremely long packing checklist title that keeps going SupercalifragilisticexpialidociousSupercalifragilisticexpialidocious"
 const LONG_SLUG = "long-packing-checklist-title-that-keeps-going-for-wrapping-probes"
@@ -292,6 +320,14 @@ function rootRoute(navEntry) {
   return `/${navEntry.path}`
 }
 
+/**
+ * Derive a folder journey from staged content: prefer a directory root with
+ * both direct notes and nested subfolders. Returns areas in metadata order
+ * plus the chosen folder and its deepest eligible leaf. The leaf prefers
+ * staged Markdown with exactly one top-level H1 so the one-primary-heading
+ * landmark check stays meaningful; when no single-H1 leaf exists the deepest
+ * leaf is kept so the check still fails instead of weakening.
+ */
 function deriveJourney(contentDir, metadata) {
   const areas = metadata.navigation.map((entry) => expectedRootTitle(entry, contentDir))
   const dirRoots = metadata.navigation.filter((entry) => entry.kind === "directory")
@@ -325,8 +361,7 @@ function deriveJourney(contentDir, metadata) {
   if (!folderEntry) folderEntry = dirRoots[0] ?? metadata.navigation[0]
   const folderTitle = expectedRootTitle(folderEntry, contentDir)
   const folderRoute = rootRoute(folderEntry)
-  let leafRel = null
-  let leafDepth = -1
+  const candidates = []
   const walkFiles = (dir, rel) => {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
       const relPath = rel ? `${rel}/${e.name}` : e.name
@@ -334,15 +369,17 @@ function deriveJourney(contentDir, metadata) {
       else if (e.isFile() && /\.md$/i.test(e.name) && !/^index\.md$/i.test(e.name)) {
         const prefix = folderEntry.kind === "directory" ? folderEntry.path : null
         if (prefix && !(relPath === prefix || relPath.startsWith(`${prefix}/`))) continue
-        const depth = relPath.split("/").length
-        if (depth > leafDepth) {
-          leafDepth = depth
-          leafRel = relPath
-        }
+        candidates.push(relPath)
       }
     }
   }
   walkFiles(contentDir, "")
+  const depthOf = (relPath) => relPath.split("/").length
+  candidates.sort((a, b) => depthOf(b) - depthOf(a) || (a < b ? -1 : a > b ? 1 : 0))
+  const eligible = candidates.filter(
+    (relPath) => countTopLevelH1s(path.join(contentDir, relPath)) === 1,
+  )
+  const leafRel = (eligible.length > 0 ? eligible : candidates)[0] ?? null
   const leafRoute = leafRel ? routeForStagedMarkdown(leafRel) : folderRoute
   const leafTitle = leafRel
     ? stagedFileTitle(
@@ -648,9 +685,12 @@ function frontmatterTitle(text) {
  * Overflow probes derived from staged content: the deepest staged route
  * keeps breadcrumb ancestry; the longest H1 wraps; the first staged notes
  * carrying a table, code fence, or image keep those elements contained.
- * Every probed page also asserts no page-level overflow.
+ * Every probed page also asserts no page-level overflow. The image probe is
+ * required unless `requireImage` is false, so real-corpus runs survive
+ * vaults with no Markdown image syntax while the synthetic fixture keeps
+ * requiring it.
  */
-function deriveProbes(contentDir) {
+function deriveProbes(contentDir, { requireImage = true } = {}) {
   const probes = { deep: null, longTitle: null, table: null, code: null, image: null }
   for (const rel of listStagedMarkdown(contentDir)) {
     const text = fs.readFileSync(path.join(contentDir, rel), "utf8")
@@ -669,7 +709,9 @@ function deriveProbes(contentDir) {
   assert.ok(probes.deep, "staged content has a nested note for breadcrumb probes")
   assert.ok(probes.longTitle, "staged content has a titled note for title probes")
   assert.ok(probes.table, "staged content has a table note for containment probes")
-  assert.ok(probes.image, "staged content has an image note for containment probes")
+  if (requireImage) {
+    assert.ok(probes.image, "staged content has an image note for containment probes")
+  }
   return probes
 }
 
@@ -678,9 +720,9 @@ async function runDerivedOverflowProbes(
   baseUrl,
   contentDir,
   label,
-  { checkWiki = false } = {},
+  { checkWiki = false, requireImage = true } = {},
 ) {
-  const probes = deriveProbes(contentDir)
+  const probes = deriveProbes(contentDir, { requireImage })
 
   await goto(page, `${baseUrl}${probes.deep.route}`)
   const crumbs = await page.evaluate(() =>
@@ -724,15 +766,23 @@ async function runDerivedOverflowProbes(
   assert.ok(table.client <= table.inner + 1, `${label}: wide table is contained locally`)
   await assertNoPageOverflow(page, `${label} table note`)
 
-  await goto(page, `${baseUrl}${probes.image.route}`)
-  const image = await page.evaluate(() => ({
-    present: !!document.querySelector("article img"),
-    width: document.querySelector("article img")?.getBoundingClientRect().width || 0,
-    inner: window.innerWidth,
-  }))
-  assert.ok(image.present, `${label}: probe note renders an image (${probes.image.route})`)
-  assert.ok(image.width <= image.inner + 1, `${label}: wide image is contained locally`)
-  await assertNoPageOverflow(page, `${label} image note`)
+  if (probes.image) {
+    // External Markdown images can keep the network idle indefinitely, so the
+    // image probe navigates on DOM content and still asserts presence,
+    // containment, and page overflow below.
+    await page.goto(`${baseUrl}${probes.image.route}`, {
+      waitUntil: "domcontentloaded",
+      timeout: 15000,
+    })
+    const image = await page.evaluate(() => ({
+      present: !!document.querySelector("article img"),
+      width: document.querySelector("article img")?.getBoundingClientRect().width || 0,
+      inner: window.innerWidth,
+    }))
+    assert.ok(image.present, `${label}: probe note renders an image (${probes.image.route})`)
+    assert.ok(image.width <= image.inner + 1, `${label}: wide image is contained locally`)
+    await assertNoPageOverflow(page, `${label} image note`)
+  }
 
   if (probes.code) {
     await goto(page, `${baseUrl}${probes.code.route}`)
@@ -977,6 +1027,7 @@ test("synthetic phone journey covers Browse, overflow, keyboard, and refresh", a
     await withPage(browser, NARROW_PHONE, async (page) => {
       await runDerivedOverflowProbes(page, built.baseUrl, built.contentDir, "narrow phone", {
         checkWiki: true,
+        requireImage: true,
       })
     })
     await withPage(browser, NARROW_PHONE, async (page) => {
@@ -988,6 +1039,7 @@ test("synthetic phone journey covers Browse, overflow, keyboard, and refresh", a
     await withPage(browser, LARGER_PHONE, async (page) => {
       await runDerivedOverflowProbes(page, built.baseUrl, built.contentDir, "larger phone", {
         checkWiki: true,
+        requireImage: true,
       })
       await goto(page, `${built.baseUrl}${expect.leafRoute}`)
       assert.equal(
@@ -1037,7 +1089,9 @@ test("generic real phone journey covers Browse open/close and home to note", asy
       await runPhoneJourney(page, built.baseUrl, expect, "real narrow phone")
     })
     await withPage(browser, LARGER_PHONE, async (page) => {
-      await runDerivedOverflowProbes(page, built.baseUrl, built.contentDir, "real larger phone")
+      await runDerivedOverflowProbes(page, built.baseUrl, built.contentDir, "real larger phone", {
+        requireImage: false,
+      })
       await goto(page, `${built.baseUrl}${expect.leafRoute}`)
       await page.reload({ waitUntil: "networkidle0", timeout: 15000 })
       assert.equal(
