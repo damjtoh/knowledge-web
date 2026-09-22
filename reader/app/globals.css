@@ -1,0 +1,78 @@
+/**
+ * Readable reader styles: comfortable measure, clear heading hierarchy,
+ * contained wide elements (no page-level horizontal scroll from one table,
+ * code block, or image). Phone polish stays later work (item 04).
+ */
+
+.reader-header {
+  border-bottom: 1px solid #e2e2e2;
+  padding: 0.75rem 1rem;
+}
+
+.reader-home {
+  font-weight: 700;
+  text-decoration: none;
+  color: inherit;
+}
+
+.reader-main {
+  padding: 1.5rem 1rem 3rem;
+}
+
+.reader-article {
+  max-width: 68ch;
+  margin: 0 auto;
+  line-height: 1.65;
+  overflow-wrap: break-word;
+}
+
+.reader-article h1 {
+  line-height: 1.2;
+}
+
+.reader-article h2,
+.reader-article h3 {
+  line-height: 1.35;
+  margin-top: 2em;
+}
+
+.reader-article table {
+  display: block;
+  width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+}
+
+.reader-article th,
+.reader-article td {
+  border: 1px solid #d4d4d4;
+  padding: 0.4rem 0.6rem;
+  text-align: left;
+}
+
+.reader-article pre {
+  overflow-x: auto;
+  padding: 0.75rem;
+  background: #f5f5f5;
+  border-radius: 6px;
+}
+
+.reader-article code {
+  font-size: 0.9em;
+}
+
+.reader-article img {
+  max-width: 100%;
+  height: auto;
+}
+
+.reader-article input[type="checkbox"] {
+  margin-right: 0.4rem;
+}
+
+.reader-footer {
+  border-top: 1px solid #e2e2e2;
+  padding: 1rem;
+  color: #666;
+  font-size: 0.85rem;
+}

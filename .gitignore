@@ -10,5 +10,12 @@ site-identity.json
 prof/
 tsconfig.tsbuildinfo
 
+# Shared reader (Next.js static export over isolated staged content):
+# generated Fumadocs content modules (contain private staged text),
+# Next build cache, and disposable static output all stay untracked.
+reader/.source/
+reader/.next/
+reader/out/
+
 # macOS
 .DS_Store
