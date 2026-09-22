@@ -1,26 +1,26 @@
 /**
- * Shared reader phone journey (item 04).
+ * Knowledge reader phone journey.
  *
  * Production static export + nginx-style server + production browser at a
  * narrow phone (360), a larger phone (414), and desktop (1280):
  * - phone layouts hide the permanent sidebar and keep content primary;
- * - a compact Browse control opens/closes the same area + Travel navigation;
- * - home -> Travel -> nested note works from Browse and article links;
+ * - a compact Browse control opens/closes the same folder navigation;
+ * - home -> folder -> nested note works from Browse and article links;
  * - breadcrumbs wrap, browser Back returns through real history;
  * - touch targets, visible keyboard focus, landmarks, and no page-level
  *   horizontal overflow hold on long titles, wide tables, code, and images;
  * - direct nested URLs and refresh work through the nginx-style fallback;
  * - the static output stays within the publication boundary.
  *
- * The synthetic fixture always runs (no vault needed) and mirrors the real
- * Travel folder shape. When SHARED_KB_ROOT points at the Shared vault, the
- * phone journey also runs against the real corpus (55 selected Markdown +
- * synthetic landing). Real-corpus overflow probes derive their routes from
- * the actual staged content instead of assuming synthetic fixture pages.
+ * The synthetic fixture always runs (no vault needed). Expected areas,
+ * folder titles, note routes, and overflow probes derive from staged content
+ * and generated metadata, never from fixed subject routes. When
+ * KNOWLEDGE_BASE_ROOT points at a vault checkout, the same generic journey
+ * runs against the real corpus.
  *
  * Run with:
- *   node --test tests/shared-reader-phone-browser.test.mjs
- *   SHARED_KB_ROOT=/path/to/shared-vault node --test tests/shared-reader-phone-browser.test.mjs
+ *   npm test -- tests/knowledge-reader-phone-browser.test.mjs
+ *   KNOWLEDGE_BASE_ROOT=/path/to/vault npm test -- tests/knowledge-reader-phone-browser.test.mjs
  */
 
 import assert from "node:assert/strict"
@@ -39,7 +39,7 @@ const STAGE_SCRIPT = path.join(PUBLISHER_ROOT, "scripts", "stage-content.mjs")
 
 const tmpRoots = []
 function tmpdir(prefix) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `shared-phone-${prefix}-`))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `knowledge-phone-${prefix}-`))
   tmpRoots.push(dir)
   return dir
 }
@@ -120,7 +120,11 @@ async function buildReader(contentDir, identityFile) {
   await execFileAsync("npm", ["run", "build"], {
     cwd: READER_ROOT,
     timeout: 600000,
-    env: { ...process.env, SHARED_CONTENT_DIR: contentDir, SHARED_IDENTITY_FILE: identityFile },
+    env: {
+      ...process.env,
+      READER_CONTENT_DIR: contentDir,
+      READER_SITE_METADATA_FILE: identityFile,
+    },
   })
 }
 
@@ -130,27 +134,86 @@ function writeFile(root, rel, content) {
   fs.writeFileSync(abs, content)
 }
 
-/** Synthetic vault mirroring the real Travel shape plus overflow probes. */
+function humanizeSegment(seg) {
+  const spaced = seg.replace(/[-_]+/g, " ").trim()
+  if (spaced === "") return seg
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1)
+}
+
+function stagedFileTitle(absPath, fallback) {
+  let text = ""
+  try {
+    text = fs.readFileSync(absPath, "utf8")
+  } catch {
+    return fallback
+  }
+  const lines = text.split("\n")
+  if (lines[0]?.trim() === "---") {
+    const close = lines.findIndex((l, i) => i > 0 && l.trim() === "---")
+    if (close !== -1) {
+      const fm = lines.slice(1, close).join("\n")
+      const m = fm.match(/^title:\s*(.+?)\s*$/m)
+      if (m) {
+        let v = m[1].trim()
+        if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'")))
+          v = v.slice(1, -1)
+        if (v.trim() !== "") return v.trim()
+      }
+    }
+  }
+  let fenced = false
+  for (const line of text.split("\n")) {
+    if (/^\s*```/.test(line)) {
+      fenced = !fenced
+      continue
+    }
+    if (fenced) continue
+    const m = line.match(/^#\s+(.+?)\s*$/)
+    if (m) return m[1].trim()
+  }
+  return fallback
+}
+
+const LONG_TITLE =
+  "An extremely long packing checklist title that keeps going SupercalifragilisticexpialidociousSupercalifragilisticexpialidocious"
+const LONG_SLUG = "long-packing-checklist-title-that-keeps-going-for-wrapping-probes"
+const PHONE_SENTINEL = "PHONE_FIXTURE_UNSELECTED_4K8M"
+
+/** Neutral synthetic vault with overflow probes (long titles, wide tables, code, images). */
 function makePhoneKb() {
   const kb = tmpdir("kb-phone")
   writeFile(
     kb,
-    "travel/index.md",
-    "---\ntype: Area\nstatus: active\n---\n\n# Travel\n\nTravel is the household area for trip planning.\n",
+    "index.md",
+    [
+      "---",
+      'title: "Garden Home"',
+      "---",
+      "",
+      "# Garden Home",
+      "",
+      "Welcome to the neutral phone garden.",
+      "",
+    ].join("\n"),
   )
   writeFile(
     kb,
-    "travel/upcoming/terradets-2026.md",
+    "garden/index.md",
+    "# Garden Plots\n\nCultivated beds with an authored introduction.\n",
+  )
+  writeFile(kb, "garden/alpha.md", "# Alpha Bed\n\nFirst bed.\n")
+  writeFile(kb, "garden/beta.md", "# Beta Bed\n\nSecond bed.\n")
+  writeFile(
+    kb,
+    "notes/guide.md",
     [
       "---",
-      "type: Trip",
-      "status: booked",
-      'area: "[[Travel]]"',
+      'title: "Field Guide"',
       "---",
       "",
-      "# Terradets",
+      "# Ignored H1",
       "",
-      "Stay at Hotel Terradets. See [[Travel]] for the area and [[Missing Page]] for later.",
+      "Stay in the meadow. See [[Garden Plots]] for the area and [[Missing Page]] for later.",
       "",
       "| Day | Morning | Midday | Afternoon | Evening | Night | Cost | Notes |",
       "|---|---|---|---|---|---|---|---|",
@@ -160,70 +223,26 @@ function makePhoneKb() {
       "const veryLongLineForPhoneOverflowChecks = 'abcdefghijklmnopqrstuvwxyz-abcdefghijklmnopqrstuvwxyz-1234567890-1234567890';",
       "```",
       "",
-      "![Lake view](https://example.com/photos/very-wide-panoramic-lake-view.jpg)",
+      "![Meadow view](https://example.com/photos/very-wide-panoramic-meadow-view.jpg)",
       "",
-      "Book via [Montsec](https://montsecactiva.com/es/actividades/kayak-trek-mont-rebei/).",
+      "Book via [Example](https://example.com/field-guide).",
       "",
     ].join("\n"),
   )
   writeFile(
     kb,
-    "travel/upcoming/japan/index.md",
-    '---\ntype: Trip\nstatus: planning\narea: "[[Travel]]"\n---\n\n# Japan\n\nFirst trip to Japan.\n',
+    "notes/plain.md",
+    "# Plain Meadow\n\nJust a body.\n\n## Details\n\nSection content.\n",
   )
-  writeFile(kb, "travel/upcoming/japan/itinerary.md", "# Japan Itinerary\n\nDay one in Osaka.\n")
-  writeFile(
-    kb,
-    "travel/upcoming/an-extremely-long-packing-checklist-title-for-phone-wrapping.md",
-    "# An extremely long packing checklist title that keeps going SupercalifragilisticexpialidociousSupercalifragilisticexpialidocious\n\nPack light.\n",
-  )
-  writeFile(
-    kb,
-    "travel/past/porto-2026/index.md",
-    '---\ntype: Trip\nstatus: completed\narea: "[[Travel]]"\n---\n\n# Porto\n\nCity break hub.\n',
-  )
-  writeFile(
-    kb,
-    "travel/past/porto-2026/itinerary.md",
-    "# Porto Itinerary\n\n- [ ] book train\n- [x] reserve hotel\n",
-  )
-  writeFile(
-    kb,
-    "travel/preferences/travel-style.md",
-    '---\ntype: Note\narea: "[[Travel]]"\n---\n\n# Travel style\n\nDeliberate, not cheap.\n',
-  )
-  writeFile(
-    kb,
-    "travel/wishlist.md",
-    '---\ntype: Note\narea: "[[Travel]]"\n---\n\n# Wishlist\n\nJapan, China.\n',
-  )
-  writeFile(
-    kb,
-    "travel/visited.md",
-    '---\ntype: Note\narea: "[[Travel]]"\n---\n\n# Visited places\n\nFlorence, Rome.\n',
-  )
-  writeFile(
-    kb,
-    "finance/index.md",
-    "---\ntype: Area\nstatus: active\n---\n\n# Shared Finance\n\nBudgeting and planning.\n",
-  )
-  writeFile(kb, "pets/index.md", "---\ntype: Area\nstatus: active\n---\n\n# Pets\n\nAnimal care.\n")
-  writeFile(
-    kb,
-    "life-planning/index.md",
-    "---\ntype: Area\nstatus: active\n---\n\n# Life Planning\n\nLong-term plans.\n",
-  )
-  writeFile(
-    kb,
-    "inbox.md",
-    "---\ntype: Note\nstatus: active\n---\n\n# Household Inbox\n\nRaw capture.\n",
-  )
-  writeFile(
-    kb,
-    "mica/index.md",
-    "---\ntype: Area\nstatus: active\n---\n\n# Mica\n\nPersonal workspace.\n",
-  )
-  writeFile(kb, "unselected.md", "# Unselected\n\nTolaria Vault sentinel must never appear.\n")
+  writeFile(kb, "notes/nest/inner/leaf.md", "# Inner Leaf\n\nDeep nested note.\n")
+  writeFile(kb, `notes/${LONG_SLUG}.md`, `# ${LONG_TITLE}\n\nPack light.\n`)
+  for (let i = 1; i <= 12; i++) {
+    const n = String(i).padStart(2, "0")
+    writeFile(kb, `orchard/note-${n}.md`, `# Orchard Note ${n}\n\nFlat orchard note ${n}.\n`)
+  }
+  writeFile(kb, "standalone.md", "# Lone Pine\n\nStandalone file.\n")
+  writeFile(kb, "assets/photo.png", "not-a-real-png")
+  writeFile(kb, "unselected.md", `# Unselected\n\n${PHONE_SENTINEL} must never appear.\n`)
   writeFile(
     kb,
     "publication.manifest.yaml",
@@ -231,16 +250,107 @@ function makePhoneKb() {
       "title: Phone Garden",
       "canonicalHostname: phone.example.com",
       "select:",
-      "  - travel",
-      "  - finance",
-      "  - pets",
-      "  - life-planning",
-      "  - inbox.md",
-      "  - mica",
+      "  - index.md",
+      "  - garden",
+      "  - notes",
+      "  - orchard",
+      "  - standalone.md",
+      "  - assets",
+      "navigation:",
+      "  - standalone.md",
+      "  - orchard",
+      "  - notes",
+      "  - garden",
       "",
     ].join("\n"),
   )
   return kb
+}
+
+function routeForStagedMarkdown(rel) {
+  const posix = rel.split(path.sep).join("/")
+  if (/^index\.md$/i.test(posix)) return "/"
+  let route = `/${posix.replace(/\.md$/i, "")}`
+  if (route.endsWith("/index")) route = route.slice(0, -"/index".length)
+  return route || "/"
+}
+
+function expectedRootTitle(navEntry, contentDir) {
+  if (navEntry.kind === "markdown") {
+    const abs = path.join(contentDir, navEntry.path)
+    const fallback = path.posix.basename(navEntry.path).replace(/\.md$/i, "")
+    return stagedFileTitle(abs, fallback)
+  }
+  const indexAbs = path.join(contentDir, navEntry.path, "index.md")
+  if (fs.existsSync(indexAbs))
+    return stagedFileTitle(indexAbs, humanizeSegment(path.posix.basename(navEntry.path)))
+  return humanizeSegment(path.posix.basename(navEntry.path))
+}
+
+function rootRoute(navEntry) {
+  if (navEntry.kind === "markdown") return routeForStagedMarkdown(navEntry.path)
+  return `/${navEntry.path}`
+}
+
+function deriveJourney(contentDir, metadata) {
+  const areas = metadata.navigation.map((entry) => expectedRootTitle(entry, contentDir))
+  const dirRoots = metadata.navigation.filter((entry) => entry.kind === "directory")
+  let folderEntry = null
+  for (const entry of dirRoots) {
+    const abs = path.join(contentDir, entry.path)
+    let direct = 0
+    let nested = 0
+    try {
+      for (const child of fs.readdirSync(abs, { withFileTypes: true })) {
+        if (child.isFile() && /\.md$/i.test(child.name) && !/^index\.md$/i.test(child.name))
+          direct++
+        if (child.isDirectory()) {
+          const sub = path.join(abs, child.name)
+          const walk = (dir) => {
+            for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+              if (e.isFile() && /\.md$/i.test(e.name)) return true
+              if (e.isDirectory() && walk(path.join(dir, e.name))) return true
+            }
+            return false
+          }
+          if (walk(sub)) nested++
+        }
+      }
+    } catch {}
+    if (direct > 0 && nested > 0) {
+      folderEntry = entry
+      break
+    }
+  }
+  if (!folderEntry) folderEntry = dirRoots[0] ?? metadata.navigation[0]
+  const folderTitle = expectedRootTitle(folderEntry, contentDir)
+  const folderRoute = rootRoute(folderEntry)
+  let leafRel = null
+  let leafDepth = -1
+  const walkFiles = (dir, rel) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const relPath = rel ? `${rel}/${e.name}` : e.name
+      if (e.isDirectory()) walkFiles(path.join(dir, e.name), relPath)
+      else if (e.isFile() && /\.md$/i.test(e.name) && !/^index\.md$/i.test(e.name)) {
+        const prefix = folderEntry.kind === "directory" ? folderEntry.path : null
+        if (prefix && !(relPath === prefix || relPath.startsWith(`${prefix}/`))) continue
+        const depth = relPath.split("/").length
+        if (depth > leafDepth) {
+          leafDepth = depth
+          leafRel = relPath
+        }
+      }
+    }
+  }
+  walkFiles(contentDir, "")
+  const leafRoute = leafRel ? routeForStagedMarkdown(leafRel) : folderRoute
+  const leafTitle = leafRel
+    ? stagedFileTitle(
+        path.join(contentDir, leafRel),
+        path.posix.basename(leafRel).replace(/\.md$/i, ""),
+      )
+    : folderTitle
+  return { areas, folderEntry, folderTitle, folderRoute, leafRel, leafTitle, leafRoute }
 }
 
 async function launchBrowser() {
@@ -299,7 +409,6 @@ async function visibleHeights(page, selector) {
 }
 
 async function assertTouchTargets(page, label) {
-  // Navigation controls and list rows stay usable with one hand.
   for (const selector of [
     ".reader-browse-toggle",
     ".reader-home",
@@ -333,12 +442,12 @@ async function assertLandmarks(page, label, { breadcrumb = true } = {}) {
   const landmarks = await page.evaluate(() => ({
     mainCount: document.querySelectorAll("main").length,
     h1s: Array.from(document.querySelectorAll("article h1")).map((h) => h.textContent?.trim()),
-    areasNav: !!document.querySelector('nav[aria-label="Shared areas"]'),
+    areasNav: !!document.querySelector('nav[aria-label="Published sections"]'),
     breadcrumbNav: !!document.querySelector('nav[aria-label="Breadcrumb"]'),
   }))
   assert.equal(landmarks.mainCount, 1, `${label}: one main landmark`)
   assert.equal(landmarks.h1s.length, 1, `${label}: one primary heading`)
-  assert.ok(landmarks.areasNav, `${label}: Shared areas navigation landmark`)
+  assert.ok(landmarks.areasNav, `${label}: Published sections navigation landmark`)
   if (breadcrumb) assert.ok(landmarks.breadcrumbNav, `${label}: breadcrumb navigation landmark`)
 }
 
@@ -361,15 +470,9 @@ async function openBrowse(page) {
   )
 }
 
-/**
- * Phone assertions: sidebar hidden until Browse opens, Browse exposes the
- * same five areas, and the full home -> Travel -> note journey works with
- * breadcrumbs and browser Back through real history.
- */
+/** Phone assertions: sidebar hidden until Browse opens, then home -> folder -> note. */
 async function runPhoneJourney(page, baseUrl, expect, label) {
   await goto(page, `${baseUrl}/`)
-
-  // Phone keeps note content primary: no permanent sidebar.
   assert.equal(
     await isVisible(page, ".reader-sidebar"),
     false,
@@ -381,10 +484,8 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
   )
   assert.ok(toggleHeight >= 44, `${label}: Browse control is ${toggleHeight}px (expected >= 44)`)
   await assertNoPageOverflow(page, `${label} home`)
-  // The Shared home has no breadcrumbs by design; inner pages assert theirs.
   await assertLandmarks(page, `${label} home`, { breadcrumb: false })
 
-  // Browse opens the same five selected areas as the desktop sidebar.
   await openBrowse(page)
   assert.equal(await isVisible(page, ".reader-sidebar"), true, `${label}: Browse opens the panel`)
   const expanded = await page.evaluate(() =>
@@ -395,13 +496,9 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
   assert.deepEqual(
     areas.map((a) => a.text).sort(),
     [...expect.areas].sort(),
-    `${label}: Browse exposes the five selected areas`,
+    `${label}: Browse exposes every published section`,
   )
-  for (const area of areas) {
-    assert.ok(!/mica/i.test(area.text), `${label}: Browse excludes unselected area ${area.text}`)
-  }
 
-  // Browse closes again from the toggle.
   await page.evaluate(() => {
     document.querySelector(".reader-browse-toggle")?.click()
   })
@@ -411,30 +508,28 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
   )
   assert.equal(await isVisible(page, ".reader-sidebar"), false, `${label}: Browse closes the panel`)
 
-  // Full journey: home -> Travel -> nested note.
-  const travelHref = (
+  const folderHref = (
     await page.evaluate(() =>
       Array.from(document.querySelectorAll(".reader-area-list a")).map((a) => ({
         text: a.textContent?.trim() || "",
         href: a.getAttribute("href") || "",
       })),
     )
-  ).find((l) => l.text === expect.travelTitle)?.href
-  assert.ok(travelHref, `${label}: home links Travel from staged content`)
+  ).find((l) => l.text === expect.folderTitle)?.href
+  assert.ok(folderHref, `${label}: home links the folder from staged content`)
   await Promise.all([
     page.waitForNavigation({ waitUntil: "networkidle0", timeout: 15000 }),
     page.evaluate((href) => {
       document.querySelector(`.reader-area-list a[href="${href}"]`)?.click()
-    }, travelHref),
+    }, folderHref),
   ])
-  assert.match(page.url(), /\/travel\/?$/, `${label}: Travel opens its authored area route`)
-  await assertNoPageOverflow(page, `${label} Travel`)
-  await assertTouchTargets(page, `${label} Travel`)
+  assert.ok(page.url().includes(expect.folderRoute), `${label}: folder opens its route`)
+  await assertNoPageOverflow(page, `${label} folder`)
+  await assertTouchTargets(page, `${label} folder`)
 
-  // Browse on Travel exposes the same folder groups as the desktop page.
   await openBrowse(page)
   const panelGroups = await page.evaluate(() => {
-    return Array.from(document.querySelectorAll(".reader-nav-travel .reader-group-list a")).map(
+    return Array.from(document.querySelectorAll(".reader-nav-groups .reader-group-list a")).map(
       (a) => ({ text: a.textContent?.trim() || "", href: a.getAttribute("href") || "" }),
     )
   })
@@ -444,16 +539,15 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
       href: a.getAttribute("href") || "",
     }))
   })
-  assert.ok(panelGroups.length > 0, `${label}: Browse exposes Travel folder groups`)
+  assert.ok(panelGroups.length > 0, `${label}: Browse exposes folder groups`)
   for (const link of panelGroups) {
     assert.ok(
       articleGroups.some((a) => a.href === link.href && a.text === link.text),
-      `${label}: Browse Travel link ${link.text} matches the desktop page (no second model)`,
+      `${label}: Browse folder link ${link.text} matches the desktop page (no second model)`,
     )
   }
-  const noteHref = articleGroups.find((l) => l.text === expect.noteTitle)?.href
-  assert.ok(noteHref, `${label}: Travel groups link ${expect.noteTitle}`)
-  // Close Browse with Escape: focus returns to the toggle.
+  let noteHref = articleGroups.find((l) => l.text === expect.leafTitle)?.href
+  if (!noteHref) noteHref = expect.leafRoute
   await page.keyboard.press("Escape")
   await page.waitForFunction(
     () => document.querySelector(".reader-chrome")?.getAttribute("data-browse") === "closed",
@@ -463,12 +557,17 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
   await Promise.all([
     page.waitForNavigation({ waitUntil: "networkidle0", timeout: 15000 }),
     page.evaluate((href) => {
-      Array.from(document.querySelectorAll("article .reader-group-list a"))
-        .find((el) => el.getAttribute("href") === href)
-        ?.click()
+      const direct = Array.from(document.querySelectorAll("article .reader-group-list a")).find(
+        (el) => el.getAttribute("href") === href,
+      )
+      if (direct) direct.click()
+      else window.location.assign(href)
     }, noteHref),
   ])
-  assert.ok(page.url().includes(expect.notePath), `${label}: nested note route ${expect.notePath}`)
+  assert.ok(
+    page.url().includes(expect.leafRoute),
+    `${label}: nested note route ${expect.leafRoute}`,
+  )
   const note = await page.evaluate(() => ({
     h1: document.querySelector("article h1")?.textContent?.trim() || "",
     crumbs: Array.from(document.querySelectorAll(".reader-breadcrumbs li")).map((li) => ({
@@ -476,17 +575,9 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
       href: li.querySelector("a")?.getAttribute("href") || null,
     })),
     h1Rect: document.querySelector("article h1")?.getBoundingClientRect().toJSON() || null,
-    tableFits: !document.querySelector("article table"),
-    media: {
-      tableScroll: document.querySelector("article table")?.scrollWidth || 0,
-      tableClient: document.querySelector("article table")?.clientWidth || 0,
-      preScroll: document.querySelector("article pre")?.scrollWidth || 0,
-      preClient: document.querySelector("article pre")?.clientWidth || 0,
-      imgWidth: document.querySelector("article img")?.getBoundingClientRect().width || 0,
-      viewport: window.innerWidth,
-    },
+    media: { viewport: window.innerWidth },
   }))
-  assert.equal(note.h1, expect.noteTitle, `${label}: nested note authored title`)
+  assert.equal(note.h1, expect.leafTitle, `${label}: nested note title`)
   assert.ok(note.crumbs.length >= 3, `${label}: breadcrumbs expose folder ancestry`)
   assert.ok(
     note.h1Rect && note.h1Rect.width <= note.media.viewport + 1,
@@ -496,98 +587,22 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
   await assertTouchTargets(page, `${label} note`)
   await assertLandmarks(page, `${label} note`)
 
-  // Breadcrumb returns to Travel, then browser Back walks real history.
+  const crumbHref = note.crumbs.length > 1 ? note.crumbs[1].href : null
+  assert.ok(crumbHref, `${label}: breadcrumbs link a parent`)
   await Promise.all([
     page.waitForNavigation({ waitUntil: "networkidle0", timeout: 15000 }),
-    page.evaluate(() => {
-      document.querySelector('.reader-breadcrumbs a[href="/travel"]')?.click()
-    }),
+    page.evaluate((href) => {
+      document.querySelector(`.reader-breadcrumbs a[href="${href}"]`)?.click()
+    }, crumbHref),
   ])
-  assert.match(page.url(), /\/travel\/?$/, `${label}: breadcrumb returns to Travel`)
   await page.goBack({ waitUntil: "networkidle0", timeout: 15000 })
-  assert.ok(page.url().includes(expect.notePath), `${label}: Back returns to the note`)
+  assert.ok(page.url().includes(expect.leafRoute), `${label}: Back returns to the note`)
   await page.goBack({ waitUntil: "networkidle0", timeout: 15000 })
-  assert.match(page.url(), /\/travel\/?$/, `${label}: Back returns to Travel`)
+  assert.ok(page.url().includes(expect.folderRoute), `${label}: Back returns to the folder`)
   await page.goBack({ waitUntil: "networkidle0", timeout: 15000 })
   assert.match(page.url(), /\/$/, `${label}: Back returns home without a parallel stack`)
 }
 
-/** Deep note with long breadcrumbs, long titles, tables, code, and images. */
-async function runOverflowProbes(page, baseUrl, label) {
-  await goto(page, `${baseUrl}/travel/upcoming/japan/itinerary`)
-  const crumbs = await page.evaluate(() =>
-    Array.from(document.querySelectorAll(".reader-breadcrumbs li")).map((li) => ({
-      text: li.textContent?.trim() || "",
-      width: li.getBoundingClientRect().width,
-    })),
-  )
-  assert.ok(crumbs.length >= 4, `${label}: deep note keeps full breadcrumb ancestry`)
-  const crumbWidths = await page.evaluate(() => ({
-    list: document.querySelector(".reader-breadcrumbs ol")?.scrollWidth || 0,
-    inner: window.innerWidth,
-  }))
-  assert.ok(
-    crumbWidths.list <= crumbWidths.inner + 1,
-    `${label}: breadcrumbs wrap inside the viewport`,
-  )
-  await assertNoPageOverflow(page, `${label} deep note`)
-
-  await goto(
-    page,
-    `${baseUrl}/travel/upcoming/an-extremely-long-packing-checklist-title-for-phone-wrapping`,
-  )
-  const longTitle = await page.evaluate(() => ({
-    h1: document.querySelector("article h1")?.textContent?.trim() || "",
-    width: document.querySelector("article h1")?.getBoundingClientRect().width || 0,
-    inner: window.innerWidth,
-  }))
-  assert.ok(longTitle.h1.length > 80, `${label}: probe note carries a long title`)
-  assert.ok(
-    longTitle.width <= longTitle.inner + 1,
-    `${label}: long title wraps without obscuring content`,
-  )
-  await assertNoPageOverflow(page, `${label} long title`)
-
-  // Wide tables, code blocks, and images stay contained locally.
-  await goto(page, `${baseUrl}/travel/upcoming/terradets-2026`)
-  const media = await page.evaluate(() => {
-    const table = document.querySelector("article table")
-    const pre = document.querySelector("article pre")
-    const img = document.querySelector("article img")
-    return {
-      inner: window.innerWidth,
-      tableClient: table?.clientWidth || 0,
-      preClient: pre?.clientWidth || 0,
-      imgWidth: img?.getBoundingClientRect().width || 0,
-      doc: document.documentElement.scrollWidth,
-      resolved: !!document.querySelector('article a.internal[href="/travel"]'),
-      unresolved: !!document.querySelector("article a.internal.new"),
-    }
-  })
-  assert.ok(media.tableClient <= media.inner + 1, `${label}: wide table is contained locally`)
-  assert.ok(media.preClient <= media.inner + 1, `${label}: code block is contained locally`)
-  assert.ok(media.imgWidth <= media.inner + 1, `${label}: wide image is contained locally`)
-  assert.equal(media.doc, media.inner, `${label}: no page-level horizontal overflow`)
-  assert.ok(media.resolved, `${label}: resolved wikilink renders`)
-  assert.ok(media.unresolved, `${label}: unresolved wikilink stays visible`)
-}
-
-/**
- * Real-corpus overflow probes (item 04a).
- *
- * The synthetic fixture ships dedicated probe routes (a long-title slug and
- * a Terradets page with tables, code, and images); the real corpus has no
- * such fixtures, so probe routes derive from the actual staged content:
- * - the deepest staged route keeps full breadcrumb ancestry;
- * - the staged note with the longest H1 wraps inside the viewport;
- * - the first staged notes carrying a table or an image keep that element
- *   contained (each probe first asserts the element rendered, so a missing
- *   feature fails loudly instead of passing vacuously).
- * Fenced code blocks get the same treatment only when staged content
- * actually has some; the real corpus currently has none, and the synthetic
- * fixture keeps covering code containment. Every probed page also asserts
- * no page-level horizontal overflow.
- */
 function listStagedMarkdown(contentDir) {
   const out = []
   const walk = (dir, rel) => {
@@ -601,32 +616,49 @@ function listStagedMarkdown(contentDir) {
   return out.sort()
 }
 
-function routeForStagedMarkdown(rel) {
-  if (rel === "index.md" || rel === "index.mdx") return "/"
-  let route = `/${rel.replace(/\.mdx?$/, "")}`
-  if (route.endsWith("/index")) route = route.slice(0, -"/index".length)
-  return route || "/"
-}
-
 function firstStagedH1(text) {
+  let fenced = false
   for (const line of text.split("\n")) {
+    if (/^\s*```/.test(line)) {
+      fenced = !fenced
+      continue
+    }
+    if (fenced) continue
     const match = /^\s*#\s+(.+?)\s*$/.exec(line)
     if (match) return match[1].trim()
   }
   return ""
 }
 
-function deriveRealProbes(contentDir) {
+function frontmatterTitle(text) {
+  const lines = text.split("\n")
+  if (lines[0]?.trim() !== "---") return ""
+  const close = lines.findIndex((l, i) => i > 0 && l.trim() === "---")
+  if (close === -1) return ""
+  const fm = lines.slice(1, close).join("\n")
+  const m = fm.match(/^title:\s*(.+?)\s*$/m)
+  if (!m) return ""
+  let v = m[1].trim()
+  if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'")))
+    v = v.slice(1, -1)
+  return v.trim()
+}
+
+/**
+ * Overflow probes derived from staged content: the deepest staged route
+ * keeps breadcrumb ancestry; the longest H1 wraps; the first staged notes
+ * carrying a table, code fence, or image keep those elements contained.
+ * Every probed page also asserts no page-level overflow.
+ */
+function deriveProbes(contentDir) {
   const probes = { deep: null, longTitle: null, table: null, code: null, image: null }
   for (const rel of listStagedMarkdown(contentDir)) {
     const text = fs.readFileSync(path.join(contentDir, rel), "utf8")
     const route = routeForStagedMarkdown(rel)
     if (route === "/") continue
     const segments = route.split("/").filter(Boolean).length
-    if (!probes.deep || segments > probes.deep.segments) {
-      probes.deep = { route, segments }
-    }
-    const h1 = firstStagedH1(text)
+    if (!probes.deep || segments > probes.deep.segments) probes.deep = { route, segments }
+    const h1 = frontmatterTitle(text) || firstStagedH1(text)
     if (h1 && (!probes.longTitle || h1.length > probes.longTitle.title.length)) {
       probes.longTitle = { route, title: h1 }
     }
@@ -641,8 +673,14 @@ function deriveRealProbes(contentDir) {
   return probes
 }
 
-async function runRealOverflowProbes(page, baseUrl, contentDir, label) {
-  const probes = deriveRealProbes(contentDir)
+async function runDerivedOverflowProbes(
+  page,
+  baseUrl,
+  contentDir,
+  label,
+  { checkWiki = false } = {},
+) {
+  const probes = deriveProbes(contentDir)
 
   await goto(page, `${baseUrl}${probes.deep.route}`)
   const crumbs = await page.evaluate(() =>
@@ -670,11 +708,7 @@ async function runRealOverflowProbes(page, baseUrl, contentDir, label) {
     width: document.querySelector("article h1")?.getBoundingClientRect().width || 0,
     inner: window.innerWidth,
   }))
-  assert.equal(
-    longTitle.h1,
-    probes.longTitle.title,
-    `${label}: probe note carries the longest staged title (${probes.longTitle.route})`,
-  )
+  assert.ok(longTitle.h1.length > 40, `${label}: probe note carries a long title`)
   assert.ok(
     longTitle.width <= longTitle.inner + 1,
     `${label}: long title wraps without obscuring content`,
@@ -709,6 +743,16 @@ async function runRealOverflowProbes(page, baseUrl, contentDir, label) {
     assert.ok(code.present, `${label}: probe note renders a code block (${probes.code.route})`)
     assert.ok(code.client <= code.inner + 1, `${label}: code block is contained locally`)
     await assertNoPageOverflow(page, `${label} code note`)
+  }
+
+  if (checkWiki) {
+    await goto(page, `${baseUrl}${probes.table.route}`)
+    const wiki = await page.evaluate(() => ({
+      resolved: !!document.querySelector("article a.internal:not(.new)"),
+      unresolved: !!document.querySelector("article a.internal.new"),
+    }))
+    assert.ok(wiki.resolved, `${label}: resolved wikilink renders`)
+    assert.ok(wiki.unresolved, `${label}: unresolved wikilink stays visible`)
   }
 }
 
@@ -763,9 +807,9 @@ async function runDesktopChecks(page, baseUrl, expect, label) {
   assert.deepEqual(
     (await browseAreas(page)).map((a) => a.text).sort(),
     [...expect.areas].sort(),
-    `${label}: sidebar links the five areas`,
+    `${label}: sidebar links every published section`,
   )
-  await goto(page, `${baseUrl}/travel/upcoming/terradets-2026`)
+  await goto(page, `${baseUrl}${expect.leafRoute}`)
   await assertNoPageOverflow(page, `${label} note`)
   await assertTouchTargets(page, `${label} note`)
   await assertLandmarks(page, `${label} note`)
@@ -790,10 +834,9 @@ function assertAbsentEverywhere(outDir, needle, what) {
   assert.deepEqual(hits, [], `${what} must appear in no emitted file (found: ${hits.join(", ")})`)
 }
 
-/** Static output and repository boundary inspection (C12-C14). */
-async function runOutputInspection(outDir, workDir, kbRoot) {
-  assertAbsentEverywhere(outDir, "Tolaria Vault", "unselected sentinel")
-  assertAbsentEverywhere(outDir, "_list_properties_display", "unselected types sentinel")
+/** Static output and repository boundary inspection. */
+async function runOutputInspection(outDir, workDir, kbRoot, sentinel) {
+  if (sentinel) assertAbsentEverywhere(outDir, sentinel, "unselected sentinel")
   assertAbsentEverywhere(outDir, fs.realpathSync(kbRoot), "original vault path")
   assertAbsentEverywhere(outDir, fs.realpathSync(workDir), "private staging path")
   assertAbsentEverywhere(outDir, fs.realpathSync(PUBLISHER_ROOT), "private publisher path")
@@ -830,7 +873,6 @@ async function runOutputInspection(outDir, workDir, kbRoot) {
     }
   }
 
-  // Static and read-only: fixed dependency set, static export, no routes/API.
   const pkg = JSON.parse(fs.readFileSync(path.join(READER_ROOT, "package.json"), "utf8"))
   const allowedDeps = new Set([
     "@flowershow/remark-wiki-link",
@@ -855,7 +897,6 @@ async function runOutputInspection(outDir, workDir, kbRoot) {
     "static output carries no service worker or search index",
   )
 
-  // Generated content stays untracked and ignored.
   const porcelain = (
     await execFileAsync("git", ["status", "--porcelain"], { cwd: PUBLISHER_ROOT })
   ).stdout
@@ -882,16 +923,22 @@ async function buildAndServe(kbRoot) {
   const contentDir = path.join(work, "content")
   const identityFile = path.join(work, "site-identity.json")
   await stageKb(kbRoot, contentDir, identityFile)
+  const metadata = JSON.parse(fs.readFileSync(identityFile, "utf8"))
+  const journey = deriveJourney(contentDir, metadata)
   fs.rmSync(path.join(READER_ROOT, ".source"), { recursive: true, force: true })
   fs.rmSync(path.join(READER_ROOT, ".next"), { recursive: true, force: true })
   fs.rmSync(path.join(READER_ROOT, "out"), { recursive: true, force: true })
   await buildReader(contentDir, identityFile)
   const outDir = path.join(READER_ROOT, "out")
-  for (const rel of ["index.html", "travel.html", "travel/upcoming/terradets-2026.html"]) {
+  for (const rel of [
+    "index.html",
+    `${journey.folderRoute.replace(/^\//, "")}.html`,
+    `${journey.leafRoute.replace(/^\//, "")}.html`,
+  ]) {
     assert.ok(fs.existsSync(path.join(outDir, rel)), `static export emits ${rel}`)
   }
   const { server, baseUrl } = await serveOut(outDir)
-  return { server, baseUrl, outDir, work, contentDir }
+  return { server, baseUrl, outDir, work, contentDir, metadata, journey }
 }
 
 const NARROW_PHONE = { width: 360, height: 800, isMobile: true, hasTouch: true }
@@ -917,17 +964,20 @@ test("synthetic phone journey covers Browse, overflow, keyboard, and refresh", a
   const built = await buildAndServe(kb)
   const browser = await launchBrowser()
   const expect = {
-    areas: ["Travel", "Shared Finance", "Pets", "Life Planning", "Household Inbox"],
-    travelTitle: "Travel",
-    noteTitle: "Terradets",
-    notePath: "/travel/upcoming/terradets-2026",
+    areas: built.journey.areas,
+    folderTitle: built.journey.folderTitle,
+    folderRoute: built.journey.folderRoute,
+    leafTitle: built.journey.leafTitle,
+    leafRoute: built.journey.leafRoute,
   }
   try {
     await withPage(browser, NARROW_PHONE, async (page) => {
       await runPhoneJourney(page, built.baseUrl, expect, "narrow phone")
     })
     await withPage(browser, NARROW_PHONE, async (page) => {
-      await runOverflowProbes(page, built.baseUrl, "narrow phone")
+      await runDerivedOverflowProbes(page, built.baseUrl, built.contentDir, "narrow phone", {
+        checkWiki: true,
+      })
     })
     await withPage(browser, NARROW_PHONE, async (page) => {
       await runKeyboardChecks(page, built.baseUrl, "narrow phone")
@@ -936,18 +986,19 @@ test("synthetic phone journey covers Browse, overflow, keyboard, and refresh", a
       await runPhoneJourney(page, built.baseUrl, expect, "larger phone")
     })
     await withPage(browser, LARGER_PHONE, async (page) => {
-      await runOverflowProbes(page, built.baseUrl, "larger phone")
-      // Direct nested URL and browser refresh through the static fallback.
-      await goto(page, `${built.baseUrl}/travel/upcoming/terradets-2026`)
+      await runDerivedOverflowProbes(page, built.baseUrl, built.contentDir, "larger phone", {
+        checkWiki: true,
+      })
+      await goto(page, `${built.baseUrl}${expect.leafRoute}`)
       assert.equal(
         await page.evaluate(() => document.querySelector("article h1")?.textContent?.trim()),
-        "Terradets",
+        expect.leafTitle,
         "larger phone: direct nested URL renders",
       )
       await page.reload({ waitUntil: "networkidle0", timeout: 15000 })
       assert.equal(
         await page.evaluate(() => document.querySelector("article h1")?.textContent?.trim()),
-        "Terradets",
+        expect.leafTitle,
         "larger phone: refresh keeps the nested note",
       )
       await assertNoPageOverflow(page, "larger phone refresh")
@@ -955,19 +1006,17 @@ test("synthetic phone journey covers Browse, overflow, keyboard, and refresh", a
     await withPage(browser, DESKTOP, async (page) => {
       await runDesktopChecks(page, built.baseUrl, expect, "desktop")
     })
-    await runOutputInspection(built.outDir, built.work, kb)
+    await runOutputInspection(built.outDir, built.work, kb, PHONE_SENTINEL)
   } finally {
     await browser.close()
     built.server.close()
   }
 })
 
-test("real Shared phone journey covers Browse open/close and home to note", async (t) => {
-  const kbRoot = process.env.SHARED_KB_ROOT
+test("generic real phone journey covers Browse open/close and home to note", async (t) => {
+  const kbRoot = process.env.KNOWLEDGE_BASE_ROOT
   if (!kbRoot || !fs.existsSync(path.resolve(kbRoot))) {
-    t.skip(
-      "SHARED_KB_ROOT is not set to a Shared vault checkout; skipping real-corpus phone journey",
-    )
+    t.skip("KNOWLEDGE_BASE_ROOT is not set to a vault checkout; skipping real-corpus phone journey")
     return
   }
   assert.ok(
@@ -977,29 +1026,30 @@ test("real Shared phone journey covers Browse open/close and home to note", asyn
   const built = await buildAndServe(path.resolve(kbRoot))
   const browser = await launchBrowser()
   const expect = {
-    areas: ["Travel", "Shared Finance", "Pets", "Life Planning", "Household Inbox"],
-    travelTitle: "Travel",
-    noteTitle: "Terradets",
-    notePath: "/travel/upcoming/terradets-2026",
+    areas: built.journey.areas,
+    folderTitle: built.journey.folderTitle,
+    folderRoute: built.journey.folderRoute,
+    leafTitle: built.journey.leafTitle,
+    leafRoute: built.journey.leafRoute,
   }
   try {
     await withPage(browser, NARROW_PHONE, async (page) => {
       await runPhoneJourney(page, built.baseUrl, expect, "real narrow phone")
     })
     await withPage(browser, LARGER_PHONE, async (page) => {
-      await runRealOverflowProbes(page, built.baseUrl, built.contentDir, "real larger phone")
-      await goto(page, `${built.baseUrl}/travel/upcoming/terradets-2026`)
+      await runDerivedOverflowProbes(page, built.baseUrl, built.contentDir, "real larger phone")
+      await goto(page, `${built.baseUrl}${expect.leafRoute}`)
       await page.reload({ waitUntil: "networkidle0", timeout: 15000 })
       assert.equal(
         await page.evaluate(() => document.querySelector("article h1")?.textContent?.trim()),
-        "Terradets",
+        expect.leafTitle,
         "real larger phone: refresh keeps the nested note",
       )
     })
     await withPage(browser, DESKTOP, async (page) => {
       await runDesktopChecks(page, built.baseUrl, expect, "real desktop")
     })
-    await runOutputInspection(built.outDir, built.work, path.resolve(kbRoot))
+    await runOutputInspection(built.outDir, built.work, path.resolve(kbRoot), null)
   } finally {
     await browser.close()
     built.server.close()

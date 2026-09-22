@@ -6,7 +6,7 @@
  * resolution, ambiguity failure, unresolved rendering, code literals, and
  * frontmatter preservation. No vault or production build required.
  *
- * Run with: node --test tests/wiki-aliases.test.mjs
+ * Run with: npm test -- tests/wiki-aliases.test.mjs
  */
 
 import assert from "node:assert/strict"

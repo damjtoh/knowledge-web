@@ -1,14 +1,14 @@
 /**
- * Shared reader static contract (no build, no vault required).
+ * Knowledge reader static contract (no build, no vault required).
  *
  * Guards the publication boundary at the source level:
  * - C1: the reader consumes only isolated staged content plus generated site
- *   identity; it declares no Knowledge Base, vault, or manifest input.
+ *   metadata; it declares no Knowledge Base, vault, or manifest input.
  * - C2: Fumadocs MDX/Core is the headless content source; no Fumadocs UI is
  *   used or depended on.
  * - C3: the Next.js config emits a serverless static export.
  *
- * Run with: node --test tests/shared-reader-contract.test.mjs
+ * Run with: npm test -- tests/knowledge-reader-contract.test.mjs
  */
 
 import assert from "node:assert/strict"
@@ -61,8 +61,8 @@ test("the reader declares no Knowledge Base, vault, or manifest input (C1)", () 
   }
 })
 
-test("the reader reads environment only for staged content and site identity (C1)", () => {
-  const allowed = new Set(["SHARED_CONTENT_DIR", "SHARED_IDENTITY_FILE"])
+test("the reader reads environment only for staged content and site metadata (C1)", () => {
+  const allowed = new Set(["READER_CONTENT_DIR", "READER_SITE_METADATA_FILE"])
   for (const { file, text } of readSources()) {
     for (const match of text.matchAll(/process\.env\.([A-Z_][A-Z0-9_]*)/g)) {
       assert.ok(allowed.has(match[1]), `${file} reads unexpected env var ${match[1]}`)
@@ -93,12 +93,12 @@ test("Next.js emits a serverless static export (C3)", () => {
 })
 
 test("docTitle reads the pipeline title with a filename fallback", () => {
-  assert.equal(docTitle({ title: "Terradets" }, ["travel", "x"]), "Terradets")
-  assert.equal(docTitle({ title: "  Shared Vault  " }, ["index"]), "Shared Vault")
-  assert.equal(docTitle({}, ["travel", "upcoming", "x"]), "x")
-  assert.equal(docTitle({ title: "" }, ["inbox"]), "inbox")
-  assert.equal(docTitle({ title: "   " }, ["inbox"]), "inbox")
-  assert.equal(docTitle(null, ["pets", "otto"]), "otto")
-  assert.equal(docTitle("Terradets", ["x"]), "x")
+  assert.equal(docTitle({ title: "Field Guide" }, ["notes", "x"]), "Field Guide")
+  assert.equal(docTitle({ title: "  Fixture Garden  " }, ["index"]), "Fixture Garden")
+  assert.equal(docTitle({}, ["notes", "upcoming", "x"]), "x")
+  assert.equal(docTitle({ title: "" }, ["standalone"]), "standalone")
+  assert.equal(docTitle({ title: "   " }, ["standalone"]), "standalone")
+  assert.equal(docTitle(null, ["orchard", "note-01"]), "note-01")
+  assert.equal(docTitle("Field Guide", ["x"]), "x")
   assert.equal(docTitle({}, []), "index")
 })
