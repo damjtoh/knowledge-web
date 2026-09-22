@@ -22,12 +22,14 @@ const READER_ROOT = path.join(PUBLISHER_ROOT, "reader")
 const READER_SOURCES = ["source.config.ts", "next.config.mjs"]
   .map((file) => path.join(READER_ROOT, file))
   .concat(
-    ["app", "lib"].flatMap((dir) =>
-      fs
-        .readdirSync(path.join(READER_ROOT, dir), { recursive: true })
+    ["app", "lib", "components"].flatMap((dir) => {
+      const abs = path.join(READER_ROOT, dir)
+      if (!fs.existsSync(abs)) return []
+      return fs
+        .readdirSync(abs, { recursive: true })
         .filter((entry) => /\.(ts|tsx|mjs|css)$/.test(entry))
-        .map((entry) => path.join(READER_ROOT, dir, entry)),
-    ),
+        .map((entry) => path.join(abs, entry))
+    }),
   )
 
 function readSources() {

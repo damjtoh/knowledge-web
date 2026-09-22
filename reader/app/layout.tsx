@@ -1,5 +1,8 @@
 import type { Metadata } from "next"
 import { getSiteIdentity, canonicalUrl } from "../lib/site"
+import { source } from "../lib/source"
+import { getAreaEntries } from "../lib/navigation"
+import Sidebar from "../components/sidebar"
 import "./globals.css"
 
 const identity = getSiteIdentity()
@@ -16,10 +19,12 @@ export const metadata: Metadata = {
 }
 
 /**
- * Minimal reader shell: site header, reading column, footer.
- * No Fumadocs UI is used anywhere in this tree.
+ * Reader shell: site header, persistent desktop area sidebar, reading
+ * column, footer. Sidebar labels and routes come from staged area pages;
+ * active state comes from the URL. No Fumadocs UI is used anywhere.
  */
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const areas = getAreaEntries((slugs) => source.getPage(slugs) as never)
   return (
     <html lang="en">
       <body>
@@ -28,7 +33,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             {identity.title}
           </a>
         </header>
-        <main className="reader-main">{children}</main>
+        <div className="reader-shell">
+          <aside className="reader-sidebar">
+            <Sidebar areas={areas} />
+          </aside>
+          <main className="reader-main">{children}</main>
+        </div>
         <footer className="reader-footer">
           <span>{identity.title}</span>
         </footer>

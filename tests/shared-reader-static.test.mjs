@@ -222,16 +222,24 @@ test("real Shared corpus builds a complete static export with a readable Travel 
     "second real title-based body wikilink resolves",
   )
   const home = readOut(outDir, "index.html")
-  assert.match(
-    home,
-    /<a href="\/travel" class="internal"/,
-    "synthetic landing nested-index/title link resolves",
-  )
-  assert.match(
-    home,
-    /<a href="\/inbox" class="internal"/,
-    "synthetic landing filename/path link resolves",
-  )
+  // Item 03 curated Shared home: exactly the five selected areas with
+  // staged labels/routes, no unselected area or sentinel. The synthetic
+  // landing body is replaced; wikilink resolution is still covered by the
+  // runway assertions above.
+  for (const [href, label] of [
+    ["/travel", "Travel"],
+    ["/finance", "Shared Finance"],
+    ["/pets", "Pets"],
+    ["/life-planning", "Life Planning"],
+    ["/inbox", "Household Inbox"],
+  ]) {
+    assert.match(
+      home,
+      new RegExp(`<a href="${href}"[^>]*>${label}</a>`),
+      `Shared home links ${label} at ${href}`,
+    )
+  }
+  assert.ok(!/\/mica["']/.test(home), "Shared home excludes the unselected mica area")
 
   // C7: generated Shared identity appears in document metadata.
   const landing = readOut(outDir, "index.html")

@@ -15,15 +15,94 @@
   color: inherit;
 }
 
-.reader-main {
+.reader-shell {
+  display: flex;
+  gap: 2rem;
+  max-width: 1100px;
+  margin: 0 auto;
   padding: 1.5rem 1rem 3rem;
+  min-width: 0;
+}
+
+.reader-sidebar {
+  width: 230px;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.reader-sidebar-nav ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.reader-sidebar-nav a {
+  display: block;
+  padding: 0.65rem 0.75rem;
+  min-height: 44px;
+  line-height: 1.4;
+  text-decoration: none;
+  color: inherit;
+  border-radius: 6px;
+  overflow-wrap: break-word;
+}
+
+.reader-sidebar-nav a:hover {
+  background: #f2f2f2;
+}
+
+.reader-sidebar-nav a.is-active {
+  font-weight: 700;
+  background: #ececec;
+}
+
+.reader-main {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+}
+
+.reader-breadcrumbs {
+  margin-bottom: 1rem;
+  min-width: 0;
+}
+
+.reader-breadcrumbs ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.5rem;
+  font-size: 0.9rem;
+  color: #555;
+}
+
+.reader-breadcrumbs li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.reader-breadcrumbs li + li::before {
+  content: "›";
+  color: #888;
+}
+
+.reader-breadcrumbs a {
+  color: inherit;
 }
 
 .reader-article {
   max-width: 68ch;
-  margin: 0 auto;
+  margin: 0;
   line-height: 1.65;
   overflow-wrap: break-word;
+  min-width: 0;
 }
 
 .reader-article h1 {
@@ -70,9 +149,70 @@
   margin-right: 0.4rem;
 }
 
+.reader-area-list {
+  list-style: none;
+  margin: 1.5rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.reader-area-list a {
+  display: block;
+  padding: 0.75rem 1rem;
+  min-height: 44px;
+  line-height: 1.4;
+  font-weight: 600;
+  font-size: 1.05rem;
+  text-decoration: none;
+  color: inherit;
+  border: 1px solid #e2e2e2;
+  border-radius: 8px;
+}
+
+.reader-area-list a:hover {
+  background: #f6f6f6;
+}
+
+.reader-group {
+  margin-top: 2.5rem;
+}
+
+.reader-group-list {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.reader-group-list a {
+  display: block;
+  padding: 0.65rem 0.25rem;
+  min-height: 44px;
+  line-height: 1.4;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid #005fcc;
+  outline-offset: 2px;
+}
+
 .reader-footer {
   border-top: 1px solid #e2e2e2;
   padding: 1rem;
   color: #666;
   font-size: 0.85rem;
+}
+
+@media (max-width: 899px) {
+  .reader-shell {
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .reader-sidebar {
+    width: auto;
+  }
 }
