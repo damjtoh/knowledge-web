@@ -20,9 +20,12 @@ export interface SiteMetadata {
  */
 export function getSiteMetadata(): SiteMetadata {
   const configured = process.env.READER_SITE_METADATA_FILE ?? "../site-identity.json"
+  // Relative defaults resolve from the build working directory (the reader
+  // package root). import.meta.dirname is unavailable inside bundled server
+  // chunks, so it must not be used here.
   const file = path.isAbsolute(configured)
     ? configured
-    : path.resolve(import.meta.dirname, "..", configured)
+    : path.resolve(process.cwd(), configured)
   const parsed = JSON.parse(fs.readFileSync(file, "utf8")) as unknown
   if (typeof parsed !== "object" || parsed === null) {
     throw new Error(`site metadata at ${file} must be a JSON object`)
