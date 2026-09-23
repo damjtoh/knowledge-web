@@ -1,0 +1,51 @@
+/**
+ * Declarations for the generic static search module (`search.mjs`).
+ *
+ * The implementation stays dependency-light plain JavaScript so the
+ * build script can load it under plain Node; these types keep the
+ * Next.js typecheck and editors honest about the small interface the
+ * Search dialog will consume.
+ */
+
+export interface StructuredSegment {
+  content: string
+  heading?: string
+}
+
+export interface StructuredHeading {
+  id: string
+  content: string
+}
+
+export interface StructuredPageData {
+  contents: StructuredSegment[]
+  headings: StructuredHeading[]
+}
+
+/** One extracted staged page: display title, route, structured text. */
+export interface SearchPageInput {
+  title: string
+  url: string
+  structuredData: StructuredPageData
+}
+
+/** One ranked hit: page title, location, contextual excerpt. */
+export interface SearchHit {
+  title: string
+  url: string
+  excerpt: string
+}
+
+/** Serializable index data as produced by `buildSearchIndex`. */
+export type SearchIndexData = Record<string, unknown>
+
+/** Opaque reconstructed index; pass it back to `searchNotes`. */
+export type SearchIndex = object
+
+export function buildSearchIndex(pages: SearchPageInput[]): SearchIndexData
+export function loadSearchIndex(data: unknown): SearchIndex
+export function searchNotes(
+  index: SearchIndex,
+  query: string,
+  limit?: number,
+): SearchHit[]

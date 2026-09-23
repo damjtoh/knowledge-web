@@ -24,6 +24,7 @@
 import assert from "node:assert/strict"
 import { execFile } from "node:child_process"
 import fs from "node:fs"
+import http from "node:http"
 import os from "node:os"
 import path from "node:path"
 import { promisify } from "node:util"
@@ -106,11 +107,19 @@ function writeFile(root, rel, content) {
  * - guide.md covers tables, tasks, external links/images, inline and fenced
  *   code, resolved and unresolved wikilinks, aliases, and fragments.
  * - A long-title note and wide table/code/image cover wrapping probes.
+ * - Search probes: a published top-level page omitted from `navigation`
+ *   (hidden from the tree but searchable), a title/body ranking pair with
+ *   shared wording, and tokens that appear only in fenced code or only in
+ *   frontmatter (never searchable).
  */
 const LONG_TITLE =
   "An extremely long packing checklist title that keeps going SupercalifragilisticexpialidociousSupercalifragilisticexpialidocious"
 const LONG_SLUG = "long-packing-checklist-title-that-keeps-going-for-wrapping-probes"
 const UNSELECTED_SENTINEL = "FIXTURE_UNSELECTED_SENTINEL_7Q2X"
+/** Appears only inside a fenced code block; must never become searchable. */
+const CODE_ONLY_TOKEN = "CODE_ONLY_SENTINEL_K7Q2"
+/** Appears only as a frontmatter value; must never become searchable. */
+const FRONTMATTER_ONLY_TOKEN = "FRONTMATTER_ONLY_SENTINEL_M3P8"
 
 function makeNeutralKb() {
   const kb = tmpdir("kb-neutral")
@@ -160,6 +169,7 @@ function makeNeutralKb() {
       "",
       "```js",
       "const alias = '[[Field Guide]]';",
+      `const codeOnly = "${CODE_ONLY_TOKEN}";`,
       "const veryLongLineForOverflowChecks = 'abcdefghijklmnopqrstuvwxyz-abcdefghijklmnopqrstuvwxyz-1234567890-1234567890';",
       "```",
       "",
@@ -209,6 +219,49 @@ function makeNeutralKb() {
     writeFile(kb, `orchard/note-${n}.md`, `# Orchard Note ${n}\n\nFlat orchard note ${n}.\n`)
   }
   writeFile(kb, "standalone.md", "# Lone Pine\n\nStandalone selected file at the root.\n")
+  writeFile(
+    kb,
+    "field-notes.md",
+    [
+      "---",
+      'title: "Sunlit Atrium Log"',
+      `internalRef: "${FRONTMATTER_ONLY_TOKEN}"`,
+      "---",
+      "",
+      "# Sunlit Atrium Log",
+      "",
+      "The sunlit atrium gathers morning light. Gardeners rest beside the stone basin and record quiet notes.",
+      "",
+    ].join("\n"),
+  )
+  writeFile(
+    kb,
+    "notes/harbor-ledger.md",
+    [
+      "---",
+      'title: "Harbor Ledger"',
+      "---",
+      "",
+      "# Harbor Ledger",
+      "",
+      "A quiet ledger kept near the harbor wall. Entries record rope, tide, and lamp oil.",
+      "",
+    ].join("\n"),
+  )
+  writeFile(
+    kb,
+    "notes/inland-journal.md",
+    [
+      "---",
+      'title: "Inland Journal"',
+      "---",
+      "",
+      "# Inland Journal",
+      "",
+      "Traders compare the inland journal against the Harbor Ledger for the season.",
+      "",
+    ].join("\n"),
+  )
   writeFile(kb, "assets/photo.png", "not-a-real-png")
   writeFile(kb, "assets/doc.pdf", "not-a-real-pdf")
   writeFile(kb, "unselected.md", `# Unselected\n\n${UNSELECTED_SENTINEL} must never appear.\n`)
@@ -224,6 +277,7 @@ function makeNeutralKb() {
       "  - notes",
       "  - orchard",
       "  - standalone.md",
+      "  - field-notes.md",
       "  - assets",
       "navigation:",
       "  - standalone.md",
@@ -285,6 +339,51 @@ function assertAbsentEverywhere(outDir, needle, label) {
 
 function readMetadata(identityFile) {
   return JSON.parse(fs.readFileSync(identityFile, "utf8"))
+}
+
+/** Minimal nginx-style static server: try $uri, then $uri.html. */
+function createStaticServer(dir) {
+  const mime = {
+    ".html": "text/html",
+    ".css": "text/css",
+    ".js": "text/javascript",
+    ".json": "application/json",
+    ".txt": "text/plain",
+  }
+  return http.createServer((req, res) => {
+    try {
+      const urlPath = decodeURIComponent((req.url || "/").split("?")[0])
+      const base = path.join(dir, urlPath === "/" ? "index.html" : urlPath)
+      const candidates = [base, `${base}.html`, path.join(base, "index.html")]
+      const filePath = candidates.find(
+        (candidate) => fs.existsSync(candidate) && fs.statSync(candidate).isFile(),
+      )
+      if (!filePath) {
+        res.writeHead(404)
+        res.end("not found")
+        return
+      }
+      res.writeHead(200, {
+        "Content-Type": mime[path.extname(filePath).toLowerCase()] || "application/octet-stream",
+      })
+      fs.createReadStream(filePath).pipe(res)
+    } catch (error) {
+      res.writeHead(500)
+      res.end(String(error))
+    }
+  })
+}
+
+async function serveOut(dir) {
+  const server = createStaticServer(dir)
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve))
+  const addr = server.address()
+  return { server, baseUrl: `http://${addr.address}:${addr.port}` }
+}
+
+/** Search excerpts highlight matches with <mark>; strip it for text checks. */
+function stripSearchMarks(value) {
+  return String(value ?? "").replace(/<\/?mark>/g, "")
 }
 
 /**
@@ -375,8 +474,8 @@ test("neutral synthetic corpus builds a complete static export with authored and
   const stagedMarkdown = listFilesRecursive(contentDir).filter((rel) => /\.md$/i.test(rel))
   assert.equal(
     stagedMarkdown.length,
-    21,
-    `expected 21 staged Markdown pages (got ${stagedMarkdown.length})`,
+    24,
+    `expected 24 staged Markdown pages (got ${stagedMarkdown.length})`,
   )
 
   cleanReaderArtifacts()
@@ -586,6 +685,7 @@ test("neutral synthetic corpus builds a complete static export with authored and
     "cn",
     "fumadocs-core",
     "fumadocs-mdx",
+    "minisearch",
     "next",
     "react",
     "react-dom",
@@ -605,6 +705,161 @@ test("neutral synthetic corpus builds a complete static export with authored and
     !emitted.some((rel) => /sw\.js$|service-worker|workbox|pagefind/i.test(rel)),
     "static output carries no service worker or search index",
   )
+
+  // Build-time full-text search index over staged content only: the export
+  // carries one static JSON file, with no runtime service or dynamic route.
+  const searchIndexRel = "search-index.json"
+  assert.ok(
+    fs.existsSync(path.join(outDir, searchIndexRel)),
+    "static export carries a build-time search index",
+  )
+  const searchIndexRaw = readOut(outDir, searchIndexRel)
+  JSON.parse(searchIndexRaw) // the static client must be able to parse it
+
+  // Coverage: titles of staged pages, including the published page omitted
+  // from navigation; plus heading and body samples.
+  for (const title of [
+    "Garden Home",
+    "Garden Plots",
+    "Alpha Bed",
+    "Beta Bed",
+    "Field Guide",
+    "Plain Meadow",
+    "Inner Leaf",
+    "Lone Pine",
+    "Orchard Note 01",
+    "Orchard Note 12",
+    "Sunlit Atrium Log",
+    "Harbor Ledger",
+    "Inland Journal",
+    LONG_TITLE,
+  ]) {
+    assert.ok(
+      searchIndexRaw.includes(title),
+      `search index covers staged title: ${title}`,
+    )
+  }
+  for (const token of [
+    "Details",
+    "Cultivated beds",
+    "Flat orchard note",
+    "stone basin",
+  ]) {
+    assert.ok(
+      searchIndexRaw.includes(token),
+      `search index covers heading/body text: ${token}`,
+    )
+  }
+
+  // Exclusions: fenced code, frontmatter-only metadata, the unselected
+  // sentinel, and binary content never enter the index.
+  for (const [label, token] of [
+    ["fenced code", CODE_ONLY_TOKEN],
+    ["frontmatter metadata", FRONTMATTER_ONLY_TOKEN],
+    ["unselected sentinel", UNSELECTED_SENTINEL],
+    ["staged binary", "not-a-real-png"],
+  ]) {
+    assert.ok(!searchIndexRaw.includes(token), `search index excludes ${label}`)
+  }
+
+  // The published page omitted from navigation stays out of presentation.
+  assert.ok(
+    !home.includes("Sunlit Atrium Log"),
+    "hidden-navigation page stays out of the home listing",
+  )
+
+  // Engine behavior through the reader's own search module against the
+  // served export: the same load+search path the Search dialog will use.
+  const searchModule = await import(path.join(READER_ROOT, "lib", "search.mjs"))
+  const { server, baseUrl } = await serveOut(outDir)
+  try {
+    const served = await fetch(`${baseUrl}/${searchIndexRel}`)
+    assert.ok(served.ok, "search index is served as static JSON")
+    const index = searchModule.loadSearchIndex(await served.json())
+
+    // Title matches rank above weaker body matches; every result carries
+    // a title, a location, and an excerpt tied to the matching text.
+    const harbor = searchModule.searchNotes(index, "harbor")
+    assert.ok(harbor.length >= 2, "title and body matches both return")
+    assert.equal(
+      harbor[0].url,
+      "/notes/harbor-ledger",
+      "title match ranks above body match",
+    )
+    assert.ok(
+      harbor.some((hit) => hit.url.startsWith("/notes/inland-journal")),
+      "weaker body match is returned",
+    )
+    for (const hit of harbor) {
+      assert.ok(
+        typeof hit.title === "string" && hit.title.length > 0,
+        "each result carries a title",
+      )
+      assert.ok(
+        typeof hit.url === "string" && hit.url.startsWith("/"),
+        "each result carries a location",
+      )
+      assert.ok(
+        typeof hit.excerpt === "string" && hit.excerpt.length > 0,
+        "each result carries an excerpt",
+      )
+      assert.ok(
+        stripSearchMarks(hit.excerpt).toLowerCase().includes("harbor"),
+        "each result excerpt ties to the matching text",
+      )
+    }
+    assert.ok(
+      stripSearchMarks(harbor[0].excerpt).includes("Harbor Ledger"),
+      "top result carries the page title",
+    )
+
+    // Partial words match.
+    const partial = searchModule.searchNotes(index, "sunl")
+    assert.ok(
+      partial.some((hit) => hit.url.startsWith("/field-notes")),
+      "partial words match",
+    )
+
+    // One small typo matches.
+    const typo = searchModule.searchNotes(index, "sunlti")
+    assert.ok(
+      typo.some((hit) => hit.url.startsWith("/field-notes")),
+      "one small typo matches",
+    )
+
+    // The published page omitted from navigation is searchable; its body
+    // excerpt ties to the match.
+    const hidden = searchModule.searchNotes(index, "sunlit")
+    assert.ok(hidden.length > 0, "hidden-navigation page is searchable")
+    assert.ok(
+      hidden.every((hit) => hit.url.startsWith("/field-notes")),
+      "hidden query returns only that page",
+    )
+    const basin = searchModule.searchNotes(index, "basin")
+    assert.ok(
+      basin.some(
+        (hit) =>
+          hit.url.startsWith("/field-notes") &&
+          stripSearchMarks(hit.excerpt).toLowerCase().includes("basin"),
+      ),
+      "body excerpt ties to the matching text",
+    )
+
+    // Excluded text never surfaces in search output.
+    for (const token of [
+      CODE_ONLY_TOKEN,
+      FRONTMATTER_ONLY_TOKEN,
+      UNSELECTED_SENTINEL,
+    ]) {
+      assert.deepEqual(
+        searchModule.searchNotes(index, token),
+        [],
+        "excluded text has no search output",
+      )
+    }
+  } finally {
+    await new Promise((resolve) => server.close(resolve))
+  }
 
   // Quartz and its rollback build stay available and unchanged. Root
   // package files are Publisher machinery (Step 7 reader scripts live
@@ -674,6 +929,12 @@ test("generic real corpus builds a complete static export from staged content on
     emittedContentPages,
     expectedPages,
     "emitted pages match staged Markdown plus virtual folders exactly",
+  )
+
+  // The generic build path inherits the search index without new orchestration.
+  assert.ok(
+    fs.existsSync(path.join(outDir, "search-index.json")),
+    "generic build also emits the search index",
   )
 
   // Canonical metadata derives from generated metadata, not fixed subjects.

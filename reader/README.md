@@ -125,6 +125,18 @@ generated metadata (`READER_SITE_METADATA_FILE`). `reader/.source/`
 (generated content modules), `reader/.next/`, and `reader/out/` are
 disposable build artifacts and stay untracked.
 
+### Search index (build-time, static)
+
+`npm run build` also emits `out/search-index.json`: a full-text index
+over every staged Markdown page (titles, headings, readable body text),
+built with MiniSearch and served as static JSON. MiniSearch is the
+spec-sanctioned fallback: the bundled engines could not combine
+partial-word and typo-tolerant matching in one query without custom
+search logic. Fenced code blocks, frontmatter metadata, and
+non-Markdown assets never enter the index. Pages omitted from the
+`navigation` presentation list stay searchable. No API route or server
+is involved.
+
 ### Quartz rollback (separate)
 
 Quartz remains vendored for rollback only. It is not part of the

@@ -1010,6 +1010,7 @@ async function runOutputInspection(outDir, workDir, kbRoot, sentinel) {
     "cn",
     "fumadocs-core",
     "fumadocs-mdx",
+    "minisearch",
     "next",
     "react",
     "react-dom",
