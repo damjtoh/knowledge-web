@@ -74,15 +74,18 @@ export default function ReaderChrome({
   const childFolders = activeRoot ? activeRoot.children.filter((child) => child.isFolder) : []
 
   return (
-    <div className="reader-chrome" data-browse={browseOpen ? "open" : "closed"}>
-      <header className="reader-header">
+    <div
+      className="reader-chrome min-h-screen bg-white text-neutral-900 antialiased"
+      data-browse={browseOpen ? "open" : "closed"}
+    >
+      <header className="reader-header bg-white">
         <a className="reader-home" href="/">
           {title}
         </a>
         <button
           ref={toggleRef}
           type="button"
-          className="reader-browse-toggle"
+          className="reader-browse-toggle shrink-0"
           aria-expanded={browseOpen}
           aria-controls="reader-browse-panel"
           onClick={() => setBrowseOpen((open) => !open)}
@@ -91,7 +94,10 @@ export default function ReaderChrome({
         </button>
       </header>
       <div className="reader-shell">
-        <aside id="reader-browse-panel" className="reader-sidebar">
+        <aside
+          id="reader-browse-panel"
+          className="reader-sidebar rounded-lg bg-white"
+        >
           <Sidebar roots={roots} />
           {activeRoot && (directNotes.length > 0 || childFolders.length > 0) ? (
             <nav aria-label={`${activeRoot.title} sections`} className="reader-nav-groups">

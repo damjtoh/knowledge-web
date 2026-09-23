@@ -48,7 +48,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const roots = navigation.roots.map(toClientNode)
   return (
     <html lang="en">
-      <body>
+      <body className="bg-white text-neutral-900 antialiased">
         <ReaderChrome title={metadata.title} roots={roots}>
           {children}
         </ReaderChrome>

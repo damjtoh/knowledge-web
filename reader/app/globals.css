@@ -1,8 +1,18 @@
+@import "tailwindcss";
+
 /**
- * Readable reader styles: comfortable measure, clear heading hierarchy,
- * contained wide elements (no page-level horizontal scroll from one table,
- * code block, or image). Phone layouts hide the permanent sidebar behind a
- * compact Browse control and keep note content primary.
+ * Calm generic grayscale reader.
+ *
+ * Tailwind CSS owns layout utilities used in the reader shell components.
+ * This stylesheet keeps the semantic reader classes the static and browser
+ * checks rely on (reader-header, reader-sidebar-nav, reader-browse-toggle,
+ * reader-article, and overflow containment) plus Markdown element styling
+ * that utilities cannot express alone.
+ *
+ * Palette is neutral grayscale only: white surfaces, neutral-50/100 washes,
+ * neutral-200/300 borders, neutral-500/600 muted text, neutral-900 body text.
+ * No Knowledge Base name, subject, route, or accent color appears here;
+ * site identity comes from generated metadata at build time.
  */
 
 html,
@@ -12,6 +22,19 @@ body {
 
 body {
   margin: 0;
+  background: #fff;
+  color: #171717;
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    Helvetica,
+    Arial,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 .reader-header {
@@ -19,7 +42,8 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  border-bottom: 1px solid #e2e2e2;
+  border-bottom: 1px solid #e5e5e5;
+  background: #fff;
   padding: 0.75rem 1rem;
 }
 
@@ -29,9 +53,17 @@ body {
   min-height: 44px;
   min-width: 0;
   font-weight: 700;
+  font-size: 1rem;
+  letter-spacing: -0.01em;
   text-decoration: none;
-  color: inherit;
+  color: #171717;
   overflow-wrap: anywhere;
+}
+
+.reader-home:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: #a3a3a3;
 }
 
 /* Compact Browse control: phone-only. Desktop keeps the sidebar. */
@@ -42,15 +74,15 @@ body {
   padding: 0.5rem 1rem;
   font: inherit;
   font-weight: 600;
-  color: inherit;
+  color: #171717;
   background: #fff;
-  border: 1px solid #cfcfcf;
+  border: 1px solid #d4d4d4;
   border-radius: 8px;
   cursor: pointer;
 }
 
 .reader-browse-toggle:hover {
-  background: #f2f2f2;
+  background: #f5f5f5;
 }
 
 .reader-shell {
@@ -82,33 +114,48 @@ body {
   padding: 0.65rem 0.75rem;
   min-height: 44px;
   line-height: 1.4;
+  font-size: 0.95rem;
   text-decoration: none;
-  color: inherit;
+  color: #404040;
   border-radius: 6px;
+  border-left: 2px solid transparent;
   overflow-wrap: break-word;
 }
 
 .reader-sidebar-nav a:hover {
-  background: #f2f2f2;
+  background: #f5f5f5;
+  color: #171717;
 }
 
 .reader-sidebar-nav a.is-active {
   font-weight: 700;
-  background: #ececec;
+  color: #171717;
+  background: #f5f5f5;
+  border-left-color: #171717;
 }
 
 /* Generic folder groups inside the navigation panel reuse the same
    grouped links as folder pages: one navigation model. */
 .reader-nav-groups {
   margin-top: 1.5rem;
+  border-top: 1px solid #e5e5e5;
+  padding-top: 1rem;
 }
 
 .reader-nav-group {
   margin-top: 1.5rem;
 }
 
+.reader-nav-group:first-child {
+  margin-top: 0;
+}
+
 .reader-nav-group h2 {
-  font-size: 0.95rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #737373;
   margin: 0 0 0.25rem;
 }
 
@@ -134,7 +181,7 @@ body {
   flex-wrap: wrap;
   gap: 0.25rem 0.5rem;
   font-size: 0.9rem;
-  color: #555;
+  color: #525252;
 }
 
 .reader-breadcrumbs li {
@@ -148,20 +195,30 @@ body {
 
 .reader-breadcrumbs li + li::before {
   content: "›";
-  color: #888;
+  color: #a3a3a3;
 }
 
 .reader-breadcrumbs a {
   display: inline-flex;
   align-items: center;
   min-height: 44px;
-  color: inherit;
+  color: #404040;
+  text-decoration: none;
+}
+
+.reader-breadcrumbs a:hover {
+  color: #171717;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: #a3a3a3;
 }
 
 .reader-article {
   max-width: 68ch;
   margin: 0;
   line-height: 1.65;
+  font-size: 1rem;
+  color: #262626;
   overflow-wrap: break-word;
   min-width: 0;
 }
@@ -169,18 +226,26 @@ body {
 .reader-article h1 {
   font-size: 1.75rem;
   line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: #171717;
+  margin: 0 0 0.75rem;
   overflow-wrap: anywhere;
 }
 
 .reader-article h2,
 .reader-article h3 {
   line-height: 1.35;
+  letter-spacing: -0.01em;
+  color: #171717;
   margin-top: 2em;
+  margin-bottom: 0.5em;
   overflow-wrap: anywhere;
 }
 
 .reader-article h2 {
   font-size: 1.3rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid #e5e5e5;
 }
 
 .reader-article h3 {
@@ -188,13 +253,61 @@ body {
 }
 
 .reader-article p,
-.reader-article ul,
-.reader-article ol {
+.reader-article ul:not(.reader-area-list):not(.reader-group-list),
+.reader-article ol:not(.reader-area-list):not(.reader-group-list) {
   margin-block: 1em;
 }
 
-.reader-article li + li {
+/* Tailwind preflight removes list markers and indent globally. Restore
+   them for Markdown body lists only. Area and group navigation lists live
+   inside the article on home and folder pages, so they are excluded here
+   and re-asserted marker-free below with higher specificity. */
+.reader-article ul:not(.reader-area-list):not(.reader-group-list) {
+  list-style: disc outside;
+  padding-left: 1.5rem;
+}
+
+.reader-article ol:not(.reader-area-list):not(.reader-group-list) {
+  list-style: decimal outside;
+  padding-left: 1.5rem;
+}
+
+.reader-article ul.reader-area-list,
+.reader-article ul.reader-group-list,
+.reader-article ol.reader-area-list,
+.reader-article ol.reader-group-list {
+  list-style: none;
+  padding-left: 0;
+}
+
+.reader-article li:has(> input[type="checkbox"]) {
+  list-style: none;
+}
+
+.reader-article ul:not(.reader-area-list):not(.reader-group-list) li + li,
+.reader-article ol:not(.reader-area-list):not(.reader-group-list) li + li {
   margin-top: 0.25rem;
+}
+
+/* Article links stay clearly identifiable: dark text with a visible
+   underline offset. Navigation links above stay plain with surface
+   states, so reading and browsing areas remain distinct. */
+.reader-article a {
+  color: #171717;
+  text-decoration: underline;
+  text-decoration-color: #a3a3a3;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+
+.reader-article a:hover {
+  background: #f5f5f5;
+  text-decoration-color: #525252;
+}
+
+.reader-article a:visited {
+  color: #404040;
 }
 
 .reader-article table {
@@ -203,6 +316,13 @@ body {
   max-width: 100%;
   overflow-x: auto;
   border-collapse: collapse;
+  font-size: 0.925rem;
+}
+
+.reader-article thead th {
+  background: #fafafa;
+  font-weight: 700;
+  color: #171717;
 }
 
 .reader-article th,
@@ -210,6 +330,7 @@ body {
   border: 1px solid #d4d4d4;
   padding: 0.4rem 0.6rem;
   text-align: left;
+  vertical-align: top;
 }
 
 .reader-article pre {
@@ -217,7 +338,10 @@ body {
   overflow-x: auto;
   padding: 0.75rem;
   background: #f5f5f5;
+  border: 1px solid #e5e5e5;
   border-radius: 6px;
+  font-size: 0.875rem;
+  line-height: 1.55;
 }
 
 .reader-article code {
@@ -225,15 +349,44 @@ body {
   overflow-wrap: anywhere;
 }
 
+.reader-article p code,
+.reader-article li code {
+  background: #f5f5f5;
+  border: 1px solid #e5e5e5;
+  border-radius: 4px;
+  padding: 0.1em 0.3em;
+}
+
+.reader-article pre code {
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+
 .reader-article img {
   max-width: 100%;
   height: auto;
+  border-radius: 6px;
+}
+
+.reader-article blockquote {
+  margin: 1.5em 0;
+  padding: 0.25rem 0 0.25rem 1rem;
+  border-left: 3px solid #d4d4d4;
+  color: #525252;
+}
+
+.reader-article hr {
+  border: 0;
+  border-top: 1px solid #e5e5e5;
+  margin: 2rem 0;
 }
 
 .reader-article input[type="checkbox"] {
   width: 1.1rem;
   height: 1.1rem;
   margin-right: 0.4rem;
+  accent-color: #404040;
 }
 
 .reader-area-list {
@@ -253,18 +406,22 @@ body {
   font-weight: 600;
   font-size: 1.05rem;
   text-decoration: none;
-  color: inherit;
-  border: 1px solid #e2e2e2;
+  color: #171717;
+  background: #fff;
+  border: 1px solid #e5e5e5;
   border-radius: 8px;
   overflow-wrap: anywhere;
 }
 
 .reader-area-list a:hover {
-  background: #f6f6f6;
+  background: #f5f5f5;
+  border-color: #d4d4d4;
 }
 
 .reader-group {
   margin-top: 2.5rem;
+  border-top: 1px solid #e5e5e5;
+  padding-top: 1.25rem;
 }
 
 .reader-group-list {
@@ -281,19 +438,29 @@ body {
   padding: 0.75rem 0.25rem;
   min-height: 44px;
   line-height: 1.4;
-  color: inherit;
+  color: #404040;
+  text-decoration: none;
+  border-bottom: 1px solid #f5f5f5;
   overflow-wrap: anywhere;
 }
 
+.reader-group-list a:hover {
+  color: #171717;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: #a3a3a3;
+}
+
 :focus-visible {
-  outline: 2px solid #005fcc;
+  outline: 2px solid #171717;
   outline-offset: 2px;
 }
 
 .reader-footer {
-  border-top: 1px solid #e2e2e2;
+  border-top: 1px solid #e5e5e5;
+  background: #fafafa;
   padding: 1rem;
-  color: #666;
+  color: #525252;
   font-size: 0.85rem;
 }
 
