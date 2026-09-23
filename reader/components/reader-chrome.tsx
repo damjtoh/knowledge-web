@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { usePathname } from "next/navigation"
+import AppearanceControl from "./appearance-control"
 import Sidebar from "./sidebar"
 import type { NavigationNode } from "../lib/navigation"
 import { findActiveRoot } from "../lib/navigation"
@@ -75,28 +76,31 @@ export default function ReaderChrome({
 
   return (
     <div
-      className="reader-chrome min-h-screen bg-white text-neutral-900 antialiased"
+      className="reader-chrome min-h-screen bg-white text-neutral-900 antialiased dark:bg-neutral-950 dark:text-neutral-100"
       data-browse={browseOpen ? "open" : "closed"}
     >
-      <header className="reader-header bg-white">
+      <header className="reader-header bg-white dark:bg-neutral-950">
         <a className="reader-home" href="/">
           {title}
         </a>
-        <button
-          ref={toggleRef}
-          type="button"
-          className="reader-browse-toggle shrink-0"
-          aria-expanded={browseOpen}
-          aria-controls="reader-browse-panel"
-          onClick={() => setBrowseOpen((open) => !open)}
-        >
-          Browse
-        </button>
+        <div className="reader-header-actions">
+          <AppearanceControl />
+          <button
+            ref={toggleRef}
+            type="button"
+            className="reader-browse-toggle shrink-0"
+            aria-expanded={browseOpen}
+            aria-controls="reader-browse-panel"
+            onClick={() => setBrowseOpen((open) => !open)}
+          >
+            Browse
+          </button>
+        </div>
       </header>
       <div className="reader-shell">
         <aside
           id="reader-browse-panel"
-          className="reader-sidebar rounded-lg bg-white"
+          className="reader-sidebar rounded-lg bg-white dark:bg-neutral-950"
         >
           <Sidebar roots={roots} />
           {activeRoot && (directNotes.length > 0 || childFolders.length > 0) ? (

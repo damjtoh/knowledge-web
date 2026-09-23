@@ -632,11 +632,27 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
       document.querySelector(`.reader-breadcrumbs a[href="${href}"]`)?.click()
     }, crumbHref),
   ])
+  // Timing-only stabilization: history traversals between static pages
+  // can resolve while already idle, so each Back awaits its observable
+  // route before the next traversal. Same three traversals, same expected
+  // URLs, no fixed sleeps.
   await page.goBack({ waitUntil: "networkidle0", timeout: 15000 })
+  await page.waitForFunction(
+    (route) => window.location.href.includes(route),
+    { timeout: 15000 },
+    expect.leafRoute,
+  )
   assert.ok(page.url().includes(expect.leafRoute), `${label}: Back returns to the note`)
   await page.goBack({ waitUntil: "networkidle0", timeout: 15000 })
+  await page.waitForFunction(
+    (route) =>
+      window.location.pathname === route || window.location.pathname === `${route}/`,
+    { timeout: 15000 },
+    expect.folderRoute,
+  )
   assert.ok(page.url().includes(expect.folderRoute), `${label}: Back returns to the folder`)
   await page.goBack({ waitUntil: "networkidle0", timeout: 15000 })
+  await page.waitForFunction(() => /\/$/.test(window.location.href), { timeout: 15000 })
   assert.match(page.url(), /\/$/, `${label}: Back returns home without a parallel stack`)
 }
 
@@ -925,12 +941,16 @@ async function runOutputInspection(outDir, workDir, kbRoot, sentinel) {
 
   const pkg = JSON.parse(fs.readFileSync(path.join(READER_ROOT, "package.json"), "utf8"))
   const allowedDeps = new Set([
+    "@base-ui/react",
     "@flowershow/remark-wiki-link",
+    "class-variance-authority",
+    "cn",
     "fumadocs-core",
     "fumadocs-mdx",
     "next",
     "react",
     "react-dom",
+    "tw-animate-css",
   ])
   for (const name of Object.keys(pkg.dependencies || {})) {
     assert.ok(allowedDeps.has(name), `reader runtime dependency ${name} is expected`)

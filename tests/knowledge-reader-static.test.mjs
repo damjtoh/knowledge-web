@@ -568,12 +568,16 @@ test("neutral synthetic corpus builds a complete static export with authored and
   // Static and read-only runtime: fixed deps, static export, no API routes.
   const pkg = JSON.parse(fs.readFileSync(path.join(READER_ROOT, "package.json"), "utf8"))
   const allowedDeps = new Set([
+    "@base-ui/react",
     "@flowershow/remark-wiki-link",
+    "class-variance-authority",
+    "cn",
     "fumadocs-core",
     "fumadocs-mdx",
     "next",
     "react",
     "react-dom",
+    "tw-animate-css",
   ])
   for (const name of Object.keys(pkg.dependencies || {})) {
     assert.ok(allowedDeps.has(name), `reader runtime dependency ${name} is expected`)
