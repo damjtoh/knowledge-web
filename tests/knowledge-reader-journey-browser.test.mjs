@@ -4,7 +4,9 @@
  * Production static export + nginx-style server + desktop browser:
  * home -> published folder (authored or virtual) -> nested group -> note ->
  * breadcrumb or browser Back. Direct extensionless routes for home, the
- * folder, and the nested note are also verified.
+ * folder, and the nested note are also verified. The persistent sidebar
+ * renders the folder-and-note tree: published roots in metadata order,
+ * nested children in tree order, and current-page indication.
  *
  * The synthetic fixture always runs (no vault needed). Expected areas,
  * folder titles, and note routes derive from staged content and generated
@@ -445,34 +447,43 @@ async function serveOut(outDir) {
 /** Generic desktop journey: home -> folder -> nested note -> breadcrumbs and Back. */
 async function runJourney(page, baseUrl, expect) {
   await page.goto(`${baseUrl}/`, { waitUntil: "networkidle0", timeout: 15000 })
-  const home = await page.evaluate(() => {
-    const links = Array.from(document.querySelectorAll(".reader-area-list a")).map((a) => ({
-      text: a.textContent?.trim() || "",
-      href: a.getAttribute("href") || "",
-    }))
-    const sidebar = Array.from(document.querySelectorAll(".reader-sidebar-nav a")).map(
-      (a) => a.textContent?.trim() || "",
-    )
-    return {
-      title: document.title,
-      h1s: Array.from(document.querySelectorAll("article h1")).map((h) => h.textContent?.trim()),
-      mainCount: document.querySelectorAll("main").length,
-      navCount: document.querySelectorAll("nav").length,
-      links,
-      sidebar,
-      body: document.body.textContent || "",
-    }
-  })
+  const home = await page.evaluate(
+    (leafRoute) => {
+      const links = Array.from(document.querySelectorAll(".reader-area-list a")).map((a) => ({
+        text: a.textContent?.trim() || "",
+        href: a.getAttribute("href") || "",
+      }))
+      // Top-level tree rows keep published root order (metadata order).
+      const roots = Array.from(document.querySelectorAll(".reader-sidebar-nav > ul > li")).map(
+        (li) => {
+          const row = li.querySelector(
+            ":scope > .reader-tree-collapsible > .reader-tree-row, :scope > .reader-tree-row",
+          )
+          const a = row ? row.querySelector("a") : null
+          return a ? a.textContent?.trim() || "" : ""
+        },
+      )
+      const leaf = document.querySelector(`.reader-sidebar-nav a[href="${leafRoute}"]`)
+      return {
+        title: document.title,
+        h1s: Array.from(document.querySelectorAll("article h1")).map((h) => h.textContent?.trim()),
+        mainCount: document.querySelectorAll("main").length,
+        navCount: document.querySelectorAll("nav").length,
+        links,
+        roots,
+        leafText: leaf ? leaf.textContent?.trim() || "" : null,
+        body: document.body.textContent || "",
+      }
+    },
+    expect.leafRoute,
+  )
   assert.deepEqual(
     home.links.map((l) => l.text),
     expect.areas,
     "home keeps generated metadata order",
   )
-  assert.deepEqual(
-    home.sidebar.sort(),
-    [...expect.areas].sort(),
-    "sidebar links every published section",
-  )
+  assert.deepEqual(home.roots, expect.areas, "tree keeps published root order")
+  assert.equal(home.leafText, expect.leafTitle, "tree renders the nested leaf")
   assert.equal(home.mainCount, 1, "one main landmark on home")
   assert.ok(home.navCount >= 1, "semantic navigation present on home")
   assert.equal(home.h1s.length, 1, `home article has one H1 (got ${home.h1s.join("|")})`)
@@ -495,8 +506,9 @@ async function runJourney(page, baseUrl, expect) {
     return {
       h1s: Array.from(document.querySelectorAll("article h1")).map((h) => h.textContent?.trim()),
       groupHeadings: Array.from(groupNodes).map((h) => h.textContent?.trim()),
-      sidebarActive:
-        document.querySelector(".reader-sidebar-nav a.is-active")?.textContent?.trim() || null,
+      sidebarCurrent:
+        document.querySelector('.reader-sidebar-nav a[aria-current="page"]')?.textContent?.trim() ||
+        null,
     }
   })
   assert.ok(folder.h1s.includes(expect.folderTitle), `folder H1 (got ${folder.h1s.join("|")})`)
@@ -514,7 +526,7 @@ async function runJourney(page, baseUrl, expect) {
     folder.groupHeadings.includes("Notes") || folder.groupHeadings.includes("Folders"),
     "folder uses the generic Notes/Folders groups",
   )
-  assert.equal(folder.sidebarActive, expect.folderTitle, "sidebar identifies the active folder")
+  assert.equal(folder.sidebarCurrent, expect.folderTitle, "tree indicates the open folder")
 
   const noteLink = await page.evaluate((title) => {
     const a = Array.from(document.querySelectorAll(".reader-group-list a")).find(
@@ -545,16 +557,32 @@ async function runJourney(page, baseUrl, expect) {
     }, resolvedNoteHref),
   ])
   assert.ok(page.url().includes(expect.leafRoute), `nested note route ${expect.leafRoute}`)
-  const note = await page.evaluate(() => ({
-    h1s: Array.from(document.querySelectorAll("article h1")).map((h) => h.textContent?.trim()),
-    mainCount: document.querySelectorAll("main").length,
-    crumbs: Array.from(document.querySelectorAll(".reader-breadcrumbs li")).map((li) => ({
-      text: li.textContent?.trim() || "",
-      href: li.querySelector("a")?.getAttribute("href") || null,
-    })),
-    sidebarActive:
-      document.querySelector(".reader-sidebar-nav a.is-active")?.textContent?.trim() || null,
-  }))
+  const note = await page.evaluate((folderRoute) => {
+    const folderLi = document.querySelector(
+      `.reader-sidebar-nav li[data-tree-url="${folderRoute}"]`,
+    )
+    const folderRow = folderLi
+      ? folderLi.querySelector(
+          ":scope > .reader-tree-collapsible > .reader-tree-row, :scope > .reader-tree-row",
+        )
+      : null
+    const folderLink = folderRow ? folderRow.querySelector("a") : null
+    return {
+      h1s: Array.from(document.querySelectorAll("article h1")).map((h) => h.textContent?.trim()),
+      mainCount: document.querySelectorAll("main").length,
+      crumbs: Array.from(document.querySelectorAll(".reader-breadcrumbs li")).map((li) => ({
+        text: li.textContent?.trim() || "",
+        href: li.querySelector("a")?.getAttribute("href") || null,
+      })),
+      sidebarCurrent:
+        document.querySelector('.reader-sidebar-nav a[aria-current="page"]')?.textContent?.trim() ||
+        null,
+      folderMarked:
+        !!folderLink &&
+        (folderLink.getAttribute("aria-current") === "true" ||
+          folderLink.classList.contains("is-active")),
+    }
+  }, expect.folderRoute)
   assert.equal(note.h1s.length, 1, `note has one primary heading (got ${note.h1s.join("|")})`)
   assert.ok(note.h1s.includes(expect.leafTitle), "nested note title")
   assert.equal(note.mainCount, 1, "one main landmark on the note")
@@ -563,7 +591,8 @@ async function runJourney(page, baseUrl, expect) {
     note.crumbs[note.crumbs.length - 1].text.includes(expect.leafTitle),
     "breadcrumbs end at the note",
   )
-  assert.equal(note.sidebarActive, expect.folderTitle, "sidebar stays on the folder")
+  assert.equal(note.sidebarCurrent, expect.leafTitle, "tree indicates the open note")
+  assert.ok(note.folderMarked, "tree keeps the section indicated")
 
   // Breadcrumb return to the folder, then browser Back through the journey.
   const crumbHref = note.crumbs.length > 1 ? note.crumbs[1].href : null
@@ -580,6 +609,251 @@ async function runJourney(page, baseUrl, expect) {
   assert.ok(page.url().includes(expect.folderRoute), "browser Back returns to the folder")
   await page.goBack({ waitUntil: "networkidle0", timeout: 15000 })
   assert.match(page.url(), /\/$/, "browser Back returns home")
+}
+
+/** Direct children of one tree branch, in rendered order. */
+async function directTreeChildren(page, folderRoute) {
+  return await page.evaluate((route) => {
+    const li = document.querySelector(`.reader-sidebar-nav li[data-tree-url="${route}"]`)
+    if (!li) return null
+    const panel = li.querySelector(":scope > .reader-tree-collapsible > .reader-tree-panel")
+    if (!panel) return []
+    return Array.from(panel.querySelectorAll(":scope > ul > li")).map((child) => {
+      const row = child.querySelector(
+        ":scope > .reader-tree-collapsible > .reader-tree-row, :scope > .reader-tree-row",
+      )
+      const a = row ? row.querySelector("a") : null
+      return { text: a?.textContent?.trim() || "", href: a?.getAttribute("href") || "" }
+    })
+  }, folderRoute)
+}
+
+async function disclosureState(page, folderRoute) {
+  return await page.evaluate((route) => {
+    const li = document.querySelector(`.reader-sidebar-nav li[data-tree-url="${route}"]`)
+    const button = li
+      ? li.querySelector(":scope > .reader-tree-collapsible > .reader-tree-row > .reader-tree-toggle")
+      : null
+    return button ? button.getAttribute("aria-expanded") : null
+  }, folderRoute)
+}
+
+async function setDisclosure(page, folderRoute, open) {
+  await page.evaluate((route) => {
+    const li = document.querySelector(`.reader-sidebar-nav li[data-tree-url="${route}"]`)
+    li?.querySelector(
+      ":scope > .reader-tree-collapsible > .reader-tree-row > .reader-tree-toggle",
+    )?.click()
+  }, folderRoute)
+  await page.waitForFunction(
+    (route, want) => {
+      const li = document.querySelector(`.reader-sidebar-nav li[data-tree-url="${route}"]`)
+      const button = li
+        ? li.querySelector(
+            ":scope > .reader-tree-collapsible > .reader-tree-row > .reader-tree-toggle",
+          )
+        : null
+      return button && button.getAttribute("aria-expanded") === want
+    },
+    { timeout: 5000 },
+    folderRoute,
+    open ? "true" : "false",
+  )
+}
+
+async function treeLinkVisible(page, href) {
+  return await page.evaluate((target) => {
+    const a = document.querySelector(`.reader-sidebar-nav a[href="${target}"]`)
+    if (!a) return false
+    const rect = a.getBoundingClientRect()
+    return rect.width > 0 && rect.height > 0
+  }, href)
+}
+
+async function treeCurrent(page) {
+  return await page.evaluate(
+    () => document.querySelector('.reader-sidebar-nav a[aria-current="page"]')?.getAttribute("href") || null,
+  )
+}
+
+/** Expected direct-child titles of a staged directory, in tree order. */
+function expectedFolderChildren(contentDir, folderPath) {
+  const abs = path.join(contentDir, folderPath)
+  const hasMarkdown = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isFile() && /\.md$/i.test(entry.name)) return true
+      if (entry.isDirectory() && hasMarkdown(path.join(dir, entry.name))) return true
+    }
+    return false
+  }
+  const entries = []
+  for (const child of fs.readdirSync(abs, { withFileTypes: true })) {
+    const rel = `${folderPath}/${child.name}`
+    if (child.isFile() && /\.md$/i.test(child.name) && !/^index\.md$/i.test(child.name)) {
+      entries.push({
+        title: stagedFileTitle(path.join(contentDir, rel), child.name.replace(/\.md$/i, "")),
+        slug: child.name.replace(/\.md$/i, ""),
+      })
+    } else if (child.isDirectory() && hasMarkdown(path.join(abs, child.name))) {
+      const indexAbs = path.join(contentDir, rel, "index.md")
+      entries.push({
+        title: fs.existsSync(indexAbs)
+          ? stagedFileTitle(indexAbs, humanizeSegment(child.name))
+          : humanizeSegment(child.name),
+        slug: child.name,
+      })
+    }
+  }
+  entries.sort((a, b) => a.title.localeCompare(b.title) || (a.slug < b.slug ? -1 : 1))
+  return entries.map((entry) => entry.title)
+}
+
+/**
+ * Tree sidebar behavior on a fresh desktop page: nested rendering and
+ * ordering, folder link versus disclosure, multiple expanded branches,
+ * ancestor auto-expansion with current indication, deliberate close,
+ * session survival across navigation and Back, and readability.
+ */
+async function runTreeBehavior(page, baseUrl, expect) {
+  const { folderRoute, leafRoute, leafTitle, folderChildren } = expect
+  await page.goto(`${baseUrl}/`, { waitUntil: "networkidle0", timeout: 15000 })
+
+  const children = await directTreeChildren(page, folderRoute)
+  assert.ok(children, "tree renders the folder branch")
+  assert.deepEqual(
+    children.map((c) => c.text),
+    folderChildren,
+    "folder children follow tree ordering",
+  )
+
+  // Folder link navigates; the disclosure only expands.
+  const folderHref = await page.evaluate((route) => {
+    const li = document.querySelector(`.reader-sidebar-nav li[data-tree-url="${route}"]`)
+    const row = li
+      ? li.querySelector(
+          ":scope > .reader-tree-collapsible > .reader-tree-row, :scope > .reader-tree-row",
+        )
+      : null
+    return row ? row.querySelector("a")?.getAttribute("href") || null : null
+  }, folderRoute)
+  assert.equal(folderHref, folderRoute, "folder name links to its own page")
+  assert.equal(await disclosureState(page, folderRoute), "false", "folder starts closed on home")
+  const homeUrl = page.url()
+  await setDisclosure(page, folderRoute, true)
+  assert.equal(page.url(), homeUrl, "disclosure expands without navigating")
+  assert.ok(
+    await treeLinkVisible(page, children[0].href),
+    "disclosure reveals the branch children",
+  )
+
+  // A second branch stays open alongside the first.
+  const otherRoot = await page.evaluate((route) => {
+    const tops = Array.from(document.querySelectorAll(".reader-sidebar-nav > ul > li"))
+    for (const li of tops) {
+      const url = li.getAttribute("data-tree-url") || ""
+      if (url && url !== route) {
+        const button = li.querySelector(
+          ":scope > .reader-tree-collapsible > .reader-tree-row > .reader-tree-toggle",
+        )
+        if (button) return url
+      }
+    }
+    return null
+  }, folderRoute)
+  assert.ok(otherRoot, "a second expandable root exists")
+  await setDisclosure(page, otherRoot, true)
+  assert.equal(await disclosureState(page, folderRoute), "true", "first branch stays expanded")
+  assert.equal(await disclosureState(page, otherRoot), "true", "second branch stays expanded")
+
+  // The folder name reaches its page through a normal static URL.
+  await Promise.all([
+    page.waitForNavigation({ waitUntil: "networkidle0", timeout: 15000 }),
+    page.evaluate((route) => {
+      document.querySelector(`.reader-sidebar-nav a[href="${route}"]`)?.click()
+    }, folderRoute),
+  ])
+  assert.ok(page.url().includes(folderRoute), "folder link opens its route")
+  assert.equal(await treeCurrent(page), folderRoute, "tree indicates the open folder")
+
+  // Arriving at a deep page expands its ancestors and indicates it.
+  await page.goto(`${baseUrl}${leafRoute}`, { waitUntil: "networkidle0", timeout: 15000 })
+  const segments = leafRoute.split("/").filter(Boolean)
+  const prefixes = segments.map((_, i) => `/${segments.slice(0, i + 1).join("/")}`)
+  for (const prefix of prefixes.slice(0, -1)) {
+    const state = await disclosureState(page, prefix)
+    if (state !== null) assert.equal(state, "true", `ancestor branch ${prefix} expands`)
+  }
+  assert.equal(await treeCurrent(page), leafRoute, "tree indicates the open note")
+  assert.ok(await treeLinkVisible(page, leafRoute), "current note stays readable in the tree")
+
+  // A deliberately collapsed branch stays closed on the current page.
+  await setDisclosure(page, folderRoute, false)
+  assert.equal(page.url().includes(leafRoute), true, "deliberate close does not navigate")
+  assert.equal(
+    await treeLinkVisible(page, leafRoute),
+    false,
+    "deliberate close hides the branch",
+  )
+  assert.equal(
+    await disclosureState(page, folderRoute),
+    "false",
+    "automatic expansion does not override the deliberate close",
+  )
+
+  // Open branches survive navigation; the deliberate close holds where
+  // the page did not change, then releases on the next navigation.
+  await Promise.all([
+    page.waitForNavigation({ waitUntil: "networkidle0", timeout: 15000 }),
+    page.evaluate((route) => {
+      document.querySelector(`.reader-sidebar-nav a[href="${route}"]`)?.click()
+    }, otherRoot),
+  ])
+  assert.ok(page.url().includes(otherRoot), "second branch link opens its route")
+  assert.equal(await disclosureState(page, otherRoot), "true", "opened branch survives navigation")
+  assert.equal(await disclosureState(page, folderRoute), "false", "closed branch stays closed away")
+  await page.goBack({ waitUntil: "networkidle0", timeout: 15000 })
+  await page.waitForFunction(
+    (route) => window.location.href.includes(route),
+    { timeout: 15000 },
+    leafRoute,
+  )
+  assert.equal(await disclosureState(page, otherRoot), "true", "opened branch survives Back")
+  assert.equal(
+    await disclosureState(page, folderRoute),
+    "true",
+    "navigation reopens the current page ancestors",
+  )
+  assert.equal(await treeCurrent(page), leafRoute, `tree still indicates ${leafTitle} after Back`)
+
+  // Deep branches and long titles stay readable at desktop width.
+  const overflow = await page.evaluate(() => ({
+    doc: document.documentElement.scrollWidth,
+    body: document.body.scrollWidth,
+    inner: window.innerWidth,
+  }))
+  assert.ok(
+    overflow.doc <= overflow.inner + 1,
+    `tree keeps document width ${overflow.doc} inside viewport ${overflow.inner}`,
+  )
+  const readability = await page.evaluate(() => {
+    const links = Array.from(document.querySelectorAll(".reader-sidebar-nav a"))
+    const toggles = Array.from(document.querySelectorAll(".reader-tree-toggle"))
+    const widest = Math.max(0, ...links.map((a) => a.getBoundingClientRect().right))
+    return {
+      widest,
+      inner: window.innerWidth,
+      toggleHeights: toggles
+        .filter((b) => b.getBoundingClientRect().height > 0)
+        .map((b) => b.getBoundingClientRect().height),
+    }
+  })
+  assert.ok(
+    readability.widest <= readability.inner + 1,
+    "tree links stay inside the desktop viewport",
+  )
+  for (const height of readability.toggleHeights) {
+    assert.ok(height >= 44, `tree disclosure is ${height}px (expected >= 44)`)
+  }
 }
 
 test("synthetic browse journey covers home → folder → nested note → Back", async () => {
@@ -609,7 +883,18 @@ test("synthetic browse journey covers home → folder → nested note → Back",
 
   const { server, baseUrl } = await serveOut(outDir)
   const browser = await launchBrowser()
+  const folderChildren = expectedFolderChildren(contentDir, journey.folderEntry.path)
   try {
+    const treePage = await browser.newPage()
+    await treePage.setViewport({ width: 1280, height: 800 })
+    await runTreeBehavior(treePage, baseUrl, {
+      folderTitle: journey.folderTitle,
+      folderRoute: journey.folderRoute,
+      leafTitle: journey.leafTitle,
+      leafRoute: journey.leafRoute,
+      folderChildren,
+    })
+    await treePage.close()
     const page = await browser.newPage()
     await page.setViewport({ width: 1280, height: 800 })
     await runJourney(page, baseUrl, {

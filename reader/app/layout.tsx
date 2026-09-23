@@ -29,11 +29,11 @@ function toClientNode(node: NavigationNode): NavigationNode {
 }
 
 /**
- * Reader shell: site header, persistent desktop section sidebar, reading
+ * Reader shell: site header, persistent desktop tree sidebar, reading
  * column, footer. Sidebar labels and routes come from the generic
  * navigation tree built from staged pages and generated metadata roots;
  * active state comes from the URL. On phones the sidebar becomes a Browse
- * panel with the same tree plus the active root's generic groups. No
+ * panel with the same tree. No
  * Fumadocs UI is used anywhere.
  */
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -4,8 +4,14 @@
  * Production static export + nginx-style server + production browser at a
  * narrow phone (360), a larger phone (414), and desktop (1280):
  * - phone layouts hide the permanent sidebar and keep content primary;
- * - a compact Browse control opens/closes the same folder navigation;
- * - home -> folder -> nested note works from Browse and article links;
+ * - a compact Browse control opens/closes the same folder-and-note tree;
+ * - home -> folder -> nested note works from Browse tree links and article links;
+ * - selecting a tree page closes Browse so reading starts immediately;
+ * - breadcrumbs wrap, browser Back returns through real history;
+ * - touch targets, visible keyboard focus, landmarks, and no page-level
+ *   horizontal overflow hold on long titles, wide tables, code, and images;
+ * - direct nested URLs and refresh work through the nginx-style fallback;
+ * - the static output stays within the publication boundary.
  * - breadcrumbs wrap, browser Back returns through real history;
  * - touch targets, visible keyboard focus, landmarks, and no page-level
  *   horizontal overflow hold on long titles, wide tables, code, and images;
@@ -453,6 +459,7 @@ async function assertTouchTargets(page, label) {
     ".reader-group-list a",
     ".reader-breadcrumbs a",
     ".reader-sidebar-nav a",
+    ".reader-tree-toggle",
   ]) {
     for (const height of await visibleHeights(page, selector)) {
       assert.ok(height >= 44, `${label}: ${selector} touch target is ${height}px (expected >= 44)`)
@@ -488,13 +495,58 @@ async function assertLandmarks(page, label, { breadcrumb = true } = {}) {
   if (breadcrumb) assert.ok(landmarks.breadcrumbNav, `${label}: breadcrumb navigation landmark`)
 }
 
-async function browseAreas(page) {
+/** Top-level tree roots in rendered order (published root order). */
+async function browseRoots(page) {
   return await page.evaluate(() => {
-    return Array.from(document.querySelectorAll(".reader-sidebar-nav a")).map((a) => ({
-      text: a.textContent?.trim() || "",
-      href: a.getAttribute("href") || "",
-    }))
+    return Array.from(document.querySelectorAll(".reader-sidebar-nav > ul > li")).map((li) => {
+      const row = li.querySelector(
+        ":scope > .reader-tree-collapsible > .reader-tree-row, :scope > .reader-tree-row",
+      )
+      const a = row ? row.querySelector("a") : null
+      return {
+        text: a?.textContent?.trim() || "",
+        href: a?.getAttribute("href") || "",
+      }
+    })
   })
+}
+
+async function treeDisclosure(page, route) {
+  return await page.evaluate((target) => {
+    const li = document.querySelector(`.reader-sidebar-nav li[data-tree-url="${target}"]`)
+    const button = li
+      ? li.querySelector(
+          ":scope > .reader-tree-collapsible > .reader-tree-row > .reader-tree-toggle",
+        )
+      : null
+    return button ? button.getAttribute("aria-expanded") : null
+  }, route)
+}
+
+async function ensureTreeOpen(page, route) {
+  const state = await treeDisclosure(page, route)
+  if (state !== "true") {
+    assert.equal(state, "false", `tree branch ${route} has a disclosure control`)
+    await page.evaluate((target) => {
+      const li = document.querySelector(`.reader-sidebar-nav li[data-tree-url="${target}"]`)
+      li?.querySelector(
+        ":scope > .reader-tree-collapsible > .reader-tree-row > .reader-tree-toggle",
+      )?.click()
+    }, route)
+    await page.waitForFunction(
+      (target) => {
+        const li = document.querySelector(`.reader-sidebar-nav li[data-tree-url="${target}"]`)
+        const button = li
+          ? li.querySelector(
+              ":scope > .reader-tree-collapsible > .reader-tree-row > .reader-tree-toggle",
+            )
+          : null
+        return button && button.getAttribute("aria-expanded") === "true"
+      },
+      { timeout: 5000 },
+      route,
+    )
+  }
 }
 
 async function openBrowse(page) {
@@ -529,11 +581,11 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
     document.querySelector(".reader-browse-toggle")?.getAttribute("aria-expanded"),
   )
   assert.equal(expanded, "true", `${label}: Browse reports its open state`)
-  const areas = await browseAreas(page)
+  const roots = await browseRoots(page)
   assert.deepEqual(
-    areas.map((a) => a.text).sort(),
-    [...expect.areas].sort(),
-    `${label}: Browse exposes every published section`,
+    roots.map((a) => a.text),
+    expect.areas,
+    `${label}: Browse shows the same tree roots in published order`,
   )
 
   await page.evaluate(() => {
@@ -565,45 +617,56 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
   await assertTouchTargets(page, `${label} folder`)
 
   await openBrowse(page)
-  const panelGroups = await page.evaluate(() => {
-    return Array.from(document.querySelectorAll(".reader-nav-groups .reader-group-list a")).map(
-      (a) => ({ text: a.textContent?.trim() || "", href: a.getAttribute("href") || "" }),
-    )
+  assert.equal(await isVisible(page, ".reader-sidebar"), true, `${label}: Browse opens the tree`)
+  // The phone tree carries the nested note with its static route.
+  const leafInTree = await page.evaluate((route) => {
+    const a = document.querySelector(`.reader-sidebar-nav a[href="${route}"]`)
+    return a ? a.textContent?.trim() || "" : null
+  }, expect.leafRoute)
+  assert.equal(leafInTree, expect.leafTitle, `${label}: Browse tree reaches the nested note`)
+  // Deep branches and long titles stay readable while browsing.
+  const panelReadable = await page.evaluate(() => {
+    const links = Array.from(document.querySelectorAll(".reader-sidebar-nav a"))
+    const toggles = Array.from(document.querySelectorAll(".reader-tree-toggle"))
+    return {
+      widest: Math.max(0, ...links.map((a) => a.getBoundingClientRect().right)),
+      inner: window.innerWidth,
+      toggleHeights: toggles
+        .filter((b) => b.getBoundingClientRect().height > 0)
+        .map((b) => b.getBoundingClientRect().height),
+    }
   })
-  const articleGroups = await page.evaluate(() => {
-    return Array.from(document.querySelectorAll("article .reader-group-list a")).map((a) => ({
-      text: a.textContent?.trim() || "",
-      href: a.getAttribute("href") || "",
-    }))
-  })
-  assert.ok(panelGroups.length > 0, `${label}: Browse exposes folder groups`)
-  for (const link of panelGroups) {
-    assert.ok(
-      articleGroups.some((a) => a.href === link.href && a.text === link.text),
-      `${label}: Browse folder link ${link.text} matches the desktop page (no second model)`,
-    )
-  }
-  let noteHref = articleGroups.find((l) => l.text === expect.leafTitle)?.href
-  if (!noteHref) noteHref = expect.leafRoute
-  await page.keyboard.press("Escape")
-  await page.waitForFunction(
-    () => document.querySelector(".reader-chrome")?.getAttribute("data-browse") === "closed",
-    { timeout: 5000 },
+  assert.ok(
+    panelReadable.widest <= panelReadable.inner + 1,
+    `${label}: tree links stay inside the phone viewport`,
   )
-
+  for (const height of panelReadable.toggleHeights) {
+    assert.ok(height >= 44, `${label}: tree disclosure is ${height}px (expected >= 44)`)
+  }
+  // Open the nested branches, then select the note: Browse closes and
+  // reading starts on the note route.
+  const segments = expect.leafRoute.split("/").filter(Boolean)
+  for (let i = 1; i < segments.length; i++) {
+    await ensureTreeOpen(page, `/${segments.slice(0, i).join("/")}`)
+  }
   await Promise.all([
     page.waitForNavigation({ waitUntil: "networkidle0", timeout: 15000 }),
-    page.evaluate((href) => {
-      const direct = Array.from(document.querySelectorAll("article .reader-group-list a")).find(
-        (el) => el.getAttribute("href") === href,
-      )
-      if (direct) direct.click()
-      else window.location.assign(href)
-    }, noteHref),
+    page.evaluate((route) => {
+      document.querySelector(`.reader-sidebar-nav a[href="${route}"]`)?.click()
+    }, expect.leafRoute),
   ])
   assert.ok(
     page.url().includes(expect.leafRoute),
     `${label}: nested note route ${expect.leafRoute}`,
+  )
+  await page.waitForFunction(
+    () => document.querySelector(".reader-chrome")?.getAttribute("data-browse") === "closed",
+    { timeout: 5000 },
+  )
+  assert.equal(
+    await isVisible(page, ".reader-sidebar"),
+    false,
+    `${label}: selecting a tree page closes Browse`,
   )
   const note = await page.evaluate(() => ({
     h1: document.querySelector("article h1")?.textContent?.trim() || "",
@@ -871,9 +934,9 @@ async function runDesktopChecks(page, baseUrl, expect, label) {
     `${label}: Browse control stays hidden`,
   )
   assert.deepEqual(
-    (await browseAreas(page)).map((a) => a.text).sort(),
-    [...expect.areas].sort(),
-    `${label}: sidebar links every published section`,
+    (await browseRoots(page)).map((a) => a.text),
+    expect.areas,
+    `${label}: sidebar keeps published root order`,
   )
   await goto(page, `${baseUrl}${expect.leafRoute}`)
   await assertNoPageOverflow(page, `${label} note`)
