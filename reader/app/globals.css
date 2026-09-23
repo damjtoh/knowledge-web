@@ -1,0 +1,1105 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+/*---break---
+ */
+@custom-variant dark (&:is(.dark *));
+
+/**
+ * Calm generic grayscale reader.
+ *
+ * Tailwind CSS owns layout utilities used in the reader shell components.
+ * This stylesheet keeps the semantic reader classes the static and browser
+ * checks rely on (reader-header, reader-sidebar-nav, reader-browse-toggle,
+ * reader-article, and overflow containment) plus Markdown element styling
+ * that utilities cannot express alone.
+ *
+ * Palette is neutral grayscale only: white surfaces, neutral-50/100 washes,
+ * neutral-200/300 borders, neutral-500/600 muted text, neutral-900 body text.
+ * No Knowledge Base name, subject, route, or accent color appears here;
+ * site identity comes from generated metadata at build time.
+ */
+
+html,
+body {
+  overflow-x: hidden;
+}
+
+body {
+  margin: 0;
+  background: #fff;
+  color: #171717;
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    Helvetica,
+    Arial,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.reader-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid #e5e5e5;
+  background: #fff;
+  padding: 0.75rem 1rem;
+}
+
+.reader-home {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  min-width: 0;
+  font-weight: 700;
+  font-size: 1rem;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+  color: #171717;
+  overflow-wrap: anywhere;
+}
+
+.reader-home:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: #a3a3a3;
+}
+
+/* Compact Browse control: phone-only. Desktop keeps the sidebar. */
+.reader-browse-toggle {
+  display: none;
+  align-items: center;
+  min-height: 44px;
+  padding: 0.5rem 1rem;
+  font: inherit;
+  font-weight: 600;
+  color: #171717;
+  background: #fff;
+  border: 1px solid #d4d4d4;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.reader-browse-toggle:hover {
+  background: #f5f5f5;
+}
+
+.reader-shell {
+  display: flex;
+  gap: 2rem;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 3rem;
+  min-width: 0;
+}
+
+.reader-sidebar {
+  width: 230px;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.reader-sidebar-nav ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.reader-sidebar-nav a {
+  display: flex;
+  align-items: center;
+  padding: 0.65rem 0.75rem;
+  min-height: 44px;
+  line-height: 1.4;
+  font-size: 0.95rem;
+  text-decoration: none;
+  color: #404040;
+  border-radius: 6px;
+  border-left: 2px solid transparent;
+  overflow-wrap: break-word;
+}
+
+.reader-sidebar-nav a:hover {
+  background: #f5f5f5;
+  color: #171717;
+}
+
+.reader-sidebar-nav a.is-active {
+  font-weight: 700;
+  color: #171717;
+  background: #f5f5f5;
+  border-left-color: #171717;
+}
+
+/* Folder-and-note tree: nested branches under each published root keep
+   the sidebar link style. Root order follows generated metadata and
+   child order follows the navigation tree. Each folder row holds its
+   page link plus a separate disclosure button, so visiting a folder
+   never collides with expanding it. */
+.reader-tree,
+.reader-tree-children {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.reader-tree-children {
+  margin-top: 0.25rem;
+  padding-left: 0.85rem;
+  border-left: 1px solid #e5e5e5;
+  min-width: 0;
+}
+
+.reader-tree-collapsible {
+  min-width: 0;
+}
+
+.reader-tree-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.reader-tree-row a {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.reader-tree-toggle {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  min-height: 44px;
+  color: #525252;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.reader-tree-toggle:hover {
+  background: #f5f5f5;
+  color: #171717;
+}
+
+.reader-tree-toggle svg {
+  transition: transform 0.15s ease;
+}
+
+.reader-tree-toggle[aria-expanded="true"] svg {
+  transform: rotate(90deg);
+}
+
+.reader-main {
+  flex: 1;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0;
+  overflow-x: clip;
+}
+
+.reader-breadcrumbs {
+  margin-bottom: 1rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.reader-breadcrumbs ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.5rem;
+  font-size: 0.9rem;
+  color: #525252;
+}
+
+.reader-breadcrumbs li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.reader-breadcrumbs li + li::before {
+  content: "›";
+  color: #a3a3a3;
+}
+
+.reader-breadcrumbs a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: #404040;
+  text-decoration: none;
+}
+
+.reader-breadcrumbs a:hover {
+  color: #171717;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: #a3a3a3;
+}
+
+.reader-article {
+  max-width: 68ch;
+  margin: 0;
+  line-height: 1.65;
+  font-size: 1rem;
+  color: #262626;
+  overflow-wrap: break-word;
+  min-width: 0;
+}
+
+.reader-article h1 {
+  font-size: 1.75rem;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: #171717;
+  margin: 0 0 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.reader-article h2,
+.reader-article h3 {
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+  color: #171717;
+  margin-top: 2em;
+  margin-bottom: 0.5em;
+  overflow-wrap: anywhere;
+}
+
+.reader-article h2 {
+  font-size: 1.3rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid #e5e5e5;
+}
+
+.reader-article h3 {
+  font-size: 1.1rem;
+}
+
+.reader-article p,
+.reader-article ul:not(.reader-area-list):not(.reader-group-list),
+.reader-article ol:not(.reader-area-list):not(.reader-group-list) {
+  margin-block: 1em;
+}
+
+/* Tailwind preflight removes list markers and indent globally. Restore
+   them for Markdown body lists only. Area and group navigation lists live
+   inside the article on home and folder pages, so they are excluded here
+   and re-asserted marker-free below with higher specificity. */
+.reader-article ul:not(.reader-area-list):not(.reader-group-list) {
+  list-style: disc outside;
+  padding-left: 1.5rem;
+}
+
+.reader-article ol:not(.reader-area-list):not(.reader-group-list) {
+  list-style: decimal outside;
+  padding-left: 1.5rem;
+}
+
+.reader-article ul.reader-area-list,
+.reader-article ul.reader-group-list,
+.reader-article ol.reader-area-list,
+.reader-article ol.reader-group-list {
+  list-style: none;
+  padding-left: 0;
+}
+
+.reader-article li:has(> input[type="checkbox"]) {
+  list-style: none;
+}
+
+.reader-article ul:not(.reader-area-list):not(.reader-group-list) li + li,
+.reader-article ol:not(.reader-area-list):not(.reader-group-list) li + li {
+  margin-top: 0.25rem;
+}
+
+/* Article links stay clearly identifiable: dark text with a visible
+   underline offset. Navigation links above stay plain with surface
+   states, so reading and browsing areas remain distinct. */
+.reader-article a {
+  color: #171717;
+  text-decoration: underline;
+  text-decoration-color: #a3a3a3;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+
+.reader-article a:hover {
+  background: #f5f5f5;
+  text-decoration-color: #525252;
+}
+
+.reader-article a:visited {
+  color: #404040;
+}
+
+.reader-article table {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 0.925rem;
+}
+
+.reader-article thead th {
+  background: #fafafa;
+  font-weight: 700;
+  color: #171717;
+}
+
+.reader-article th,
+.reader-article td {
+  border: 1px solid #d4d4d4;
+  padding: 0.4rem 0.6rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.reader-article pre {
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 0.75rem;
+  background: #f5f5f5;
+  border: 1px solid #e5e5e5;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  line-height: 1.55;
+}
+
+.reader-article code {
+  font-size: 0.9em;
+  overflow-wrap: anywhere;
+}
+
+.reader-article p code,
+.reader-article li code {
+  background: #f5f5f5;
+  border: 1px solid #e5e5e5;
+  border-radius: 4px;
+  padding: 0.1em 0.3em;
+}
+
+.reader-article pre code {
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+
+.reader-article img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+}
+
+.reader-article blockquote {
+  margin: 1.5em 0;
+  padding: 0.25rem 0 0.25rem 1rem;
+  border-left: 3px solid #d4d4d4;
+  color: #525252;
+}
+
+.reader-article hr {
+  border: 0;
+  border-top: 1px solid #e5e5e5;
+  margin: 2rem 0;
+}
+
+.reader-article input[type="checkbox"] {
+  width: 1.1rem;
+  height: 1.1rem;
+  margin-right: 0.4rem;
+  accent-color: #404040;
+}
+
+.reader-area-list {
+  list-style: none;
+  margin: 1.5rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.reader-area-list a {
+  display: flex;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  min-height: 44px;
+  line-height: 1.4;
+  font-weight: 600;
+  font-size: 1.05rem;
+  text-decoration: none;
+  color: #171717;
+  background: #fff;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+
+.reader-area-list a:hover {
+  background: #f5f5f5;
+  border-color: #d4d4d4;
+}
+
+.reader-group {
+  margin-top: 2.5rem;
+  border-top: 1px solid #e5e5e5;
+  padding-top: 1.25rem;
+}
+
+.reader-group-list {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.reader-group-list a {
+  display: flex;
+  align-items: center;
+  padding: 0.75rem 0.25rem;
+  min-height: 44px;
+  line-height: 1.4;
+  color: #404040;
+  text-decoration: none;
+  border-bottom: 1px solid #f5f5f5;
+  overflow-wrap: anywhere;
+}
+
+.reader-group-list a:hover {
+  color: #171717;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: #a3a3a3;
+}
+
+:focus-visible {
+  outline: 2px solid #171717;
+  outline-offset: 2px;
+}
+
+.reader-footer {
+  border-top: 1px solid #e5e5e5;
+  background: #fafafa;
+  padding: 1rem;
+  color: #525252;
+  font-size: 0.85rem;
+}
+
+@media (max-width: 899px) {
+  .reader-browse-toggle {
+    display: inline-flex;
+  }
+
+  .reader-shell {
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  /* Phone layouts hide the permanent sidebar: note content stays
+     primary until the reader opens Browse. */
+  .reader-chrome[data-browse="closed"] .reader-sidebar {
+    display: none;
+  }
+
+  .reader-sidebar {
+    width: auto;
+  }
+
+  /* Narrow screens indent less so deep branches keep readable titles. */
+  .reader-tree-children {
+    padding-left: 0.6rem;
+  }
+
+  .reader-article {
+    max-width: 100%;
+  }
+
+  .reader-article h1 {
+    font-size: 1.5rem;
+  }
+
+  .reader-article h2 {
+    font-size: 1.2rem;
+  }
+
+  .reader-article h3 {
+    font-size: 1.05rem;
+  }
+}
+
+/**
+ * Search controls and dialog.
+ *
+ * Two trigger controls share one dialog: a full-width control above the
+ * tree in the desktop sidebar and a compact control in the phone header.
+ * Result rows and the input keep the 44px touch target used by Browse and
+ * navigation. Surfaces stay grayscale only, with dark variants matching
+ * the reader shell. The dialog panel itself comes from the registry
+ * Dialog component; these classes only shape the search content.
+ */
+.reader-search-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  padding: 0.5rem 1rem;
+  font: inherit;
+  font-weight: 600;
+  color: #171717;
+  background: #fff;
+  border: 1px solid #d4d4d4;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.reader-search-trigger:hover {
+  background: #f5f5f5;
+}
+
+.reader-search-trigger kbd {
+  font: inherit;
+  font-weight: 400;
+  font-size: 0.8rem;
+  color: #737373;
+  border: 1px solid #e5e5e5;
+  border-radius: 4px;
+  padding: 0.1rem 0.35rem;
+  background: #fafafa;
+}
+
+.reader-search-sidebar {
+  width: 100%;
+  margin-bottom: 0.75rem;
+}
+
+/* The header control is phone-only: desktop readers use the sidebar one. */
+.reader-search-header {
+  display: none;
+}
+
+.reader-search-body {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.reader-search-input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0.6rem 0.75rem;
+  font: inherit;
+  color: #171717;
+  background: #fff;
+  border: 1px solid #d4d4d4;
+  border-radius: 8px;
+}
+
+.reader-search-input::placeholder {
+  color: #737373;
+}
+
+.reader-search-status {
+  font-size: 0.9rem;
+  color: #525252;
+  min-height: 1.5em;
+}
+
+.reader-search-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.25rem;
+  max-height: min(50vh, 24rem);
+  overflow-y: auto;
+}
+
+.reader-search-option {
+  border-radius: 8px;
+}
+
+.reader-search-option[data-active="true"] {
+  background: #f5f5f5;
+  outline: 2px solid #171717;
+  outline-offset: -2px;
+}
+
+.reader-search-result {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.6rem 0.75rem;
+  min-height: 44px;
+  text-decoration: none;
+  color: inherit;
+  border-radius: 8px;
+}
+
+.reader-search-result-title {
+  font-weight: 700;
+  color: #171717;
+  overflow-wrap: anywhere;
+}
+
+.reader-search-result-url {
+  font-size: 0.8rem;
+  color: #737373;
+  overflow-wrap: anywhere;
+}
+
+.reader-search-result-excerpt {
+  font-size: 0.9rem;
+  color: #525252;
+  overflow-wrap: anywhere;
+}
+
+.reader-search-result-excerpt mark {
+  background: #e5e5e5;
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.dark .reader-search-trigger {
+  color: #fafafa;
+  background: #171717;
+  border-color: #404040;
+}
+
+.dark .reader-search-trigger:hover {
+  background: #262626;
+}
+
+.dark .reader-search-trigger kbd {
+  color: #a3a3a3;
+  border-color: #404040;
+  background: #262626;
+}
+
+.dark .reader-search-input {
+  color: #fafafa;
+  background: #171717;
+  border-color: #404040;
+}
+
+.dark .reader-search-input::placeholder {
+  color: #a3a3a3;
+}
+
+.dark .reader-search-status {
+  color: #d4d4d4;
+}
+
+.dark .reader-search-option[data-active="true"] {
+  background: #262626;
+  outline-color: #fafafa;
+}
+
+.dark .reader-search-result-title {
+  color: #fafafa;
+}
+
+.dark .reader-search-result-url {
+  color: #a3a3a3;
+}
+
+.dark .reader-search-result-excerpt {
+  color: #d4d4d4;
+}
+
+.dark .reader-search-result-excerpt mark {
+  background: #404040;
+  color: #fafafa;
+}
+
+@media (max-width: 899px) {
+  .reader-search-header {
+    display: inline-flex;
+  }
+}
+
+/*---break---
+ */
+
+@theme inline {
+  --font-heading: var(--font-sans);
+  --font-sans: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/*---break---
+ */
+
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+/*---break---
+ */
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+}
+
+/*---break---
+ */
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+/**
+ * Appearance control (shadcn Button group) and dark surfaces.
+ *
+ * The control lives in the reader header on desktop and phone. Options
+ * keep the 44px touch target and visible focus used by Browse and
+ * navigation. Dark surfaces stay grayscale only: near-black page, raised
+ * cards, muted text, and borders that keep article, navigation, code,
+ * tables, and interaction states readable.
+ */
+.reader-header {
+  flex-wrap: wrap;
+}
+
+.reader-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-left: auto;
+  min-width: 0;
+}
+
+.reader-appearance {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.reader-appearance-option {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.reader-appearance-option:focus-visible {
+  outline: 2px solid #171717;
+  outline-offset: 2px;
+}
+
+.dark body {
+  background: #0a0a0a;
+  color: #f5f5f5;
+}
+
+.dark .reader-header {
+  background: #0a0a0a;
+  border-bottom-color: #262626;
+}
+
+.dark .reader-home {
+  color: #fafafa;
+}
+
+.dark .reader-home:hover {
+  text-decoration-color: #525252;
+}
+
+.dark .reader-browse-toggle {
+  color: #fafafa;
+  background: #171717;
+  border-color: #404040;
+}
+
+.dark .reader-browse-toggle:hover {
+  background: #262626;
+}
+
+.dark .reader-sidebar-nav a {
+  color: #d4d4d4;
+}
+
+.dark .reader-sidebar-nav a:hover {
+  background: #262626;
+  color: #fafafa;
+}
+
+.dark .reader-sidebar-nav a.is-active {
+  color: #fff;
+  background: #262626;
+  border-left-color: #fafafa;
+}
+
+.dark .reader-tree-children {
+  border-left-color: #262626;
+}
+
+.dark .reader-tree-toggle {
+  color: #d4d4d4;
+}
+
+.dark .reader-tree-toggle:hover {
+  background: #262626;
+  color: #fafafa;
+}
+
+.dark .reader-breadcrumbs ol {
+  color: #d4d4d4;
+}
+
+.dark .reader-breadcrumbs li + li::before {
+  color: #525252;
+}
+
+.dark .reader-breadcrumbs a {
+  color: #d4d4d4;
+}
+
+.dark .reader-breadcrumbs a:hover {
+  color: #fff;
+  text-decoration-color: #525252;
+}
+
+.dark .reader-article {
+  color: #e5e5e5;
+}
+
+.dark .reader-article h1,
+.dark .reader-article h2,
+.dark .reader-article h3 {
+  color: #fafafa;
+}
+
+.dark .reader-article h2 {
+  border-bottom-color: #262626;
+}
+
+.dark .reader-article a {
+  color: #fafafa;
+  text-decoration-color: #737373;
+}
+
+.dark .reader-article a:hover {
+  background: #262626;
+  text-decoration-color: #d4d4d4;
+}
+
+.dark .reader-article a:visited {
+  color: #d4d4d4;
+}
+
+.dark .reader-article thead th {
+  background: #171717;
+  color: #fafafa;
+}
+
+.dark .reader-article th,
+.dark .reader-article td {
+  border-color: #404040;
+}
+
+.dark .reader-article pre {
+  background: #171717;
+  border-color: #262626;
+  color: #e5e5e5;
+}
+
+.dark .reader-article p code,
+.dark .reader-article li code {
+  background: #262626;
+  border-color: #404040;
+  color: #f5f5f5;
+}
+
+.dark .reader-article blockquote {
+  border-left-color: #525252;
+  color: #d4d4d4;
+}
+
+.dark .reader-article hr {
+  border-top-color: #262626;
+}
+
+.dark .reader-article input[type="checkbox"] {
+  accent-color: #d4d4d4;
+}
+
+.dark .reader-area-list a {
+  color: #fafafa;
+  background: #171717;
+  border-color: #262626;
+}
+
+.dark .reader-area-list a:hover {
+  background: #262626;
+  border-color: #525252;
+}
+
+.dark .reader-group {
+  border-top-color: #262626;
+}
+
+.dark .reader-group-list a {
+  color: #d4d4d4;
+  border-bottom-color: #262626;
+}
+
+.dark .reader-group-list a:hover {
+  color: #fff;
+  text-decoration-color: #525252;
+}
+
+.dark :focus-visible {
+  outline-color: #fafafa;
+}
+
+.dark .reader-appearance-option:focus-visible {
+  outline-color: #fafafa;
+}
+
+.dark .reader-footer {
+  border-top-color: #262626;
+  background: #111;
+  color: #a3a3a3;
+}
+
+@media (max-width: 899px) {
+  .reader-header-actions {
+    gap: 0.4rem;
+  }
+
+  .reader-appearance-option span {
+    font-size: 0.8rem;
+  }
+}

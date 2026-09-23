@@ -638,11 +638,10 @@ function writeManifest(kb) {
   )
 }
 
-async function stageKb(kb, contentDir, configFile) {
-  fs.copyFileSync(TRACKED_CONFIG, configFile)
+async function stageKb(kb, contentDir, identityFile) {
   await execFileAsync(
     process.execPath,
-    [STAGE_SCRIPT, "--kb-root", kb, "--content-dir", contentDir, "--config-file", configFile],
+    [STAGE_SCRIPT, "--kb-root", kb, "--content-dir", contentDir, "--identity-file", identityFile],
     { cwd: PUBLISHER_ROOT },
   )
 }
@@ -660,10 +659,10 @@ test("synthetic Tolaria vault generates stable type collections, navigation, ord
   writeManifest(kb)
   const work = tmpdir("work")
   const contentDir = path.join(work, "content")
-  const configFile = path.join(work, "quartz.config.yaml")
+  const identityFile = path.join(work, "site-identity.json")
   const outputDir = path.join(work, "public")
 
-  await stageKb(kb, contentDir, configFile)
+  await stageKb(kb, contentDir, identityFile)
   await buildQuartz(contentDir, outputDir)
 
   const readHtml = (rel) => fs.readFileSync(path.join(outputDir, rel), "utf8")
@@ -874,9 +873,9 @@ test("full-build preserves authored collections/* and tags/* notes, untyped inde
   )
   const work = tmpdir("work2")
   const contentDir = path.join(work, "content")
-  const configFile = path.join(work, "quartz.config.yaml")
+  const identityFile = path.join(work, "site-identity.json")
   const outputDir = path.join(work, "public")
-  await stageKb(kb, contentDir, configFile)
+  await stageKb(kb, contentDir, identityFile)
   await buildQuartz(contentDir, outputDir)
   const readHtml = (rel) => fs.readFileSync(path.join(outputDir, rel), "utf8")
 

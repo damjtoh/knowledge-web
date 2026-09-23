@@ -1,10 +1,14 @@
 # ADR-0001 — Dedicated Knowledge Web Publisher with opt-in projections
 
-- Status: Accepted
+- Status: Accepted (Decision 4 superseded by ADR-0002)
 - Date: 2026-08-04
 - Deciders: Knowledge Web launch (implementation ticket 01)
 - Context: this decision is recorded at the boundary between the first
   adopter (the Travel Knowledge Base) and the Publisher itself.
+- Note: Decision 4 (Quartz v5 as publishing engine) is superseded by
+  [ADR-0002](adr-0002-quartz-replacement-reader.md). Decisions 1–3 and 5
+  (dedicated publisher, opt-in projections, explicit allowlists, isolated
+  staging, canonical content, stateless static runtime) are retained.
 
 ## Context
 
@@ -46,7 +50,7 @@ selection mechanism, and a way for content repositories to stay independent.
    control at the application boundary: the manifest controls what the
    application contains; the proxy controls who may reach it.
 
-4. **Quartz v5 is the publishing engine.**
+4. **Quartz v5 is the publishing engine. — SUPERSEDED by ADR-0002.**
    It natively provides the confirmed requirements: explorer-style browsing,
    local search, and Obsidian/Tolaria wikilinks, with a YAML configuration
    surface and a plugin ecosystem. VitePress and Material for MkDocs were
@@ -54,7 +58,8 @@ selection mechanism, and a way for content repositories to stay independent.
    maintenance for the same behavior. Only browsing, search, wikilinks, and
    responsive rendering are enabled; graph views, backlinks, comments,
    analytics, RSS/sitemap output, and editing are excluded from the shared
-   configuration.
+   configuration. Quartz remains vendored for rollback until Phase 7, but new
+   work targets the custom static knowledge reader defined in ADR-0002.
 
 5. **Web Projections are separated from canonical content.**
    The Publisher copies only allowlisted content into an isolated build tree,

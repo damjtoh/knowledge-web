@@ -35,11 +35,10 @@ after(() => {
   for (const dir of tmpRoots) fs.rmSync(dir, { recursive: true, force: true })
 })
 
-async function stageKb(kb, contentDir, configFile) {
-  fs.copyFileSync(TRACKED_CONFIG, configFile)
+async function stageKb(kb, contentDir, identityFile) {
   await execFileAsync(
     process.execPath,
-    [STAGE_SCRIPT, "--kb-root", kb, "--content-dir", contentDir, "--config-file", configFile],
+    [STAGE_SCRIPT, "--kb-root", kb, "--content-dir", contentDir, "--identity-file", identityFile],
     { cwd: PUBLISHER_ROOT },
   )
 }
@@ -141,10 +140,10 @@ test("generated home: no selected root index => / is dashboard, stable dashboard
   )
   const work = tmpdir("work-gen")
   const contentDir = path.join(work, "content")
-  const configFile = path.join(work, "quartz.config.yaml")
+  const identityFile = path.join(work, "site-identity.json")
   const outputDir = path.join(work, "public")
 
-  await stageKb(kb, contentDir, configFile)
+  await stageKb(kb, contentDir, identityFile)
 
   // C2: no authored index, so synthetic index is generated and staged
   assert.ok(fs.existsSync(path.join(contentDir, "index.md")), "synthetic index.md staged")
@@ -262,10 +261,10 @@ test("authored home: selected root index => staged byte-preserved, / is authored
   )
   const work = tmpdir("work-auth")
   const contentDir = path.join(work, "content")
-  const configFile = path.join(work, "quartz.config.yaml")
+  const identityFile = path.join(work, "site-identity.json")
   const outputDir = path.join(work, "public")
 
-  await stageKb(kb, contentDir, configFile)
+  await stageKb(kb, contentDir, identityFile)
 
   // C2: byte preservation
   assert.equal(
@@ -343,10 +342,10 @@ test("home modes: dashboard and collection URLs remain collision-safe when autho
   )
   const work = tmpdir("work-coll")
   const contentDir = path.join(work, "content")
-  const configFile = path.join(work, "quartz.config.yaml")
+  const identityFile = path.join(work, "site-identity.json")
   const outputDir = path.join(work, "public")
 
-  await stageKb(kb, contentDir, configFile)
+  await stageKb(kb, contentDir, identityFile)
   await buildQuartz(contentDir, outputDir)
 
   // Authored dashboard preserved at dashboard.html

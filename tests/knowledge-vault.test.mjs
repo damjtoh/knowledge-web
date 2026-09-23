@@ -131,11 +131,10 @@ function writeManifest(kb) {
   )
 }
 
-async function stageKb(kb, contentDir, configFile) {
-  fs.copyFileSync(TRACKED_CONFIG, configFile)
+async function stageKb(kb, contentDir, identityFile) {
   await execFileAsync(
     process.execPath,
-    [STAGE_SCRIPT, "--kb-root", kb, "--content-dir", contentDir, "--config-file", configFile],
+    [STAGE_SCRIPT, "--kb-root", kb, "--content-dir", contentDir, "--identity-file", identityFile],
     {
       cwd: PUBLISHER_ROOT,
     },
@@ -218,10 +217,10 @@ test("synthetic Tolaria vault passes through staging and real Quartz build — r
   writeManifest(kb)
   const work = tmpdir("work")
   const contentDir = path.join(work, "content")
-  const configFile = path.join(work, "quartz.config.yaml")
+  const identityFile = path.join(work, "site-identity.json")
   const outputDir = path.join(work, "public")
 
-  await stageKb(kb, contentDir, configFile)
+  await stageKb(kb, contentDir, identityFile)
 
   // C5: staged selected Markdown remains byte-for-byte equal to source
   for (const rel of [

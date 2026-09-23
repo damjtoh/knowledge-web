@@ -508,11 +508,10 @@ function writeManifest(kb) {
   )
 }
 
-async function stageKb(kb, contentDir, configFile) {
-  fs.copyFileSync(TRACKED_CONFIG, configFile)
+async function stageKb(kb, contentDir, identityFile) {
   await execFileAsync(
     process.execPath,
-    [STAGE_SCRIPT, "--kb-root", kb, "--content-dir", contentDir, "--config-file", configFile],
+    [STAGE_SCRIPT, "--kb-root", kb, "--content-dir", contentDir, "--identity-file", identityFile],
     {
       cwd: PUBLISHER_ROOT,
     },
@@ -535,10 +534,10 @@ test("synthetic vault generates stable Vault dashboard with search, memberships,
   writeManifest(kb)
   const work = tmpdir("work-full")
   const contentDir = path.join(work, "content")
-  const configFile = path.join(work, "quartz.config.yaml")
+  const identityFile = path.join(work, "site-identity.json")
   const outputDir = path.join(work, "public")
 
-  await stageKb(kb, contentDir, configFile)
+  await stageKb(kb, contentDir, identityFile)
   await buildQuartz(contentDir, outputDir)
 
   const readHtml = (rel) => fs.readFileSync(path.join(outputDir, rel), "utf8")
@@ -823,9 +822,9 @@ test("dashboard route collision allocates first free suffix and preserves author
     ])
     const work = tmpdir("work-dash-single")
     const contentDir = path.join(work, "content")
-    const configFile = path.join(work, "quartz.config.yaml")
+    const identityFile = path.join(work, "site-identity.json")
     const outputDir = path.join(work, "public")
-    await stageKb(kb, contentDir, configFile)
+    await stageKb(kb, contentDir, identityFile)
     await buildQuartz(contentDir, outputDir)
     assert.ok(fs.existsSync(path.join(outputDir, "dashboard.html")), "authored dashboard preserved")
     const authoredHtml = fs.readFileSync(path.join(outputDir, "dashboard.html"), "utf8")
@@ -863,9 +862,9 @@ test("dashboard route collision allocates first free suffix and preserves author
       const kb = mkKbWithDashboard(files)
       const work = tmpdir("work-dash-multi")
       const contentDir = path.join(work, "content")
-      const configFile = path.join(work, "quartz.config.yaml")
+      const identityFile = path.join(work, "site-identity.json")
       const outputDir = path.join(work, "public")
-      await stageKb(kb, contentDir, configFile)
+      await stageKb(kb, contentDir, identityFile)
       await buildQuartz(contentDir, outputDir)
       assert.ok(
         fs.existsSync(path.join(outputDir, "dashboard.html")),
@@ -904,9 +903,9 @@ test("dashboard route collision allocates first free suffix and preserves author
     ])
     const work = tmpdir("work-dash-gap")
     const contentDir = path.join(work, "content")
-    const configFile = path.join(work, "quartz.config.yaml")
+    const identityFile = path.join(work, "site-identity.json")
     const outputDir = path.join(work, "public")
-    await stageKb(kb, contentDir, configFile)
+    await stageKb(kb, contentDir, identityFile)
     await buildQuartz(contentDir, outputDir)
     assert.ok(
       fs.existsSync(path.join(outputDir, "dashboard.html")),

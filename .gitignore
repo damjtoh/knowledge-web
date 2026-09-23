@@ -2,12 +2,22 @@
 node_modules/
 public/
 content/
+# Generated publication metadata (title, canonicalHostname, navigation):
+# deterministic build output from staging; never commit it.
+site-identity.json
 
 # Quartz plugin cache and build artifacts
 .quartz/
 .quartz-cache/
 prof/
 tsconfig.tsbuildinfo
+
+# Knowledge reader (Next.js static export over isolated staged content):
+# generated Fumadocs content modules (contain private staged text),
+# Next build cache, and disposable static output all stay untracked.
+reader/.source/
+reader/.next/
+reader/out/
 
 # macOS
 .DS_Store
