@@ -15,6 +15,7 @@ const withMDX = createMDX()
 
 /** @type {import('next').NextConfig} */
 const config = {
+  allowedDevOrigins: ["dev-mac.dami.dev"],
   output: "export",
   poweredByHeader: false,
   outputFileTracingRoot: path.join(readerDir, ".."),
