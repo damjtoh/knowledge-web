@@ -454,6 +454,8 @@ async function visibleHeights(page, selector) {
 async function assertTouchTargets(page, label) {
   for (const selector of [
     ".reader-browse-toggle",
+    ".reader-search-trigger",
+    ".reader-search-result",
     ".reader-home",
     ".reader-area-list a",
     ".reader-group-list a",
@@ -1089,6 +1091,154 @@ async function withPage(browser, viewport, fn) {
   }
 }
 
+/** Wait until the Search dialog is open with its input focused. */
+async function searchDialogOpen(page) {
+  await page.waitForSelector('[data-slot="dialog-content"]', { visible: true, timeout: 5000 })
+  await page.waitForFunction(
+    () => document.activeElement && document.activeElement.id === "reader-search-input",
+    { timeout: 5000 },
+  )
+}
+
+async function searchDialogClosed(page) {
+  await page.waitForFunction(
+    () => !document.querySelector('[data-slot="dialog-content"]'),
+    { timeout: 5000 },
+  )
+}
+
+/** Set the dialog query the way React observes it (controlled input). */
+async function setPhoneSearchQuery(page, text) {
+  await page.evaluate((value) => {
+    const el = document.getElementById("reader-search-input")
+    if (!el) return
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")
+      .set
+    setter.call(el, value)
+    el.dispatchEvent(new Event("input", { bubbles: true }))
+  }, text)
+}
+
+/**
+ * Search dialog at phone width: header control, states, touch targets,
+ * keyboard journey to a static route, shortcut open, focus return.
+ */
+async function runPhoneSearchDialog(page, baseUrl, expect, label) {
+  await goto(page, `${baseUrl}/`)
+  assert.ok(
+    await isVisible(page, ".reader-search-header"),
+    `${label}: header Search control is visible`,
+  )
+  assert.equal(
+    await isVisible(page, ".reader-search-sidebar"),
+    false,
+    `${label}: sidebar Search stays hidden with the panel`,
+  )
+  const triggerHeight = await page.evaluate(
+    () => document.querySelector(".reader-search-header")?.getBoundingClientRect().height,
+  )
+  assert.ok(
+    triggerHeight >= 44,
+    `${label}: header Search is ${triggerHeight}px (expected >= 44)`,
+  )
+
+  await page.evaluate(() => document.querySelector(".reader-search-header")?.click())
+  await searchDialogOpen(page)
+  const dialogMeta = await page.evaluate(() => ({
+    title:
+      document
+        .querySelector('[data-slot="dialog-content"] [data-slot="dialog-title"]')
+        ?.textContent?.trim() || "",
+    labelled: !!document.querySelector('label[for="reader-search-input"]'),
+    live: document.querySelector(".reader-search-status")?.getAttribute("aria-live") || "",
+    status: document.querySelector(".reader-search-status")?.textContent?.trim() || "",
+  }))
+  assert.equal(dialogMeta.title, "Search", `${label}: dialog is labelled Search`)
+  assert.ok(dialogMeta.labelled, `${label}: search input is labeled`)
+  assert.equal(dialogMeta.live, "polite", `${label}: state changes announce politely`)
+  assert.ok(dialogMeta.status.includes("Type to find a note"), `${label}: empty state shows`)
+
+  await setPhoneSearchQuery(page, "zzz-no-such-note-qqq9")
+  await page.waitForFunction(
+    () => document.querySelector(".reader-search-status")?.textContent?.includes("No results"),
+    { timeout: 10000 },
+  )
+
+  await setPhoneSearchQuery(page, expect.leafTitle)
+  await page.waitForSelector(".reader-search-result", { visible: true, timeout: 10000 })
+  const results = await page.evaluate(() =>
+    Array.from(document.querySelectorAll(".reader-search-result")).map((a) => ({
+      title: a.querySelector(".reader-search-result-title")?.textContent?.trim() || "",
+      href: a.getAttribute("href") || "",
+      excerpt: a.querySelector(".reader-search-result-excerpt")?.textContent?.trim() || "",
+    })),
+  )
+  assert.ok(results.length > 0, `${label}: typing shows ranked results`)
+  for (const hit of results) {
+    assert.ok(hit.title.length > 0, `${label}: each result carries a title`)
+    assert.ok(hit.href.startsWith("/"), `${label}: each result carries a static location`)
+    assert.ok(hit.excerpt.length > 0, `${label}: each result carries an excerpt`)
+  }
+  assert.ok(
+    results.some((hit) => hit.href === expect.leafRoute),
+    `${label}: results reach the nested note`,
+  )
+  for (const height of await visibleHeights(page, ".reader-search-result")) {
+    assert.ok(height >= 44, `${label}: result touch target is ${height}px (expected >= 44)`)
+  }
+  await assertNoPageOverflow(page, `${label} search dialog`)
+
+  const firstHref = results[0].href
+  const activeEndsWith = async (suffix) =>
+    await page.evaluate(
+      (end) =>
+        document
+          .getElementById("reader-search-input")
+          ?.getAttribute("aria-activedescendant")
+          ?.endsWith(end) || false,
+      suffix,
+    )
+  assert.ok(await activeEndsWith("-option-0"), `${label}: first result starts highlighted`)
+  if (results.length > 1) {
+    await page.keyboard.press("ArrowDown")
+    assert.ok(await activeEndsWith("-option-1"), `${label}: ArrowDown moves the highlight`)
+    await page.keyboard.press("ArrowUp")
+    assert.ok(await activeEndsWith("-option-0"), `${label}: ArrowUp returns the highlight`)
+  }
+  await Promise.all([
+    page.waitForNavigation({ waitUntil: "networkidle0", timeout: 15000 }),
+    page.keyboard.press("Enter"),
+  ])
+  assert.ok(page.url().includes(firstHref), `${label}: Enter opens the static route`)
+  assert.equal(
+    await page.evaluate(() => document.querySelector("article h1")?.textContent?.trim()),
+    results[0].title,
+    `${label}: result navigation lands on the right page`,
+  )
+
+  await goto(page, `${baseUrl}/`)
+  await page.evaluate(() => document.querySelector(".reader-search-header")?.focus())
+  await page.keyboard.down("Control")
+  await page.keyboard.press("k")
+  await page.keyboard.up("Control")
+  await searchDialogOpen(page)
+  assert.equal(
+    await page.evaluate(
+      () => document.querySelectorAll('[data-slot="dialog-content"]').length,
+    ),
+    1,
+    `${label}: shortcut opens exactly one dialog`,
+  )
+  await page.keyboard.press("Escape")
+  await searchDialogClosed(page)
+  const returned = await page.evaluate(() => document.activeElement?.className || "")
+  assert.ok(
+    String(returned).includes("reader-search-header"),
+    `${label}: Escape returns focus to the header control`,
+  )
+  await assertTouchTargets(page, `${label} search`)
+}
+
 test("synthetic phone journey covers Browse, overflow, keyboard, and refresh", async () => {
   assert.ok(
     fs.existsSync(path.join(READER_ROOT, "node_modules", "next")),
@@ -1116,6 +1266,9 @@ test("synthetic phone journey covers Browse, overflow, keyboard, and refresh", a
     })
     await withPage(browser, NARROW_PHONE, async (page) => {
       await runKeyboardChecks(page, built.baseUrl, "narrow phone")
+    })
+    await withPage(browser, NARROW_PHONE, async (page) => {
+      await runPhoneSearchDialog(page, built.baseUrl, expect, "narrow phone")
     })
     await withPage(browser, LARGER_PHONE, async (page) => {
       await runPhoneJourney(page, built.baseUrl, expect, "larger phone")

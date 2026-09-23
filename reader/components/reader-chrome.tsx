@@ -1,8 +1,9 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { usePathname } from "next/navigation"
 import AppearanceControl from "./appearance-control"
+import SearchDialog, { SEARCH_INPUT_ID } from "./search-dialog"
 import Sidebar from "./sidebar"
 import type { NavigationNode } from "../lib/navigation"
 
@@ -12,13 +13,15 @@ function normalize(path: string | null): string {
 }
 
 /**
- * Reader shell: site header with a phone-only Browse toggle, the published
- * folder-and-note tree (persistent on desktop, collapsible panel on
- * phones), the reading column, and the footer.
+ * Reader shell: site header with phone-only Search and Browse controls, the
+ * published folder-and-note tree (persistent on desktop with its own Search
+ * control, collapsible panel on phones), the reading column, and the footer.
  *
  * There is one navigation model: the same generic tree feeds desktop and
  * phone. The toggle keeps no URL or history state, so browser Back always
- * moves through real page history.
+ * moves through real page history. There is one Search dialog: both trigger
+ * controls and Command+K/Control+K share its open state, and closing it
+ * returns focus to the control that had focus before it opened.
  */
 export default function ReaderChrome({
   title,
@@ -30,8 +33,13 @@ export default function ReaderChrome({
   children: React.ReactNode
 }) {
   const [browseOpen, setBrowseOpen] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
   const pathname = normalize(usePathname())
   const toggleRef = useRef<HTMLButtonElement>(null)
+  // The control focused before Search opened; focus returns there on close.
+  const searchOpenerRef = useRef<HTMLElement | null>(null)
+  const searchOpenRef = useRef(false)
+  searchOpenRef.current = searchOpen
 
   // Plain anchors navigate, so leaving Browse is normal page history:
   // close the phone panel whenever the route changes.
@@ -52,6 +60,40 @@ export default function ReaderChrome({
     return () => document.removeEventListener("keydown", onKeyDown)
   }, [browseOpen])
 
+  const openSearch = useCallback((origin: HTMLElement | null) => {
+    searchOpenerRef.current = origin
+    setSearchOpen(true)
+  }, [])
+
+  const handleSearchOpenChange = useCallback((open: boolean) => {
+    setSearchOpen(open)
+    if (!open) {
+      const opener = searchOpenerRef.current
+      searchOpenerRef.current = null
+      opener?.focus()
+    }
+  }, [])
+
+  // One global shortcut: Command+K or Control+K opens Search, or focuses
+  // its input when already open. preventDefault wins over the browser
+  // find shortcut; a single listener means no double-open.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault()
+        if (searchOpenRef.current) {
+          document.getElementById(SEARCH_INPUT_ID)?.focus()
+        } else {
+          searchOpenerRef.current =
+            document.activeElement instanceof HTMLElement ? document.activeElement : null
+          setSearchOpen(true)
+        }
+      }
+    }
+    document.addEventListener("keydown", onKeyDown)
+    return () => document.removeEventListener("keydown", onKeyDown)
+  }, [])
+
   return (
     <div
       className="reader-chrome min-h-screen bg-white text-neutral-900 antialiased dark:bg-neutral-950 dark:text-neutral-100"
@@ -63,6 +105,13 @@ export default function ReaderChrome({
         </a>
         <div className="reader-header-actions">
           <AppearanceControl />
+          <button
+            type="button"
+            className="reader-search-trigger reader-search-header"
+            onClick={(event) => openSearch(event.currentTarget)}
+          >
+            Search
+          </button>
           <button
             ref={toggleRef}
             type="button"
@@ -80,10 +129,19 @@ export default function ReaderChrome({
           id="reader-browse-panel"
           className="reader-sidebar rounded-lg bg-white dark:bg-neutral-950"
         >
+          <button
+            type="button"
+            className="reader-search-trigger reader-search-sidebar"
+            onClick={(event) => openSearch(event.currentTarget)}
+          >
+            <span>Search</span>
+            <kbd aria-hidden="true">⌘K</kbd>
+          </button>
           <Sidebar roots={roots} />
         </aside>
         <main className="reader-main">{children}</main>
       </div>
+      <SearchDialog open={searchOpen} onOpenChange={handleSearchOpenChange} />
       <footer className="reader-footer">
         <span>{title}</span>
       </footer>

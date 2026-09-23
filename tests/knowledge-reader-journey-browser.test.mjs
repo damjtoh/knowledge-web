@@ -856,6 +856,261 @@ async function runTreeBehavior(page, baseUrl, expect) {
   }
 }
 
+/** Wait until the Search dialog is open with its input focused. */
+async function dialogOpen(page) {
+  await page.waitForSelector('[data-slot="dialog-content"]', { visible: true, timeout: 5000 })
+  await page.waitForFunction(
+    () => document.activeElement && document.activeElement.id === "reader-search-input",
+    { timeout: 5000 },
+  )
+}
+
+async function dialogClosed(page) {
+  await page.waitForFunction(
+    () => !document.querySelector('[data-slot="dialog-content"]'),
+    { timeout: 5000 },
+  )
+}
+
+/** Set the dialog query the way React observes it (controlled input). */
+async function setSearchQuery(page, text) {
+  await page.evaluate((value) => {
+    const el = document.getElementById("reader-search-input")
+    if (!el) return
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")
+      .set
+    setter.call(el, value)
+    el.dispatchEvent(new Event("input", { bubbles: true }))
+  }, text)
+}
+
+async function pressShortcut(page, modifier) {
+  await page.keyboard.down(modifier)
+  await page.keyboard.press("k")
+  await page.keyboard.up(modifier)
+}
+
+/**
+ * Search dialog behavior on desktop: visible sidebar control, labelled
+ * dialog with empty/no-results/results states, full keyboard journey to a
+ * static route, shortcut open, Escape with focus return.
+ */
+async function runSearchDialog(page, baseUrl, expect) {
+  await page.goto(`${baseUrl}/`, { waitUntil: "networkidle0", timeout: 15000 })
+
+  const controls = await page.evaluate(() => {
+    const each = (sel) => {
+      const el = document.querySelector(sel)
+      if (!el) return { present: false, visible: false, text: "" }
+      const style = getComputedStyle(el)
+      const rect = el.getBoundingClientRect()
+      return {
+        present: true,
+        visible: style.display !== "none" && rect.width > 0 && rect.height > 0,
+        text: el.textContent?.trim() || "",
+      }
+    }
+    return {
+      sidebar: each(".reader-search-sidebar"),
+      header: each(".reader-search-header"),
+    }
+  })
+  assert.ok(
+    controls.sidebar.present && controls.sidebar.visible,
+    "desktop sidebar shows a Search control",
+  )
+  assert.ok(controls.sidebar.text.includes("Search"), "sidebar Search control is labeled")
+  assert.ok(!controls.header.visible, "phone header Search stays hidden on desktop")
+
+  await page.evaluate(() => document.querySelector(".reader-search-sidebar")?.click())
+  await dialogOpen(page)
+  const dialogMeta = await page.evaluate(() => ({
+    title:
+      document
+        .querySelector('[data-slot="dialog-content"] [data-slot="dialog-title"]')
+        ?.textContent?.trim() || "",
+    labelled: !!document.querySelector('label[for="reader-search-input"]'),
+    live:
+      document.querySelector(".reader-search-status")?.getAttribute("aria-live") || "",
+    status: document.querySelector(".reader-search-status")?.textContent?.trim() || "",
+    combobox: document.getElementById("reader-search-input")?.getAttribute("role") || "",
+  }))
+  assert.equal(dialogMeta.title, "Search", "dialog is labelled Search")
+  assert.ok(dialogMeta.labelled, "search input is labeled")
+  assert.equal(dialogMeta.live, "polite", "state changes announce politely")
+  assert.ok(dialogMeta.status.includes("Type to find a note"), "empty state invites a query")
+  assert.equal(dialogMeta.combobox, "combobox", "input exposes the combobox pattern")
+
+  await setSearchQuery(page, "zzz-no-such-note-qqq9")
+  await page.waitForFunction(
+    () => document.querySelector(".reader-search-status")?.textContent?.includes("No results"),
+    { timeout: 10000 },
+  )
+
+  await setSearchQuery(page, expect.leafTitle)
+  await page.waitForSelector(".reader-search-result", { visible: true, timeout: 10000 })
+  const results = await page.evaluate(() =>
+    Array.from(document.querySelectorAll(".reader-search-result")).map((a) => ({
+      title: a.querySelector(".reader-search-result-title")?.textContent?.trim() || "",
+      href: a.getAttribute("href") || "",
+      excerpt: a.querySelector(".reader-search-result-excerpt")?.textContent?.trim() || "",
+    })),
+  )
+  assert.ok(results.length > 0, "typing shows ranked results")
+  for (const hit of results) {
+    assert.ok(hit.title.length > 0, "each result carries a title")
+    assert.ok(hit.href.startsWith("/"), "each result carries a static location")
+    assert.ok(hit.excerpt.length > 0, "each result carries an excerpt")
+  }
+  assert.ok(results.some((hit) => hit.href === expect.leafRoute), "results reach the nested note")
+
+  // Keyboard journey: arrows move the highlight, Enter follows the static URL.
+  const firstHref = results[0].href
+  const activeEndsWith = async (suffix) =>
+    await page.evaluate(
+      (end) =>
+        document
+          .getElementById("reader-search-input")
+          ?.getAttribute("aria-activedescendant")
+          ?.endsWith(end) || false,
+      suffix,
+    )
+  assert.ok(await activeEndsWith("-option-0"), "first result starts highlighted")
+  if (results.length > 1) {
+    await page.keyboard.press("ArrowDown")
+    assert.ok(await activeEndsWith("-option-1"), "ArrowDown moves the highlight")
+    await page.keyboard.press("ArrowUp")
+    assert.ok(await activeEndsWith("-option-0"), "ArrowUp returns the highlight")
+  }
+  const highlighted = await page.evaluate(
+    () =>
+      document
+        .querySelector('.reader-search-option[data-active="true"] .reader-search-result')
+        ?.getAttribute("href") || null,
+  )
+  assert.equal(highlighted, firstHref, "highlight tracks the first result")
+  await Promise.all([
+    page.waitForNavigation({ waitUntil: "networkidle0", timeout: 15000 }),
+    page.keyboard.press("Enter"),
+  ])
+  assert.ok(page.url().includes(firstHref), "Enter opens the highlighted static route")
+  const landed = await page.evaluate(
+    () => document.querySelector("article h1")?.textContent?.trim() || "",
+  )
+  assert.ok(landed.length > 0, "result navigation lands on a readable page")
+
+  // Shortcut opens and focuses; repeating it keeps exactly one dialog.
+  await page.goto(`${baseUrl}/`, { waitUntil: "networkidle0", timeout: 15000 })
+  await page.evaluate(() => document.querySelector(".reader-search-sidebar")?.focus())
+  await pressShortcut(page, "Control")
+  await dialogOpen(page)
+  const countDialogs = async () =>
+    await page.evaluate(
+      () => document.querySelectorAll('[data-slot="dialog-content"]').length,
+    )
+  assert.equal(await countDialogs(), 1, "Control+K opens exactly one dialog")
+  await pressShortcut(page, "Control")
+  assert.equal(await countDialogs(), 1, "shortcut while open keeps one dialog")
+  assert.equal(
+    await page.evaluate(() => document.activeElement?.id || ""),
+    "reader-search-input",
+    "shortcut focuses the dialog input",
+  )
+
+  // Escape closes and returns focus to the control that opened it.
+  await page.keyboard.press("Escape")
+  await dialogClosed(page)
+  const returned = await page.evaluate(() => document.activeElement?.className || "")
+  assert.ok(
+    String(returned).includes("reader-search-sidebar"),
+    "Escape returns focus to the opener",
+  )
+
+  // Meta+K opens the same dialog.
+  await pressShortcut(page, "Meta")
+  await dialogOpen(page)
+  await page.keyboard.press("Escape")
+  await dialogClosed(page)
+}
+
+/** Loading state: the dialog announces while the static index is in flight. */
+async function runSearchIndexLoading(browser, baseUrl) {
+  const page = await browser.newPage()
+  try {
+    await page.setViewport({ width: 1280, height: 800 })
+    await page.setRequestInterception(true)
+    let releaseIndex = () => {}
+    const gate = new Promise((resolve) => {
+      releaseIndex = resolve
+    })
+    page.on("request", (req) => {
+      try {
+        if (req.url().endsWith("/search-index.json")) {
+          gate.then(() => Promise.resolve(req.continue()).catch(() => {}))
+        } else {
+          Promise.resolve(req.continue()).catch(() => {})
+        }
+      } catch {}
+    })
+    await page.goto(`${baseUrl}/`, { waitUntil: "networkidle0", timeout: 15000 })
+    await pressShortcut(page, "Control")
+    await dialogOpen(page)
+    await setSearchQuery(page, "garden")
+    await page.waitForFunction(
+      () =>
+        document.querySelector(".reader-search-status")?.textContent?.includes("Searching"),
+      { timeout: 10000 },
+    )
+    assert.equal(
+      await page.evaluate(() => document.querySelectorAll(".reader-search-result").length),
+      0,
+      "no results render before the index arrives",
+    )
+    releaseIndex()
+    await page.waitForSelector(".reader-search-result", { visible: true, timeout: 15000 })
+  } finally {
+    await page.close()
+  }
+}
+
+/** Failed index fetch: graceful feedback, no crash, dialog still closes. */
+async function runSearchIndexFailure(browser, baseUrl) {
+  const page = await browser.newPage()
+  try {
+    await page.setViewport({ width: 1280, height: 800 })
+    await page.setRequestInterception(true)
+    page.on("request", (req) => {
+      try {
+        if (req.url().endsWith("/search-index.json")) {
+          Promise.resolve(req.abort()).catch(() => {})
+        } else {
+          Promise.resolve(req.continue()).catch(() => {})
+        }
+      } catch {}
+    })
+    await page.goto(`${baseUrl}/`, { waitUntil: "networkidle0", timeout: 15000 })
+    await pressShortcut(page, "Control")
+    await dialogOpen(page)
+    await setSearchQuery(page, "garden")
+    await page.waitForFunction(
+      () =>
+        document
+          .querySelector(".reader-search-status")
+          ?.textContent?.includes("unavailable"),
+      { timeout: 10000 },
+    )
+    assert.equal(
+      await page.evaluate(() => document.querySelectorAll(".reader-search-result").length),
+      0,
+      "failed fetch shows feedback instead of results",
+    )
+    await page.keyboard.press("Escape")
+    await dialogClosed(page)
+  } finally {
+    await page.close()
+  }
+}
+
 test("synthetic browse journey covers home → folder → nested note → Back", async () => {
   assert.ok(
     fs.existsSync(path.join(READER_ROOT, "node_modules", "next")),
@@ -923,6 +1178,15 @@ test("synthetic browse journey covers home → folder → nested note → Back",
     assert.ok(rich.external, "direct rich note renders external links")
     assert.ok(direct.h1.length > 0, "direct note route renders a title")
     await page.close()
+    const searchPage = await browser.newPage()
+    await searchPage.setViewport({ width: 1280, height: 800 })
+    await runSearchDialog(searchPage, baseUrl, {
+      leafTitle: journey.leafTitle,
+      leafRoute: journey.leafRoute,
+    })
+    await searchPage.close()
+    await runSearchIndexLoading(browser, baseUrl)
+    await runSearchIndexFailure(browser, baseUrl)
   } finally {
     await browser.close()
     server.close()

@@ -552,6 +552,196 @@ body {
   }
 }
 
+/**
+ * Search controls and dialog.
+ *
+ * Two trigger controls share one dialog: a full-width control above the
+ * tree in the desktop sidebar and a compact control in the phone header.
+ * Result rows and the input keep the 44px touch target used by Browse and
+ * navigation. Surfaces stay grayscale only, with dark variants matching
+ * the reader shell. The dialog panel itself comes from the registry
+ * Dialog component; these classes only shape the search content.
+ */
+.reader-search-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  padding: 0.5rem 1rem;
+  font: inherit;
+  font-weight: 600;
+  color: #171717;
+  background: #fff;
+  border: 1px solid #d4d4d4;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.reader-search-trigger:hover {
+  background: #f5f5f5;
+}
+
+.reader-search-trigger kbd {
+  font: inherit;
+  font-weight: 400;
+  font-size: 0.8rem;
+  color: #737373;
+  border: 1px solid #e5e5e5;
+  border-radius: 4px;
+  padding: 0.1rem 0.35rem;
+  background: #fafafa;
+}
+
+.reader-search-sidebar {
+  width: 100%;
+  margin-bottom: 0.75rem;
+}
+
+/* The header control is phone-only: desktop readers use the sidebar one. */
+.reader-search-header {
+  display: none;
+}
+
+.reader-search-body {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.reader-search-input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0.6rem 0.75rem;
+  font: inherit;
+  color: #171717;
+  background: #fff;
+  border: 1px solid #d4d4d4;
+  border-radius: 8px;
+}
+
+.reader-search-input::placeholder {
+  color: #737373;
+}
+
+.reader-search-status {
+  font-size: 0.9rem;
+  color: #525252;
+  min-height: 1.5em;
+}
+
+.reader-search-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.25rem;
+  max-height: min(50vh, 24rem);
+  overflow-y: auto;
+}
+
+.reader-search-option {
+  border-radius: 8px;
+}
+
+.reader-search-option[data-active="true"] {
+  background: #f5f5f5;
+  outline: 2px solid #171717;
+  outline-offset: -2px;
+}
+
+.reader-search-result {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.6rem 0.75rem;
+  min-height: 44px;
+  text-decoration: none;
+  color: inherit;
+  border-radius: 8px;
+}
+
+.reader-search-result-title {
+  font-weight: 700;
+  color: #171717;
+  overflow-wrap: anywhere;
+}
+
+.reader-search-result-url {
+  font-size: 0.8rem;
+  color: #737373;
+  overflow-wrap: anywhere;
+}
+
+.reader-search-result-excerpt {
+  font-size: 0.9rem;
+  color: #525252;
+  overflow-wrap: anywhere;
+}
+
+.reader-search-result-excerpt mark {
+  background: #e5e5e5;
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.dark .reader-search-trigger {
+  color: #fafafa;
+  background: #171717;
+  border-color: #404040;
+}
+
+.dark .reader-search-trigger:hover {
+  background: #262626;
+}
+
+.dark .reader-search-trigger kbd {
+  color: #a3a3a3;
+  border-color: #404040;
+  background: #262626;
+}
+
+.dark .reader-search-input {
+  color: #fafafa;
+  background: #171717;
+  border-color: #404040;
+}
+
+.dark .reader-search-input::placeholder {
+  color: #a3a3a3;
+}
+
+.dark .reader-search-status {
+  color: #d4d4d4;
+}
+
+.dark .reader-search-option[data-active="true"] {
+  background: #262626;
+  outline-color: #fafafa;
+}
+
+.dark .reader-search-result-title {
+  color: #fafafa;
+}
+
+.dark .reader-search-result-url {
+  color: #a3a3a3;
+}
+
+.dark .reader-search-result-excerpt {
+  color: #d4d4d4;
+}
+
+.dark .reader-search-result-excerpt mark {
+  background: #404040;
+  color: #fafafa;
+}
+
+@media (max-width: 899px) {
+  .reader-search-header {
+    display: inline-flex;
+  }
+}
+
 /*---break---
  */
 
