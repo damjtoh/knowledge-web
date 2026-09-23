@@ -185,6 +185,8 @@ function makeNeutralKb() {
       "",
       "Inline `[[Plain Meadow]]` stays literal.",
       "",
+      "Inline `[[Garden Plots]]` stays literal.",
+      "",
       "See https://example.com/field-guide for details.",
       "",
       "![Meadow view](https://example.com/photos/very-wide-panoramic-meadow-view.jpg)",
@@ -464,6 +466,11 @@ test("neutral synthetic corpus builds a complete static export with authored and
   )
   assert.match(
     guide,
+    /<code>\[\[Garden Plots\]\]<\/code>/,
+    "authored folder index inside inline code stays literal",
+  )
+  assert.match(
+    guide,
     /<a href="\/notes\/plain" class="internal"[^>]*>Plain Meadow<\/a>/,
     "title-based wikilink resolves",
   )
@@ -491,6 +498,11 @@ test("neutral synthetic corpus builds a complete static export with authored and
     guide,
     /<a href="\/notes\/plain#Details" class="internal"[^>]*>section label<\/a>/,
     "heading fragment with alias preserves text",
+  )
+  assert.match(
+    guide,
+    /<a href="\/garden" class="internal"[^>]*>Garden Plots<\/a>/,
+    "authored folder index title wikilink resolves to folder route",
   )
   assert.match(
     guide,
