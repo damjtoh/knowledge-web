@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { usePathname } from "next/navigation"
 import AppearanceControl from "./appearance-control"
+import OfflineSave from "./offline-save"
 import SearchDialog, { SEARCH_INPUT_ID } from "./search-dialog"
 import Sidebar from "./sidebar"
 import type { NavigationNode } from "../lib/navigation"
@@ -144,6 +145,7 @@ export default function ReaderChrome({
       <SearchDialog open={searchOpen} onOpenChange={handleSearchOpenChange} />
       <footer className="reader-footer">
         <span>{title}</span>
+        <OfflineSave />
       </footer>
     </div>
   )
