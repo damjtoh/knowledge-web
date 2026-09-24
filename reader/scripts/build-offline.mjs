@@ -78,6 +78,29 @@ function integrityOf(abs) {
   return `sha384-${digest.digest("base64")}`
 }
 
+function credentialManifestLinks(outDir) {
+  if (!fs.existsSync(path.join(outDir, "manifest.webmanifest"))) return
+  // Next.js generates the manifest route and its head link, but does not
+  // expose crossorigin for that link. Protected Web Projections need the
+  // Access cookie even when the manifest is on the same origin. Change the
+  // final HTML before Workbox computes revisions and integrity hashes.
+  for (const rel of listFilesRecursive(outDir).filter((name) => name.endsWith(".html"))) {
+    const abs = path.join(outDir, rel)
+    const html = fs.readFileSync(abs, "utf8")
+    const links = html.match(/<link\b[^>]*\brel="manifest"[^>]*>/g) ?? []
+    if (links.length !== 1 || !links[0].includes('href="/manifest.webmanifest"')) {
+      throw new Error(`expected one generated manifest link in ${rel}`)
+    }
+    const link = links[0]
+    if (link.includes('crossorigin="use-credentials"')) continue
+    if (/\bcrossorigin=/.test(link)) throw new Error(`unexpected manifest credentials in ${rel}`)
+    fs.writeFileSync(
+      abs,
+      html.replace(link, link.replace(/\/?>(?=$)/, ' crossorigin="use-credentials"/>')),
+    )
+  }
+}
+
 /**
  * nginx-consistent extensionless mapping appended to the generated worker.
  * Reads the Workbox precache only; never writes entries, never goes
@@ -132,6 +155,8 @@ async function main() {
   for (const rel of listFilesRecursive(outDir)) {
     if (/^workbox-[\w-]+\.js(\.map)?$/.test(rel)) fs.rmSync(path.join(outDir, rel), { force: true })
   }
+
+  credentialManifestLinks(outDir)
 
   // Publication files only: everything the static export emitted, minus
   // source maps (never needed to read or navigate offline).
