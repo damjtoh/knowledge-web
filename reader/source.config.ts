@@ -15,7 +15,11 @@ import { buildWikiLinkMaps } from "./lib/wiki-aliases.js"
  */
 function resolveContentDir(): string {
   const configured = process.env.READER_CONTENT_DIR ?? "../content"
-  return path.isAbsolute(configured) ? configured : path.resolve(import.meta.dirname, configured)
+  // Relative defaults resolve from the build working directory (the reader
+  // package root). import.meta.dirname is unavailable here: the config is
+  // bundled by fumadocs-mdx into reader/.source, so it would resolve to
+  // reader/content instead of the publisher ./content staging tree.
+  return path.isAbsolute(configured) ? configured : path.resolve(process.cwd(), configured)
 }
 
 export const content = defineCollections({
