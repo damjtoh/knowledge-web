@@ -85,7 +85,11 @@ async function countCached(urls: string[]): Promise<number> {
  * index stay usable and no login response is cached (precache integrity
  * rejects wrong bytes). Reload activates the new worker; outdated caches
  * are then cleaned, so removed pages stop serving offline and pages plus
- * search come from the same new version.
+ * search come from the same new version. Removal clears only this Web
+ * Projection: it unregisters this scope's worker and deletes only this
+ * scope's Workbox precache caches, so unrelated same-origin caches stay
+ * and other origins stay unaffected. After removal the control returns
+ * to the explicit Save action; later visits never re-register on their own.
  */
 export default function OfflineSave() {
   const [status, setStatus] = useState<Status>("checking")
@@ -94,6 +98,7 @@ export default function OfflineSave() {
   const [failure, setFailure] = useState<Failure>(null)
   const [updateAvailable, setUpdateAvailable] = useState(false)
   const [reloading, setReloading] = useState(false)
+  const [removing, setRemoving] = useState(false)
   const savingRef = useRef(false)
   const waitingRef = useRef<ServiceWorker | null>(null)
   const watchingRef = useRef(false)
@@ -233,6 +238,44 @@ export default function OfflineSave() {
     window.location.reload()
   }, [reloading])
 
+  const removeCopy = useCallback(async () => {
+    if (removing) return
+    setRemoving(true)
+    try {
+      // Capture this scope before unregistering, so only this Web
+      // Projection's precache goes. Other origins are per-origin and
+      // stay unaffected; unrelated same-origin caches never carry
+      // the precache marker and are kept.
+      let scope: string | null = null
+      try {
+        const current = await navigator.serviceWorker.getRegistration()
+        scope = current?.scope ?? null
+        if (current) await current.unregister()
+      } catch {
+        // Unregistration is best-effort; cache cleanup still runs.
+      }
+      try {
+        const keys = await caches.keys()
+        const targets = keys.filter((name) => {
+          if (!name.includes("-precache-")) return false
+          if (!scope) return name.startsWith("workbox-precache-")
+          return name === `workbox-precache-v2-${scope}` || name.endsWith(`-${scope}`)
+        })
+        await Promise.all(targets.map((name) => caches.delete(name)))
+      } catch {
+        // A cache lookup failure still clears the displayed state below.
+      }
+      waitingRef.current = null
+      watchingRef.current = false
+      setUpdateAvailable(false)
+      setFailure(null)
+      setDone(0)
+      setStatus("idle")
+    } finally {
+      setRemoving(false)
+    }
+  }, [removing])
+
   const save = useCallback(async () => {
     if (savingRef.current) return
     const listed = manifest
@@ -339,6 +382,14 @@ export default function OfflineSave() {
             {reloading ? "Reloading…" : "Update ready — Reload"}
           </button>
         ) : null}
+        <button
+          type="button"
+          className="reader-offline-remove"
+          onClick={removeCopy}
+          disabled={removing}
+        >
+          {removing ? "Removing…" : "Remove offline copy"}
+        </button>
       </section>
     )
   }

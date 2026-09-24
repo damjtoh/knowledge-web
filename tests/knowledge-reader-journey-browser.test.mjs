@@ -1552,6 +1552,182 @@ async function runOfflineUpdate(browser, baseUrl, outDir, expect) {
   }
 }
 
+/**
+ * Explicit removal on the same export (no second Next.js build).
+ *
+ * From the updated Ready copy: Remove offline copy unregisters this
+ * projection's worker and deletes only its Workbox precache caches, so an
+ * unrelated same-origin cache stays. Ready clears to the explicit Save
+ * action, a later online visit starts no silent download, and an explicit
+ * Save restores Ready. A simulated storage eviction (precache deleted,
+ * worker left) must also clear Ready on the next visit.
+ */
+async function runOfflineRemove(browser, baseUrl, expect) {
+  const { leafRoute } = expect
+  const leafHtml = leafRoute === "/" ? "/index.html" : `${leafRoute}.html`
+  const page = await browser.newPage()
+  try {
+    await page.setViewport({ width: 1280, height: 800 })
+    await page.goto(`${baseUrl}/`, { waitUntil: "networkidle0", timeout: 15000 })
+    await page.waitForSelector(".reader-offline-ready", { visible: true, timeout: 15000 })
+    await page.waitForSelector(".reader-offline-remove", { visible: true, timeout: 15000 })
+
+    await page.evaluate(async () => {
+      try {
+        const keep = await caches.open("sentinel-keep-v1")
+        await keep.put("/sentinel-keep", new Response("keep", { headers: { "Content-Type": "text/plain" } }))
+      } catch {}
+    })
+    const before = await page.evaluate(async () => {
+      let hasReg = false
+      let keys = []
+      try {
+        hasReg = !!(await navigator.serviceWorker.getRegistration())
+      } catch {}
+      try {
+        keys = await caches.keys()
+      } catch {}
+      return {
+        hasReg,
+        precacheCount: keys.filter((name) => name.includes("-precache-")).length,
+      }
+    })
+    assert.ok(before.hasReg, "saved worker present before removal")
+    assert.ok(before.precacheCount > 0, "saved precache present before removal")
+
+    await page.evaluate(() => document.querySelector(".reader-offline-remove")?.click())
+    await page.waitForSelector(".reader-offline-save", { visible: true, timeout: 15000 })
+    assert.equal(
+      await page.evaluate(() => !!document.querySelector(".reader-offline-ready")),
+      false,
+      "Ready offline clears after removal",
+    )
+    assert.equal(
+      await page.evaluate(() => !!document.querySelector(".reader-offline-remove")),
+      false,
+      "Remove action leaves with the saved copy",
+    )
+    // Give a later visit no chance to hide a silent re-download.
+    await new Promise((resolve) => setTimeout(resolve, 2000))
+    const after = await page.evaluate(async () => {
+      let hasReg = false
+      let keys = []
+      try {
+        hasReg = !!(await navigator.serviceWorker.getRegistration())
+      } catch {}
+      try {
+        keys = await caches.keys()
+      } catch {}
+      return {
+        hasReg,
+        precacheCount: keys.filter((name) => name.includes("-precache-")).length,
+        kept: keys.includes("sentinel-keep-v1"),
+      }
+    })
+    assert.equal(after.hasReg, false, "removal unregisters this projection's worker")
+    assert.equal(after.precacheCount, 0, "removal deletes this projection's precache")
+    assert.equal(after.kept, true, "unrelated same-origin cache stays")
+    const stillCached = await page.evaluate(
+      async (htmlUrl) => {
+        try {
+          const hit = await caches.match(htmlUrl, { ignoreSearch: true })
+          return !!(hit && hit.ok)
+        } catch {
+          return true
+        }
+      },
+      leafHtml,
+    )
+    assert.equal(stillCached, false, "removed page leaves no precache entry")
+
+    // Later online visit: explicit Save stays, but no silent whole-site fetch.
+    await page.goto(`${baseUrl}/`, { waitUntil: "networkidle0", timeout: 15000 })
+    await page.waitForSelector(".reader-offline-save", { visible: true, timeout: 15000 })
+    assert.equal(
+      await page.evaluate(() => !!document.querySelector(".reader-offline-ready")),
+      false,
+      "later visit does not claim Ready offline",
+    )
+    await new Promise((resolve) => setTimeout(resolve, 2000))
+    const later = await page.evaluate(async () => {
+      let hasReg = false
+      let keys = []
+      try {
+        hasReg = !!(await navigator.serviceWorker.getRegistration())
+      } catch {}
+      try {
+        keys = await caches.keys()
+      } catch {}
+      return {
+        hasReg,
+        precacheCount: keys.filter((name) => name.includes("-precache-")).length,
+      }
+    })
+    assert.equal(later.hasReg, false, "later visit does not re-register")
+    assert.equal(later.precacheCount, 0, "later visit does not re-download")
+
+    // Explicit re-save restores the offline copy with no rebuild.
+    await page.evaluate(() => document.querySelector(".reader-offline-save")?.click())
+    await page.waitForSelector(".reader-offline-progress", { visible: true, timeout: 15000 })
+    await page.waitForSelector(".reader-offline-ready", { visible: true, timeout: 90000 })
+    await page.waitForSelector(".reader-offline-remove", { visible: true, timeout: 15000 })
+    const resaved = await page.evaluate(async () => {
+      let hasReg = false
+      let keys = []
+      try {
+        hasReg = !!(await navigator.serviceWorker.getRegistration())
+      } catch {}
+      try {
+        keys = await caches.keys()
+      } catch {}
+      return {
+        hasReg,
+        precacheCount: keys.filter((name) => name.includes("-precache-")).length,
+      }
+    })
+    assert.ok(resaved.hasReg, "explicit re-save registers the worker again")
+    assert.ok(resaved.precacheCount > 0, "explicit re-save restores the precache")
+
+    await page.setOfflineMode(true)
+    await page.goto(`${baseUrl}${leafRoute}`, { waitUntil: "domcontentloaded", timeout: 15000 })
+    assert.ok(
+      (await page.evaluate(() => document.querySelector("article h1")?.textContent?.trim() || ""))
+        .length > 0,
+      "re-saved page opens offline",
+    )
+    await page.setOfflineMode(false)
+
+    // Simulated browser storage eviction: precache gone, worker left.
+    // The next online visit must not keep a stale Ready label.
+    await page.evaluate(async () => {
+      try {
+        const keys = await caches.keys()
+        await Promise.all(
+          keys.filter((name) => name.includes("-precache-")).map((name) => caches.delete(name)),
+        )
+      } catch {}
+    })
+    await page.goto(`${baseUrl}/`, { waitUntil: "networkidle0", timeout: 15000 })
+    await page.waitForSelector(".reader-offline-save, .reader-offline-retry", {
+      visible: true,
+      timeout: 15000,
+    })
+    assert.equal(
+      await page.evaluate(() => !!document.querySelector(".reader-offline-ready")),
+      false,
+      "storage eviction clears Ready offline",
+    )
+    await page.evaluate(async () => {
+      try {
+        await caches.delete("sentinel-keep-v1")
+      } catch {}
+    })
+  } finally {
+    await page.setOfflineMode(false).catch(() => {})
+    await page.close()
+  }
+}
+
 test("synthetic browse journey covers home → folder → nested note → Back", async () => {
   assert.ok(
     fs.existsSync(path.join(READER_ROOT, "node_modules", "next")),
@@ -1643,6 +1819,9 @@ test("synthetic browse journey covers home → folder → nested note → Back",
       leafRoute: journey.leafRoute,
       leafTitle: journey.leafTitle,
       removedRoute: "/orchard/note-12",
+    })
+    await runOfflineRemove(browser, baseUrl, {
+      leafRoute: journey.leafRoute,
     })
   } finally {
     await browser.close()
