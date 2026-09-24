@@ -683,7 +683,20 @@ test("neutral synthetic corpus builds a complete static export with authored and
     const iconRel = icon.src.replace(/^\//, "")
     assert.ok(fs.existsSync(path.join(outDir, iconRel)), `manifest icon is emitted: ${iconRel}`)
   }
-  assert.match(landing, /rel="manifest"/, "landing links the per-projection app manifest")
+  const manifestLinks = [...landing.matchAll(/<link\b[^>]*\brel="manifest"[^>]*>/g)]
+  assert.equal(manifestLinks.length, 1, "landing links one per-projection app manifest")
+  assert.match(
+    manifestLinks[0][0],
+    /\bcrossorigin="use-credentials"/,
+    "protected manifest fetch sends the Access session cookie",
+  )
+  for (const rel of expectedPages) {
+    assert.match(
+      readOut(outDir, rel),
+      /<link rel="manifest" href="\/manifest\.webmanifest" crossorigin="use-credentials"\/>/,
+      `published page requests the protected manifest with credentials: ${rel}`,
+    )
+  }
 
   // Bounded output safety inspection.
   assertAbsentEverywhere(outDir, UNSELECTED_SENTINEL, "unselected sentinel")
@@ -1008,8 +1021,9 @@ test("offline precache revisions follow exported files without a reader build", 
     fs.mkdirSync(path.dirname(abs), { recursive: true })
     fs.writeFileSync(abs, content)
   }
-  write("index.html", "<h1>Home</h1>")
-  write("note.html", "<h1>Note</h1>")
+  write("index.html", '<link rel="manifest" href="/manifest.webmanifest"/><h1>Home</h1>')
+  write("note.html", '<link rel="manifest" href="/manifest.webmanifest"/><h1>Note</h1>')
+  write("manifest.webmanifest", "{}")
   write("search-index.json", JSON.stringify({ ok: true }))
   write("_next/static/chunks/app-abc123.js", "console.log(1)")
   const runOffline = () =>
@@ -1044,7 +1058,7 @@ test("offline precache revisions follow exported files without a reader build", 
   const homeBefore = before.get("index.html")
   const hashedBefore = before.get("_next/static/chunks/app-abc123.js")
 
-  write("note.html", "<h1>Note changed</h1>")
+  write("note.html", '<link rel="manifest" href="/manifest.webmanifest"/><h1>Note changed</h1>')
   write("search-index.json", JSON.stringify({ ok: true, v: 2 }))
   await runOffline()
   const after = revisionsOf()
@@ -1067,6 +1081,15 @@ test("offline precache revisions follow exported files without a reader build", 
 
   fs.rmSync(path.join(dir, "note.html"))
   await runOffline()
+  assert.equal(
+    [
+      ...fs
+        .readFileSync(path.join(dir, "index.html"), "utf8")
+        .matchAll(/crossorigin="use-credentials"/g),
+    ].length,
+    1,
+    "generated manifest link gains credentials only once across repeated offline builds",
+  )
   const removed = revisionsOf()
   assert.ok(!removed.has("note.html"), "removed page leaves the precache")
   assert.ok(removed.has("index.html"), "remaining pages stay precached")
