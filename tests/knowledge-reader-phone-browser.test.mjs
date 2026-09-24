@@ -710,8 +710,7 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
   assert.ok(page.url().includes(expect.leafRoute), `${label}: Back returns to the note`)
   await page.goBack({ waitUntil: "networkidle0", timeout: 15000 })
   await page.waitForFunction(
-    (route) =>
-      window.location.pathname === route || window.location.pathname === `${route}/`,
+    (route) => window.location.pathname === route || window.location.pathname === `${route}/`,
     { timeout: 15000 },
     expect.folderRoute,
   )
@@ -983,16 +982,10 @@ async function runOutputInspection(outDir, workDir, kbRoot, sentinel) {
           .map((entry) => path.join(abs, entry))
       }),
     )
-  const forbidden = [
-    "workbox",
-    "service-worker",
-    "serviceWorker",
-    "pagefind",
-    "flexsearch",
-    "lunr",
-    "fumadocs-ui",
-    "dockerfile",
-  ]
+  // Offline support is the sanctioned service-worker use: the generated
+  // worker and its registration may mention workbox and service workers.
+  // Bundled search engines stay out; publication still has no content API.
+  const forbidden = ["pagefind", "flexsearch", "lunr", "fumadocs-ui", "dockerfile"]
   for (const file of readerSources) {
     const text = fs.readFileSync(file, "utf8")
     for (const token of forbidden) {
@@ -1028,8 +1021,12 @@ async function runOutputInspection(outDir, workDir, kbRoot, sentinel) {
   assert.deepEqual(routeFiles, [], "reader has no content API routes")
   const emitted = listFilesRecursive(outDir)
   assert.ok(
-    !emitted.some((rel) => /sw\.js$|service-worker|workbox|pagefind/i.test(rel)),
-    "static output carries no service worker",
+    !emitted.some((rel) => /pagefind/i.test(rel)),
+    "static output carries no pagefind bundle",
+  )
+  assert.ok(
+    emitted.includes("sw.js") && emitted.includes("offline.json"),
+    "static export carries the generated offline worker and manifest",
   )
 
   const porcelain = (
@@ -1100,10 +1097,9 @@ async function searchDialogOpen(page) {
 }
 
 async function searchDialogClosed(page) {
-  await page.waitForFunction(
-    () => !document.querySelector('[data-slot="dialog-content"]'),
-    { timeout: 5000 },
-  )
+  await page.waitForFunction(() => !document.querySelector('[data-slot="dialog-content"]'), {
+    timeout: 5000,
+  })
 }
 
 /** Set the dialog query the way React observes it (controlled input). */
@@ -1111,8 +1107,7 @@ async function setPhoneSearchQuery(page, text) {
   await page.evaluate((value) => {
     const el = document.getElementById("reader-search-input")
     if (!el) return
-    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")
-      .set
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set
     setter.call(el, value)
     el.dispatchEvent(new Event("input", { bubbles: true }))
   }, text)
@@ -1136,10 +1131,7 @@ async function runPhoneSearchDialog(page, baseUrl, expect, label) {
   const triggerHeight = await page.evaluate(
     () => document.querySelector(".reader-search-header")?.getBoundingClientRect().height,
   )
-  assert.ok(
-    triggerHeight >= 44,
-    `${label}: header Search is ${triggerHeight}px (expected >= 44)`,
-  )
+  assert.ok(triggerHeight >= 44, `${label}: header Search is ${triggerHeight}px (expected >= 44)`)
 
   await page.evaluate(() => document.querySelector(".reader-search-header")?.click())
   await searchDialogOpen(page)
@@ -1222,9 +1214,7 @@ async function runPhoneSearchDialog(page, baseUrl, expect, label) {
   await page.keyboard.up("Control")
   await searchDialogOpen(page)
   assert.equal(
-    await page.evaluate(
-      () => document.querySelectorAll('[data-slot="dialog-content"]').length,
-    ),
+    await page.evaluate(() => document.querySelectorAll('[data-slot="dialog-content"]').length),
     1,
     `${label}: shortcut opens exactly one dialog`,
   )

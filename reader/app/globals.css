@@ -742,6 +742,88 @@ body {
   }
 }
 
+/**
+ * Offline save control in the reader footer.
+ *
+ * One explicit action per Web Projection: Save for offline use with its
+ * estimated size and trusted-device note, Saving progress, a Ready offline
+ * state only after the whole export is cached, and an incomplete state
+ * with retry. Surfaces stay grayscale only, with dark variants matching
+ * the reader shell. Controls keep the 44px touch target used by Browse
+ * and navigation.
+ */
+.reader-offline {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  max-width: 68ch;
+}
+
+.reader-offline-save,
+.reader-offline-retry {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0.5rem 1rem;
+  font: inherit;
+  font-weight: 600;
+  color: #171717;
+  background: #fff;
+  border: 1px solid #d4d4d4;
+  border-radius: 8px;
+  cursor: pointer;
+  justify-self: start;
+}
+
+.reader-offline-save:hover,
+.reader-offline-retry:hover {
+  background: #f5f5f5;
+}
+
+.reader-offline-size,
+.reader-offline-trust,
+.reader-offline-status,
+.reader-offline-ready {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #525252;
+  overflow-wrap: anywhere;
+}
+
+.reader-offline-ready {
+  color: #171717;
+  font-weight: 600;
+}
+
+.reader-offline-progress {
+  width: 100%;
+  max-width: 24rem;
+  height: 0.75rem;
+}
+
+.dark .reader-offline-save,
+.dark .reader-offline-retry {
+  color: #fafafa;
+  background: #171717;
+  border-color: #404040;
+}
+
+.dark .reader-offline-save:hover,
+.dark .reader-offline-retry:hover {
+  background: #262626;
+}
+
+.dark .reader-offline-size,
+.dark .reader-offline-trust,
+.dark .reader-offline-status {
+  color: #d4d4d4;
+}
+
+.dark .reader-offline-ready {
+  color: #fafafa;
+}
+
 /*---break---
  */
 

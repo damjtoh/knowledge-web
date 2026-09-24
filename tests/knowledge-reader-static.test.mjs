@@ -23,6 +23,7 @@
 
 import assert from "node:assert/strict"
 import { execFile } from "node:child_process"
+import { createHash } from "node:crypto"
 import fs from "node:fs"
 import http from "node:http"
 import os from "node:os"
@@ -534,10 +535,7 @@ test("neutral synthetic corpus builds a complete static export with authored and
     "folder body links to emitted note route",
   )
   const alpha = readOut(outDir, "garden/alpha.html")
-  assert.ok(
-    alpha.includes('href="/garden">Garden home</a>'),
-    "index.md links to folder route",
-  )
+  assert.ok(alpha.includes('href="/garden">Garden home</a>'), "index.md links to folder route")
   assert.ok(
     alpha.includes('href="/notes/plain#details">Meadow details</a>'),
     "parent-relative links keep headings on emitted note routes",
@@ -669,11 +667,7 @@ test("neutral synthetic corpus builds a complete static export with authored and
     "static export carries a per-projection app manifest",
   )
   const webManifest = JSON.parse(readOut(outDir, "manifest.webmanifest"))
-  assert.equal(
-    webManifest.name,
-    metadata.title,
-    "manifest name uses the generated title",
-  )
+  assert.equal(webManifest.name, metadata.title, "manifest name uses the generated title")
   assert.equal(webManifest.start_url, "/", "manifest start URL stays site-local")
   assert.equal(webManifest.scope, "/", "manifest scope stays site-local")
   assert.equal(webManifest.display, "standalone", "manifest uses standalone display")
@@ -687,16 +681,9 @@ test("neutral synthetic corpus builds a complete static export with authored and
       "manifest icon stays site-local",
     )
     const iconRel = icon.src.replace(/^\//, "")
-    assert.ok(
-      fs.existsSync(path.join(outDir, iconRel)),
-      `manifest icon is emitted: ${iconRel}`,
-    )
+    assert.ok(fs.existsSync(path.join(outDir, iconRel)), `manifest icon is emitted: ${iconRel}`)
   }
-  assert.match(
-    landing,
-    /rel="manifest"/,
-    "landing links the per-projection app manifest",
-  )
+  assert.match(landing, /rel="manifest"/, "landing links the per-projection app manifest")
 
   // Bounded output safety inspection.
   assertAbsentEverywhere(outDir, UNSELECTED_SENTINEL, "unselected sentinel")
@@ -755,9 +742,113 @@ test("neutral synthetic corpus builds a complete static export with authored and
   assert.deepEqual(routeFiles, [], "reader has no content API routes")
   const emitted = listFilesRecursive(outDir)
   assert.ok(
-    !emitted.some((rel) => /sw\.js$|service-worker|workbox|pagefind/i.test(rel)),
-    "static output carries no service worker",
+    !emitted.some((rel) => /pagefind/i.test(rel)),
+    "static output carries no pagefind bundle",
   )
+
+  // Offline generation from the finished export: a self-contained Workbox
+  // worker plus a reader-facing manifest, both derived from emitted files
+  // only (no Knowledge Base, staging tree, or content API input).
+  assert.ok(fs.existsSync(path.join(outDir, "sw.js")), "static export carries an offline worker")
+  assert.ok(
+    fs.existsSync(path.join(outDir, "offline.json")),
+    "static export carries an offline manifest",
+  )
+  const swText = readOut(outDir, "sw.js")
+  assert.match(swText, /precache/, "offline worker uses a Workbox revisioned precache")
+  assert.match(swText, /self\.location\.origin/, "offline worker stays on the projection origin")
+  assert.match(
+    swText,
+    /uri\.html|index\.html/,
+    "offline worker mirrors the nginx extensionless mapping",
+  )
+  assert.ok(
+    !/https?:\/\/[^"'\s]*cloudflare/i.test(swText),
+    "offline worker precaches no access host",
+  )
+  const offlineManifest = JSON.parse(readOut(outDir, "offline.json"))
+  assert.ok(
+    typeof offlineManifest.version === "string" && offlineManifest.version.length > 0,
+    "offline manifest carries a version",
+  )
+  assert.ok(
+    typeof offlineManifest.totalBytes === "number" && offlineManifest.totalBytes > 0,
+    "offline manifest carries an estimated size",
+  )
+  assert.ok(Array.isArray(offlineManifest.urls), "offline manifest lists urls")
+  for (const url of offlineManifest.urls) {
+    assert.ok(
+      typeof url === "string" && url.startsWith("/"),
+      `offline url stays site-local: ${url}`,
+    )
+    assert.ok(!url.split("/").includes(".."), `offline url never traverses: ${url}`)
+    assert.ok(!/^https?:/i.test(url), `offline url is never cross-origin: ${url}`)
+  }
+  // Every published page (authored plus virtual) is listed for the offline
+  // save; the search index and the install manifest travel with them.
+  for (const rel of expectedPages) {
+    assert.ok(
+      offlineManifest.urls.includes(`/${rel}`),
+      `offline manifest covers published page: ${rel}`,
+    )
+  }
+  for (const rel of ["search-index.json", "manifest.webmanifest"]) {
+    assert.ok(
+      offlineManifest.urls.includes(`/${rel}`),
+      `offline manifest covers required file: ${rel}`,
+    )
+  }
+  let manifestBytes = 0
+  for (const url of offlineManifest.urls) {
+    const rel = url.replace(/^\//, "")
+    manifestBytes += fs.statSync(path.join(outDir, rel)).size
+  }
+  assert.equal(
+    offlineManifest.totalBytes,
+    manifestBytes,
+    "offline estimated size matches the listed export files",
+  )
+  // Workbox precache entries revision every listed file by content hash,
+  // reuse hashed `_next/static` URLs without a revision query, and guard
+  // every fetch with the exact export bytes: a redirected sign-in page
+  // fails integrity instead of being cached as publication.
+  const precacheEntries = [
+    ...swText.matchAll(/\{url:"([^"]+)",revision:("[^"]+"|null)(?:,integrity:"([^"]+)")?\}/g),
+  ].map(([, url, revision, integrity]) => ({ url, revision, integrity }))
+  assert.ok(precacheEntries.length > 0, "offline worker inlines precache entries")
+  for (const url of offlineManifest.urls) {
+    const entryUrl = url.replace(/^\//, "")
+    assert.ok(
+      precacheEntries.some((entry) => entry.url === entryUrl),
+      `precache covers offline url: ${url}`,
+    )
+  }
+  for (const entry of precacheEntries) {
+    assert.match(
+      entry.integrity ?? "",
+      /^sha384-[A-Za-z0-9+/]+={0,2}$/,
+      `precache entry guards exact bytes: ${entry.url}`,
+    )
+    if (entry.url.startsWith("_next/static/")) {
+      assert.equal(entry.revision, "null", `hashed asset reuses its URL: ${entry.url}`)
+    } else if (entry.url.endsWith(".html") || entry.url === "search-index.json") {
+      assert.match(
+        entry.revision ?? "",
+        /^"[0-9a-f]{16,}"$/,
+        `published file carries a content revision: ${entry.url}`,
+      )
+    }
+  }
+  // The integrity guard matches the real file: recompute it for the search
+  // index and one published page.
+  for (const rel of ["search-index.json", "standalone.html"]) {
+    const entry = precacheEntries.find((candidate) => candidate.url === rel)
+    assert.ok(entry, `precache lists ${rel}`)
+    const digest = createHash("sha384")
+      .update(fs.readFileSync(path.join(outDir, rel)))
+      .digest("base64")
+    assert.equal(entry.integrity, `sha384-${digest}`, `integrity matches ${rel} bytes`)
+  }
 
   // Build-time full-text search index over staged content only: the export
   // carries one static JSON file, with no runtime service or dynamic route.
@@ -787,21 +878,10 @@ test("neutral synthetic corpus builds a complete static export with authored and
     "Inland Journal",
     LONG_TITLE,
   ]) {
-    assert.ok(
-      searchIndexRaw.includes(title),
-      `search index covers staged title: ${title}`,
-    )
+    assert.ok(searchIndexRaw.includes(title), `search index covers staged title: ${title}`)
   }
-  for (const token of [
-    "Details",
-    "Cultivated beds",
-    "Flat orchard note",
-    "stone basin",
-  ]) {
-    assert.ok(
-      searchIndexRaw.includes(token),
-      `search index covers heading/body text: ${token}`,
-    )
+  for (const token of ["Details", "Cultivated beds", "Flat orchard note", "stone basin"]) {
+    assert.ok(searchIndexRaw.includes(token), `search index covers heading/body text: ${token}`)
   }
 
   // Exclusions: fenced code, frontmatter-only metadata, the unselected
@@ -834,11 +914,7 @@ test("neutral synthetic corpus builds a complete static export with authored and
     // a title, a location, and an excerpt tied to the matching text.
     const harbor = searchModule.searchNotes(index, "harbor")
     assert.ok(harbor.length >= 2, "title and body matches both return")
-    assert.equal(
-      harbor[0].url,
-      "/notes/harbor-ledger",
-      "title match ranks above body match",
-    )
+    assert.equal(harbor[0].url, "/notes/harbor-ledger", "title match ranks above body match")
     assert.ok(
       harbor.some((hit) => hit.url.startsWith("/notes/inland-journal")),
       "weaker body match is returned",
@@ -899,11 +975,7 @@ test("neutral synthetic corpus builds a complete static export with authored and
     )
 
     // Excluded text never surfaces in search output.
-    for (const token of [
-      CODE_ONLY_TOKEN,
-      FRONTMATTER_ONLY_TOKEN,
-      UNSELECTED_SENTINEL,
-    ]) {
+    for (const token of [CODE_ONLY_TOKEN, FRONTMATTER_ONLY_TOKEN, UNSELECTED_SENTINEL]) {
       assert.deepEqual(
         searchModule.searchNotes(index, token),
         [],
@@ -926,6 +998,66 @@ test("neutral synthetic corpus builds a complete static export with authored and
     `Quartz machinery must be unchanged (got: ${quartzTouched.join("; ")})`,
   )
   assert.ok(fs.existsSync(path.join(PUBLISHER_ROOT, "quartz", "bootstrap-cli.mjs")))
+})
+
+test("offline precache revisions follow exported files without a reader build", async () => {
+  const offlineScript = path.join(READER_ROOT, "scripts", "build-offline.mjs")
+  const dir = tmpdir("offline-revisions")
+  const write = (rel, content) => {
+    const abs = path.join(dir, rel)
+    fs.mkdirSync(path.dirname(abs), { recursive: true })
+    fs.writeFileSync(abs, content)
+  }
+  write("index.html", "<h1>Home</h1>")
+  write("note.html", "<h1>Note</h1>")
+  write("search-index.json", JSON.stringify({ ok: true }))
+  const runOffline = () =>
+    execFileAsync(process.execPath, [offlineScript, "--dir", dir], {
+      cwd: PUBLISHER_ROOT,
+      timeout: 120000,
+    })
+  const revisionsOf = () => {
+    const sw = fs.readFileSync(path.join(dir, "sw.js"), "utf8")
+    const entries = new Map()
+    for (const [, url, revision] of sw.matchAll(
+      /\{url:"([^"]+)",revision:("[^"]+"|null)(?:,integrity:"[^"]+")?\}/g,
+    )) {
+      entries.set(url, revision)
+    }
+    return entries
+  }
+  await runOffline()
+  const before = revisionsOf()
+  assert.ok(before.has("note.html"), "precache lists the page")
+  assert.ok(before.has("search-index.json"), "precache lists the search index")
+  assert.match(
+    fs.readFileSync(path.join(dir, "sw.js"), "utf8"),
+    /integrity:"sha384-[^"]+"/,
+    "precache entries guard exact export bytes",
+  )
+  const homeBefore = before.get("index.html")
+
+  write("note.html", "<h1>Note changed</h1>")
+  write("search-index.json", JSON.stringify({ ok: true, v: 2 }))
+  await runOffline()
+  const after = revisionsOf()
+  assert.notEqual(
+    after.get("note.html"),
+    before.get("note.html"),
+    "changed page gets a new revision",
+  )
+  assert.notEqual(
+    after.get("search-index.json"),
+    before.get("search-index.json"),
+    "changed search index gets a new revision",
+  )
+  assert.equal(after.get("index.html"), homeBefore, "unchanged page keeps its revision")
+
+  fs.rmSync(path.join(dir, "note.html"))
+  await runOffline()
+  const removed = revisionsOf()
+  assert.ok(!removed.has("note.html"), "removed page leaves the precache")
+  assert.ok(removed.has("index.html"), "remaining pages stay precached")
 })
 
 test("generic real corpus builds a complete static export from staged content only", async (t) => {

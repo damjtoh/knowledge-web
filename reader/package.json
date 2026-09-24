@@ -6,7 +6,7 @@
   "type": "module",
   "license": "MIT",
   "scripts": {
-    "build": "next build --webpack && node ./scripts/build-search-index.mjs",
+    "build": "next build --webpack && node ./scripts/build-search-index.mjs && node ./scripts/build-offline.mjs",
     "dev": "next dev",
     "start": "next start"
   },
@@ -28,6 +28,7 @@
     "@types/react": "19.3.0",
     "postcss": "^8.5.28",
     "shadcn": "^4.21.0",
-    "tailwindcss": "^4.3.3"
+    "tailwindcss": "^4.3.3",
+    "workbox-build": "^7.4.1"
   }
 }
