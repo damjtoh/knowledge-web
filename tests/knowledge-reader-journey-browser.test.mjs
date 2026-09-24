@@ -106,6 +106,11 @@ function createStaticServer(dir) {
       }
       res.writeHead(200, {
         "Content-Type": mime[path.extname(filePath).toLowerCase()] || "application/octet-stream",
+        // Mirror the deployed worker cache headers so update checks see a
+        // new publication instead of a cached worker.
+        ...(filePath.endsWith("sw.js") || filePath.endsWith("offline.json")
+          ? { "Cache-Control": "no-cache" }
+          : {}),
       })
       fs.createReadStream(filePath).pipe(res)
     } catch (error) {
@@ -1346,6 +1351,207 @@ async function runOfflineSave(browser, baseUrl, server, expect) {
   }
 }
 
+/**
+ * Explicit publication update on the same export (no second Next.js build).
+ *
+ * Mutates the served export directly (changed page H1 plus the same title
+ * inside the static search index, one removed page), regenerates only the
+ * Workbox output, then proves the observable update behavior: no prompt
+ * before the new publication, Update ready — Reload only after the complete
+ * replacement downloads with no forced reload, and after Reload the updated
+ * page and search come from the same new version while the removed page is
+ * gone offline. Worker update checks use no-cache headers.
+ */
+async function runOfflineUpdate(browser, baseUrl, outDir, expect) {
+  const { leafRoute, leafTitle, removedRoute } = expect
+  const newTitle = `${leafTitle} Updated`
+  const leafRel = `${leafRoute.replace(/^\//, "")}.html`
+  const leafAbs = path.join(outDir, leafRel)
+  const removedRel = `${removedRoute.replace(/^\//, "")}.html`
+  const removedAbs = path.join(outDir, removedRel)
+  assert.ok(fs.existsSync(leafAbs), `update target exists: ${leafRel}`)
+  assert.ok(fs.existsSync(removedAbs), `removal target exists: ${removedRel}`)
+  const oldVersion = JSON.parse(fs.readFileSync(path.join(outDir, "offline.json"), "utf8")).version
+
+  const page = await browser.newPage()
+  try {
+    await page.setViewport({ width: 1280, height: 800 })
+    await page.goto(`${baseUrl}${leafRoute}`, { waitUntil: "networkidle0", timeout: 15000 })
+    const beforeH1 = await page.evaluate(
+      () => document.querySelector("article h1")?.textContent?.trim() || "",
+    )
+    assert.equal(beforeH1, leafTitle, "update starts from the saved publication")
+    assert.ok(
+      await page.evaluate(() => !!document.querySelector(".reader-offline-ready")),
+      "saved copy is Ready before the update",
+    )
+    assert.equal(
+      await page.evaluate(() => !!document.querySelector(".reader-offline-reload")),
+      false,
+      "no update prompt before the new publication",
+    )
+
+    // New publication from the finished export only: changed page plus the
+    // same title in the static search index, with one page removed.
+    const leafHtml = fs.readFileSync(leafAbs, "utf8")
+    assert.ok(leafHtml.includes(leafTitle), "export holds the old title before the update")
+    fs.writeFileSync(leafAbs, leafHtml.split(leafTitle).join(newTitle))
+    const indexRaw = fs.readFileSync(path.join(outDir, "search-index.json"), "utf8")
+    assert.ok(indexRaw.includes(leafTitle), "search index holds the old title before the update")
+    fs.writeFileSync(
+      path.join(outDir, "search-index.json"),
+      indexRaw.split(leafTitle).join(newTitle),
+    )
+    fs.rmSync(removedAbs, { force: true })
+    await execFileAsync(
+      process.execPath,
+      [path.join(READER_ROOT, "scripts", "build-offline.mjs"), "--dir", outDir],
+      { cwd: PUBLISHER_ROOT, timeout: 120000 },
+    )
+    const afterManifest = JSON.parse(fs.readFileSync(path.join(outDir, "offline.json"), "utf8"))
+    assert.notEqual(afterManifest.version, oldVersion, "new publication carries a new version")
+    assert.ok(
+      !fs.readFileSync(path.join(outDir, "sw.js"), "utf8").includes(removedRel),
+      "removed page leaves the new precache",
+    )
+
+    // Deployed-style update check: worker inputs bypass the HTTP cache.
+    const cacheHeaders = await page.evaluate(async (base) => {
+      const sw = await fetch(`${base}/sw.js`, { cache: "no-store" }).then(
+        (res) => res.headers.get("cache-control") || "",
+      )
+      const manifest = await fetch(`${base}/offline.json`, { cache: "no-store" }).then(
+        (res) => res.headers.get("cache-control") || "",
+      )
+      return { sw, manifest }
+    }, baseUrl)
+    assert.match(cacheHeaders.sw, /no-cache/i, "worker update check bypasses the cache")
+    assert.match(cacheHeaders.manifest, /no-cache/i, "manifest update check bypasses the cache")
+
+    await page.evaluate(async () => {
+      const registration = await navigator.serviceWorker.getRegistration()
+      if (registration) {
+        try {
+          await registration.update()
+        } catch {}
+      }
+    })
+    await page.waitForSelector(".reader-offline-reload", { visible: true, timeout: 90000 })
+    const prompt = await page.evaluate(
+      () => document.querySelector(".reader-offline-reload")?.textContent?.trim() || "",
+    )
+    assert.equal(prompt, "Update ready — Reload", "complete replacement offers Reload")
+    assert.ok(page.url().includes(leafRoute), "update never navigates the session away")
+    const duringH1 = await page.evaluate(
+      () => document.querySelector("article h1")?.textContent?.trim() || "",
+    )
+    assert.equal(duringH1, leafTitle, "session keeps the old publication until Reload")
+
+    await Promise.all([
+      page.waitForNavigation({ waitUntil: "networkidle0", timeout: 30000 }),
+      page.evaluate(() => document.querySelector(".reader-offline-reload")?.click()),
+    ])
+    const afterH1 = await page.evaluate(
+      () => document.querySelector("article h1")?.textContent?.trim() || "",
+    )
+    assert.equal(afterH1, newTitle, "Reload serves the updated page")
+    assert.ok(
+      await page.evaluate(() => !!document.querySelector(".reader-offline-ready")),
+      "updated copy stays Ready",
+    )
+
+    // Offline after Reload: updated page and search use the new version;
+    // the removed page is no longer available offline.
+    await page.setOfflineMode(true)
+    await page.goto(`${baseUrl}${leafRoute}`, { waitUntil: "domcontentloaded", timeout: 15000 })
+    assert.equal(
+      await page.evaluate(() => document.querySelector("article h1")?.textContent?.trim() || ""),
+      newTitle,
+      "updated page serves offline",
+    )
+    const offlineIndexNew = await page.evaluate(async () => {
+      try {
+        const res = await fetch("/search-index.json")
+        if (!res.ok) return false
+        return (await res.text()).includes("Updated")
+      } catch {
+        return false
+      }
+    })
+    assert.ok(offlineIndexNew, "offline search index is the new version")
+    // Workbox precaches the `.html` export key (not the extensionless
+    // route), so check the actual cache keys: a stale removed entry would
+    // still match the `.html` lookup and fail this assertion.
+    const removedUrl = `/${removedRel.split(path.sep).join("/")}`
+    const removedHits = await page.evaluate(
+      async ([htmlUrl, route]) => {
+        const found = { htmlHit: true, routeHit: true }
+        try {
+          const htmlMatch = await caches.match(htmlUrl, { ignoreSearch: true })
+          found.htmlHit = !!(htmlMatch && htmlMatch.ok)
+        } catch {
+          found.htmlHit = true
+        }
+        try {
+          const routeMatch = await caches.match(route, { ignoreSearch: true })
+          found.routeHit = !!(routeMatch && routeMatch.ok)
+        } catch {
+          found.routeHit = true
+        }
+        return found
+      },
+      [removedUrl, removedRoute],
+    )
+    assert.equal(removedHits.htmlHit, false, "removed .html is gone from the precache")
+    assert.equal(removedHits.routeHit, false, "removed route leaves no offline entry")
+    // Observable reader behavior in an isolated probe page (keeps this
+    // page's JS context intact for the search check below): offline
+    // navigation to the removed page must not serve the old publication.
+    const probe = await browser.newPage()
+    try {
+      await probe.setViewport({ width: 1280, height: 800 })
+      await probe.setOfflineMode(true)
+      let removedServed = false
+      try {
+        await probe.goto(`${baseUrl}${removedRoute}`, {
+          waitUntil: "domcontentloaded",
+          timeout: 15000,
+        })
+        const removedH1 = await probe.evaluate(
+          () => document.querySelector("article h1")?.textContent?.trim() || "",
+        )
+        removedServed = removedH1.includes("Orchard Note 12")
+      } catch {
+        removedServed = false
+      }
+      assert.equal(removedServed, false, "removed page no longer opens offline")
+    } finally {
+      await probe.setOfflineMode(false).catch(() => {})
+      await probe.close()
+    }
+
+    await pressShortcut(page, "Control")
+    await dialogOpen(page)
+    await setSearchQuery(page, leafTitle)
+    await page.waitForSelector(".reader-search-result", { visible: true, timeout: 15000 })
+    const updateHits = await page.evaluate(() =>
+      Array.from(document.querySelectorAll(".reader-search-result")).map((a) => ({
+        title: a.querySelector(".reader-search-result-title")?.textContent?.trim() || "",
+        href: a.getAttribute("href") || "",
+      })),
+    )
+    assert.ok(
+      updateHits.some((hit) => hit.href === leafRoute && hit.title === newTitle),
+      "offline search reaches the updated page version",
+    )
+    await page.keyboard.press("Escape")
+    await dialogClosed(page)
+  } finally {
+    await page.setOfflineMode(false).catch(() => {})
+    await page.close()
+  }
+}
+
 test("synthetic browse journey covers home → folder → nested note → Back", async () => {
   assert.ok(
     fs.existsSync(path.join(READER_ROOT, "node_modules", "next")),
@@ -1432,6 +1638,11 @@ test("synthetic browse journey covers home → folder → nested note → Back",
         offlineProbes.offlineLeafRoute === "/"
           ? "/index.html"
           : `${offlineProbes.offlineLeafRoute}.html`,
+    })
+    await runOfflineUpdate(browser, baseUrl, outDir, {
+      leafRoute: journey.leafRoute,
+      leafTitle: journey.leafTitle,
+      removedRoute: "/orchard/note-12",
     })
   } finally {
     await browser.close()

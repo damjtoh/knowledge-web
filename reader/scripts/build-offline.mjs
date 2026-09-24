@@ -168,8 +168,14 @@ async function main() {
     globDirectory: outDir,
     globPatterns: ["**/*", "!sw.js", "!sw.js.map", "!workbox-*.js", "!**/*.map"],
     swDest: path.join(outDir, "sw.js"),
-    clientsClaim: true,
-    skipWaiting: true,
+    // Update lifecycle: a new publication installs to waiting and never
+    // claims clients. The current reading session stays on the previous
+    // complete precache until the reader chooses Reload; a failed install
+    // (interrupted fetch, wrong bytes) never activates, so the old copy
+    // stays usable. Activation cleans outdated caches, so removed pages
+    // stop being served offline after the reload.
+    clientsClaim: false,
+    skipWaiting: false,
     cleanupOutdatedCaches: true,
     // Self-contained worker: no separate runtime file to fetch on a later
     // offline restart, and no source maps in the published export.

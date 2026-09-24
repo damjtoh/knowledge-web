@@ -27,7 +27,9 @@ function formatBytes(value: number): string {
 
 async function readManifest(): Promise<OfflineManifest | null> {
   try {
-    const res = await fetch(MANIFEST_URL, { credentials: "same-origin" })
+    // No-store so an update check never reads a cached manifest version;
+    // the deployed worker also serves this file with no-cache headers.
+    const res = await fetch(MANIFEST_URL, { credentials: "same-origin", cache: "no-store" })
     if (!res.ok) return null
     const data = (await res.json()) as Partial<OfflineManifest>
     if (
@@ -73,13 +75,75 @@ async function countCached(urls: string[]): Promise<number> {
  * so a browser-cleared copy never keeps a stale Ready label. Failures
  * stay incomplete with a retry; a denied online check never registers a
  * worker, so no sign-in page is cached as publication.
+ *
+ * Updates replace the saved publication completely: the new worker
+ * installs to waiting (never claims clients), so the current reading
+ * session keeps the previous complete copy until the reader chooses
+ * Reload. Update ready — Reload appears only when the waiting worker is
+ * installed, which means the whole new precache downloaded. A failed or
+ * interrupted update never activates, so the previous pages and search
+ * index stay usable and no login response is cached (precache integrity
+ * rejects wrong bytes). Reload activates the new worker; outdated caches
+ * are then cleaned, so removed pages stop serving offline and pages plus
+ * search come from the same new version.
  */
 export default function OfflineSave() {
   const [status, setStatus] = useState<Status>("checking")
   const [manifest, setManifest] = useState<OfflineManifest | null>(null)
   const [done, setDone] = useState(0)
   const [failure, setFailure] = useState<Failure>(null)
+  const [updateAvailable, setUpdateAvailable] = useState(false)
+  const [reloading, setReloading] = useState(false)
   const savingRef = useRef(false)
+  const waitingRef = useRef<ServiceWorker | null>(null)
+  const watchingRef = useRef(false)
+
+  const markWaiting = useCallback((worker: ServiceWorker | null) => {
+    // Installed with a controller means the complete replacement is
+    // downloaded and waiting; the first install has no controller, so it
+    // never offers an update. A redundant worker means the update failed
+    // and the previous complete copy stays in use.
+    if (!worker) return
+    if (worker.state === "installed" && navigator.serviceWorker.controller) {
+      waitingRef.current = worker
+      setUpdateAvailable(true)
+    }
+  }, [])
+
+  const watchUpdates = useCallback(async () => {
+    try {
+      if (!("serviceWorker" in navigator)) return
+      const registration = await navigator.serviceWorker.getRegistration()
+      if (!registration) return
+      const track = (worker: ServiceWorker | null) => {
+        if (!worker) return
+        markWaiting(worker)
+        worker.addEventListener("statechange", () => markWaiting(worker))
+      }
+      if (registration.waiting) {
+        waitingRef.current = registration.waiting
+        // Waiting at load already means a complete replacement is ready.
+        if (navigator.serviceWorker.controller) setUpdateAvailable(true)
+      }
+      if (registration.installing) track(registration.installing)
+      registration.addEventListener("updatefound", () => track(registration.installing))
+      // Explicit update check; the deployed worker serves sw.js with
+      // no-cache headers so this always sees a new publication.
+      try {
+        await registration.update()
+      } catch {
+        // An interrupted check leaves the previous copy usable.
+      }
+      const fresh = await navigator.serviceWorker.getRegistration()
+      if (fresh?.waiting && navigator.serviceWorker.controller) {
+        waitingRef.current = fresh.waiting
+        setUpdateAvailable(true)
+      }
+      if (fresh?.installing) track(fresh.installing)
+    } catch {
+      // Update checks never disturb the current reading session.
+    }
+  }, [markWaiting])
 
   const checkStored = useCallback(async (listed: OfflineManifest) => {
     try {
@@ -124,6 +188,50 @@ export default function OfflineSave() {
       cancelled = true
     }
   }, [checkStored])
+
+  // Once the saved copy is ready, watch for a complete replacement. The
+  // prompt appears only after the new worker finishes installing; the
+  // session is never reloaded automatically.
+  useEffect(() => {
+    if (status !== "ready" || watchingRef.current) return
+    watchingRef.current = true
+    watchUpdates()
+  }, [status, watchUpdates])
+
+  const reloadUpdate = useCallback(async () => {
+    const waiting = waitingRef.current
+    if (!waiting) {
+      window.location.reload()
+      return
+    }
+    if (reloading) return
+    setReloading(true)
+    try {
+      await new Promise<void>((resolve) => {
+        let settled = false
+        const finish = () => {
+          if (settled) return
+          settled = true
+          resolve()
+        }
+        const onControllerChange = () => {
+          navigator.serviceWorker.removeEventListener("controllerchange", onControllerChange)
+          finish()
+        }
+        navigator.serviceWorker.addEventListener("controllerchange", onControllerChange)
+        try {
+          waiting.postMessage({ type: "SKIP_WAITING" })
+        } catch {
+          finish()
+          return
+        }
+        setTimeout(finish, 3000)
+      })
+    } catch {
+      // Reloading still moves to the new worker when it has activated.
+    }
+    window.location.reload()
+  }, [reloading])
 
   const save = useCallback(async () => {
     if (savingRef.current) return
@@ -221,6 +329,16 @@ export default function OfflineSave() {
         <p className="reader-offline-ready" role="status" aria-live="polite">
           Ready offline ({formatBytes(manifest.totalBytes).toLowerCase()} saved on this device).
         </p>
+        {updateAvailable ? (
+          <button
+            type="button"
+            className="reader-offline-reload"
+            onClick={reloadUpdate}
+            disabled={reloading}
+          >
+            {reloading ? "Reloading…" : "Update ready — Reload"}
+          </button>
+        ) : null}
       </section>
     )
   }

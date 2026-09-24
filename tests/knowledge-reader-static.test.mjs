@@ -1011,6 +1011,7 @@ test("offline precache revisions follow exported files without a reader build", 
   write("index.html", "<h1>Home</h1>")
   write("note.html", "<h1>Note</h1>")
   write("search-index.json", JSON.stringify({ ok: true }))
+  write("_next/static/chunks/app-abc123.js", "console.log(1)")
   const runOffline = () =>
     execFileAsync(process.execPath, [offlineScript, "--dir", dir], {
       cwd: PUBLISHER_ROOT,
@@ -1030,12 +1031,18 @@ test("offline precache revisions follow exported files without a reader build", 
   const before = revisionsOf()
   assert.ok(before.has("note.html"), "precache lists the page")
   assert.ok(before.has("search-index.json"), "precache lists the search index")
+  assert.equal(
+    before.get("_next/static/chunks/app-abc123.js"),
+    "null",
+    "hashed asset reuses its URL without a revision query",
+  )
   assert.match(
     fs.readFileSync(path.join(dir, "sw.js"), "utf8"),
     /integrity:"sha384-[^"]+"/,
     "precache entries guard exact export bytes",
   )
   const homeBefore = before.get("index.html")
+  const hashedBefore = before.get("_next/static/chunks/app-abc123.js")
 
   write("note.html", "<h1>Note changed</h1>")
   write("search-index.json", JSON.stringify({ ok: true, v: 2 }))
@@ -1052,12 +1059,28 @@ test("offline precache revisions follow exported files without a reader build", 
     "changed search index gets a new revision",
   )
   assert.equal(after.get("index.html"), homeBefore, "unchanged page keeps its revision")
+  assert.equal(
+    after.get("_next/static/chunks/app-abc123.js"),
+    hashedBefore,
+    "unchanged hashed asset keeps reusing its URL",
+  )
 
   fs.rmSync(path.join(dir, "note.html"))
   await runOffline()
   const removed = revisionsOf()
   assert.ok(!removed.has("note.html"), "removed page leaves the precache")
   assert.ok(removed.has("index.html"), "remaining pages stay precached")
+  // Update lifecycle preserves the reading session: the generated worker
+  // waits for an explicit reload instead of claiming clients, while still
+  // cleaning outdated caches so removed pages disappear after activation.
+  const offlineSource = fs.readFileSync(offlineScript, "utf8")
+  assert.match(offlineSource, /skipWaiting:\s*false/, "updated worker waits for Reload")
+  assert.match(offlineSource, /clientsClaim:\s*false/, "updated worker never claims the session")
+  assert.match(
+    offlineSource,
+    /cleanupOutdatedCaches:\s*true/,
+    "successful update clears removed pages",
+  )
 })
 
 test("generic real corpus builds a complete static export from staged content only", async (t) => {
