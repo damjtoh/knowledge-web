@@ -2,6 +2,7 @@ import { defineCollections, defineConfig } from "fumadocs-mdx/config"
 import wikiLinkPlugin from "@flowershow/remark-wiki-link"
 import path from "node:path"
 import { buildWikiLinkMaps } from "./lib/wiki-aliases.js"
+import remarkRelativeLinks from "./lib/relative-links.js"
 
 /**
  * Headless staged-Markdown content source.
@@ -49,6 +50,7 @@ export default defineConfig({
         wikiLinkPlugin,
         { format: "regular", files: wikiMaps.files, permalinks: wikiMaps.permalinks },
       ],
+      [remarkRelativeLinks, resolveContentDir()],
     ],
   },
 })
