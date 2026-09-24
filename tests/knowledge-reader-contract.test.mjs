@@ -92,6 +92,17 @@ test("Next.js emits a serverless static export (C3)", () => {
   assert.match(config, /output:\s*["']export["']/, "next config must set output: 'export'")
 })
 
+test("nginx prevents edge rewrites of integrity-checked reader pages", () => {
+  const config = fs.readFileSync(path.join(READER_ROOT, "..", "nginx.conf"), "utf8")
+  const rootLocation = config.match(/location \/ \{([^}]*)\}/)?.[1] ?? ""
+  assert.match(rootLocation, /try_files \$uri \$uri\.html/, "reader keeps extensionless routes")
+  assert.match(
+    rootLocation,
+    /add_header Cache-Control "no-transform";/,
+    "Cloudflare must not change exported HTML after Workbox hashes it",
+  )
+})
+
 test("docTitle reads the pipeline title with a filename fallback", () => {
   assert.equal(docTitle({ title: "Field Guide" }, ["notes", "x"]), "Field Guide")
   assert.equal(docTitle({ title: "  Fixture Garden  " }, ["index"]), "Fixture Garden")
