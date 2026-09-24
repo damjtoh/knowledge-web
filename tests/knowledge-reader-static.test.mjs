@@ -662,6 +662,42 @@ test("neutral synthetic corpus builds a complete static export with authored and
     "note canonical URL",
   )
 
+  // Per-projection install metadata: generated title, site-local start URL,
+  // standalone display, and generic Publisher-owned icons.
+  assert.ok(
+    fs.existsSync(path.join(outDir, "manifest.webmanifest")),
+    "static export carries a per-projection app manifest",
+  )
+  const webManifest = JSON.parse(readOut(outDir, "manifest.webmanifest"))
+  assert.equal(
+    webManifest.name,
+    metadata.title,
+    "manifest name uses the generated title",
+  )
+  assert.equal(webManifest.start_url, "/", "manifest start URL stays site-local")
+  assert.equal(webManifest.scope, "/", "manifest scope stays site-local")
+  assert.equal(webManifest.display, "standalone", "manifest uses standalone display")
+  assert.ok(
+    Array.isArray(webManifest.icons) && webManifest.icons.length > 0,
+    "manifest lists generic Publisher-owned icons",
+  )
+  for (const icon of webManifest.icons) {
+    assert.ok(
+      typeof icon.src === "string" && icon.src.startsWith("/"),
+      "manifest icon stays site-local",
+    )
+    const iconRel = icon.src.replace(/^\//, "")
+    assert.ok(
+      fs.existsSync(path.join(outDir, iconRel)),
+      `manifest icon is emitted: ${iconRel}`,
+    )
+  }
+  assert.match(
+    landing,
+    /rel="manifest"/,
+    "landing links the per-projection app manifest",
+  )
+
   // Bounded output safety inspection.
   assertAbsentEverywhere(outDir, UNSELECTED_SENTINEL, "unselected sentinel")
   assertAbsentEverywhere(outDir, fs.realpathSync(kb), "original vault path")
@@ -720,7 +756,7 @@ test("neutral synthetic corpus builds a complete static export with authored and
   const emitted = listFilesRecursive(outDir)
   assert.ok(
     !emitted.some((rel) => /sw\.js$|service-worker|workbox|pagefind/i.test(rel)),
-    "static output carries no service worker or search index",
+    "static output carries no service worker",
   )
 
   // Build-time full-text search index over staged content only: the export

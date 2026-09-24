@@ -987,7 +987,6 @@ async function runOutputInspection(outDir, workDir, kbRoot, sentinel) {
     "workbox",
     "service-worker",
     "serviceWorker",
-    "webmanifest",
     "pagefind",
     "flexsearch",
     "lunr",
@@ -1030,7 +1029,7 @@ async function runOutputInspection(outDir, workDir, kbRoot, sentinel) {
   const emitted = listFilesRecursive(outDir)
   assert.ok(
     !emitted.some((rel) => /sw\.js$|service-worker|workbox|pagefind/i.test(rel)),
-    "static output carries no service worker or search index",
+    "static output carries no service worker",
   )
 
   const porcelain = (
