@@ -1428,14 +1428,10 @@ async function runOfflineUpdate(browser, baseUrl, outDir, expect) {
     assert.match(cacheHeaders.sw, /no-cache/i, "worker update check bypasses the cache")
     assert.match(cacheHeaders.manifest, /no-cache/i, "manifest update check bypasses the cache")
 
-    await page.evaluate(async () => {
-      const registration = await navigator.serviceWorker.getRegistration()
-      if (registration) {
-        try {
-          await registration.update()
-        } catch {}
-      }
-    })
+    // A reader leaves this tab open while a new publication arrives. An
+    // online/visibility check must find the update without a manual call to
+    // ServiceWorkerRegistration.update() from the test.
+    await page.evaluate(() => window.dispatchEvent(new Event("online")))
     await page.waitForSelector(".reader-offline-reload", { visible: true, timeout: 90000 })
     const prompt = await page.evaluate(
       () => document.querySelector(".reader-offline-reload")?.textContent?.trim() || "",
@@ -1575,7 +1571,11 @@ async function runOfflineRemove(browser, baseUrl, expect) {
     await page.evaluate(async () => {
       try {
         const keep = await caches.open("sentinel-keep-v1")
-        await keep.put("/sentinel-keep", new Response("keep", { headers: { "Content-Type": "text/plain" } }))
+        await keep.put(
+          "/sentinel-keep",
+          new Response("keep", { headers: { "Content-Type": "text/plain" } }),
+        )
+        await caches.open(`workbox-precache-v2-${location.origin}/other/`)
       } catch {}
     })
     const before = await page.evaluate(async () => {
@@ -1589,11 +1589,52 @@ async function runOfflineRemove(browser, baseUrl, expect) {
       } catch {}
       return {
         hasReg,
-        precacheCount: keys.filter((name) => name.includes("-precache-")).length,
+        precacheCount: keys.filter((name) => name === `workbox-precache-v2-${location.origin}/`)
+          .length,
       }
     })
     assert.ok(before.hasReg, "saved worker present before removal")
     assert.ok(before.precacheCount > 0, "saved precache present before removal")
+
+    // Failure to identify this worker's scope must not delete every Workbox
+    // precache on the origin or claim that removal succeeded.
+    await page.evaluate(() => {
+      const container = navigator.serviceWorker
+      window.__originalGetRegistration = container.getRegistration.bind(container)
+      container.getRegistration = async () => {
+        throw new Error("registration unavailable")
+      }
+    })
+    await page.evaluate(() => document.querySelector(".reader-offline-remove")?.click())
+    await page.waitForSelector(".reader-offline-remove-error", { visible: true, timeout: 15000 })
+    assert.ok(
+      await page.evaluate(async () =>
+        (await caches.keys()).some((name) => name.includes("-precache-")),
+      ),
+      "failed removal keeps the saved precache",
+    )
+    await page.evaluate(() => {
+      navigator.serviceWorker.getRegistration = window.__originalGetRegistration
+      delete window.__originalGetRegistration
+    })
+
+    // An unregister that succeeds before cache deletion fails must still
+    // allow a scoped retry. Never display Save while saved bytes remain.
+    await page.evaluate(() => {
+      window.__originalCacheDelete = caches.delete.bind(caches)
+      caches.delete = async () => false
+    })
+    await page.evaluate(() => document.querySelector(".reader-offline-remove")?.click())
+    await page.waitForSelector(".reader-offline-remove-error", { visible: true, timeout: 15000 })
+    assert.equal(
+      await page.evaluate(() => !!document.querySelector(".reader-offline-save")),
+      false,
+      "failed cache deletion never claims that removal succeeded",
+    )
+    await page.evaluate(() => {
+      caches.delete = window.__originalCacheDelete
+      delete window.__originalCacheDelete
+    })
 
     await page.evaluate(() => document.querySelector(".reader-offline-remove")?.click())
     await page.waitForSelector(".reader-offline-save", { visible: true, timeout: 15000 })
@@ -1620,24 +1661,24 @@ async function runOfflineRemove(browser, baseUrl, expect) {
       } catch {}
       return {
         hasReg,
-        precacheCount: keys.filter((name) => name.includes("-precache-")).length,
+        precacheCount: keys.filter((name) => name === `workbox-precache-v2-${location.origin}/`)
+          .length,
         kept: keys.includes("sentinel-keep-v1"),
+        otherScopeKept: keys.includes(`workbox-precache-v2-${location.origin}/other/`),
       }
     })
     assert.equal(after.hasReg, false, "removal unregisters this projection's worker")
     assert.equal(after.precacheCount, 0, "removal deletes this projection's precache")
     assert.equal(after.kept, true, "unrelated same-origin cache stays")
-    const stillCached = await page.evaluate(
-      async (htmlUrl) => {
-        try {
-          const hit = await caches.match(htmlUrl, { ignoreSearch: true })
-          return !!(hit && hit.ok)
-        } catch {
-          return true
-        }
-      },
-      leafHtml,
-    )
+    assert.equal(after.otherScopeKept, true, "another same-origin scope's precache stays")
+    const stillCached = await page.evaluate(async (htmlUrl) => {
+      try {
+        const hit = await caches.match(htmlUrl, { ignoreSearch: true })
+        return !!(hit && hit.ok)
+      } catch {
+        return true
+      }
+    }, leafHtml)
     assert.equal(stillCached, false, "removed page leaves no precache entry")
 
     // Later online visit: explicit Save stays, but no silent whole-site fetch.
@@ -1660,7 +1701,8 @@ async function runOfflineRemove(browser, baseUrl, expect) {
       } catch {}
       return {
         hasReg,
-        precacheCount: keys.filter((name) => name.includes("-precache-")).length,
+        precacheCount: keys.filter((name) => name === `workbox-precache-v2-${location.origin}/`)
+          .length,
       }
     })
     assert.equal(later.hasReg, false, "later visit does not re-register")
@@ -1703,7 +1745,9 @@ async function runOfflineRemove(browser, baseUrl, expect) {
       try {
         const keys = await caches.keys()
         await Promise.all(
-          keys.filter((name) => name.includes("-precache-")).map((name) => caches.delete(name)),
+          keys
+            .filter((name) => name === `workbox-precache-v2-${location.origin}/`)
+            .map((name) => caches.delete(name)),
         )
       } catch {}
     })
@@ -1720,6 +1764,7 @@ async function runOfflineRemove(browser, baseUrl, expect) {
     await page.evaluate(async () => {
       try {
         await caches.delete("sentinel-keep-v1")
+        await caches.delete(`workbox-precache-v2-${location.origin}/other/`)
       } catch {}
     })
   } finally {

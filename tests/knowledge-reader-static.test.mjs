@@ -1083,6 +1083,26 @@ test("offline precache revisions follow exported files without a reader build", 
   )
 })
 
+test("offline generation rejects an export file omitted from the precache", async () => {
+  const dir = tmpdir("offline-oversize")
+  fs.writeFileSync(path.join(dir, "index.html"), "<h1>Home</h1>")
+  fs.writeFileSync(path.join(dir, "search-index.json"), "{}")
+  fs.writeFileSync(path.join(dir, "large.html"), "")
+  fs.truncateSync(path.join(dir, "large.html"), 5 * 1024 * 1024 + 1)
+  await assert.rejects(
+    execFileAsync(
+      process.execPath,
+      [path.join(READER_ROOT, "scripts", "build-offline.mjs"), "--dir", dir],
+      {
+        cwd: PUBLISHER_ROOT,
+        timeout: 120000,
+      },
+    ),
+    /large\.html|omitted|precache/i,
+    "publishing must fail instead of claiming an incomplete offline copy",
+  )
+})
+
 test("generic real corpus builds a complete static export from staged content only", async (t) => {
   const kbRoot = resolveKnowledgeBaseRoot()
   if (!kbRoot) {

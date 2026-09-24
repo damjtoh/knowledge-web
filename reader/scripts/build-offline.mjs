@@ -40,6 +40,7 @@ import { fileURLToPath } from "node:url"
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url))
 const READER_ROOT = path.resolve(scriptDir, "..")
+const MAX_PRECACHE_FILE_BYTES = 5 * 1024 * 1024
 
 function argDir() {
   const flag = process.argv.indexOf("--dir")
@@ -144,7 +145,13 @@ async function main() {
   const integrityByUrl = new Map()
   for (const rel of all) {
     const abs = path.join(outDir, rel)
-    totalBytes += fs.statSync(abs).size
+    const size = fs.statSync(abs).size
+    if (size > MAX_PRECACHE_FILE_BYTES) {
+      throw new Error(
+        `offline export file exceeds the Workbox precache limit: ${rel} (${size} bytes)`,
+      )
+    }
+    totalBytes += size
     fingerprints.push(`${rel}:${hashFile(abs)}`)
     integrityByUrl.set(rel.split(path.sep).join("/"), integrityOf(abs))
   }
@@ -164,9 +171,10 @@ async function main() {
       `workbox-build is required for offline generation (run npm install in reader/): ${error.message}`,
     )
   })
-  await generateSW({
+  const result = await generateSW({
     globDirectory: outDir,
-    globPatterns: ["**/*", "!sw.js", "!sw.js.map", "!workbox-*.js", "!**/*.map"],
+    globPatterns: ["**/*"],
+    globIgnores: ["sw.js", "sw.js.map", "workbox-*.js", "**/*.map"],
     swDest: path.join(outDir, "sw.js"),
     // Update lifecycle: a new publication installs to waiting and never
     // claims clients. The current reading session stays on the previous
@@ -198,9 +206,19 @@ async function main() {
     // Next.js hashed assets already carry versioning in the URL; Workbox
     // reuses the URL instead of adding a revision query.
     dontCacheBustURLsMatching: /_next\/static\//,
-    maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+    maximumFileSizeToCacheInBytes: MAX_PRECACHE_FILE_BYTES,
     mode: "production",
   })
+
+  // Workbox can skip a file with a warning rather than fail the build.
+  // The reader promises every listed file, so never publish a partial worker.
+  if (result.warnings.length || result.count !== urls.length + 1) {
+    fs.rmSync(path.join(outDir, "sw.js"), { force: true })
+    fs.rmSync(path.join(outDir, "offline.json"), { force: true })
+    throw new Error(
+      `offline precache is incomplete: ${result.warnings.join("; ") || "file count mismatch"}`,
+    )
+  }
 
   fs.appendFileSync(path.join(outDir, "sw.js"), EXTENSIONLESS_HANDLER)
   console.log(

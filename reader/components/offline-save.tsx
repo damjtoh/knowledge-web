@@ -7,8 +7,16 @@ const SW_URL = "/sw.js"
 const SEARCH_INDEX_URL = "/search-index.json"
 const POLL_MS = 300
 const SAVE_TIMEOUT_MS = 60000
+const UPDATE_CHECK_MS = 60_000
 
-type Status = "checking" | "unsupported" | "idle" | "saving" | "ready" | "incomplete"
+type Status =
+  | "checking"
+  | "unsupported"
+  | "idle"
+  | "saving"
+  | "ready"
+  | "incomplete"
+  | "remove-failed"
 type Failure = "access" | "storage" | "interrupted" | "cleared" | null
 
 interface OfflineManifest {
@@ -102,6 +110,7 @@ export default function OfflineSave() {
   const savingRef = useRef(false)
   const waitingRef = useRef<ServiceWorker | null>(null)
   const watchingRef = useRef(false)
+  const removalScopeRef = useRef<string | null>(null)
 
   const markWaiting = useCallback((worker: ServiceWorker | null) => {
     // Installed with a controller means the complete replacement is
@@ -203,6 +212,32 @@ export default function OfflineSave() {
     watchUpdates()
   }, [status, watchUpdates])
 
+  // Keep an open saved reader up to date without forcing a reload or
+  // downloading a new publication on a device that was never saved.
+  useEffect(() => {
+    if (status !== "ready") return
+    const check = async () => {
+      if (!navigator.onLine || document.visibilityState !== "visible") return
+      try {
+        const registration = await navigator.serviceWorker.getRegistration()
+        await registration?.update()
+      } catch {
+        // The current complete offline copy stays available.
+      }
+    }
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void check()
+    }
+    const timer = window.setInterval(() => void check(), UPDATE_CHECK_MS)
+    window.addEventListener("online", check)
+    document.addEventListener("visibilitychange", onVisible)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener("online", check)
+      document.removeEventListener("visibilitychange", onVisible)
+    }
+  }, [status])
+
   const reloadUpdate = useCallback(async () => {
     const waiting = waitingRef.current
     if (!waiting) {
@@ -246,31 +281,27 @@ export default function OfflineSave() {
       // Projection's precache goes. Other origins are per-origin and
       // stay unaffected; unrelated same-origin caches never carry
       // the precache marker and are kept.
-      let scope: string | null = null
-      try {
-        const current = await navigator.serviceWorker.getRegistration()
-        scope = current?.scope ?? null
-        if (current) await current.unregister()
-      } catch {
-        // Unregistration is best-effort; cache cleanup still runs.
-      }
-      try {
-        const keys = await caches.keys()
-        const targets = keys.filter((name) => {
-          if (!name.includes("-precache-")) return false
-          if (!scope) return name.startsWith("workbox-precache-")
-          return name === `workbox-precache-v2-${scope}` || name.endsWith(`-${scope}`)
-        })
-        await Promise.all(targets.map((name) => caches.delete(name)))
-      } catch {
-        // A cache lookup failure still clears the displayed state below.
-      }
+      const current = await navigator.serviceWorker.getRegistration()
+      const scope = current?.scope ?? removalScopeRef.current
+      if (!scope) throw new Error("offline worker scope unavailable")
+      removalScopeRef.current = scope
+      if (current && !(await current.unregister()))
+        throw new Error("offline worker still registered")
+      const keys = await caches.keys()
+      const targets = keys.filter((name) => name === `workbox-precache-v2-${scope}`)
+      const deleted = await Promise.all(targets.map((name) => caches.delete(name)))
+      if (deleted.some((success) => !success)) throw new Error("offline cache not removed")
+      removalScopeRef.current = null
       waitingRef.current = null
       watchingRef.current = false
       setUpdateAvailable(false)
       setFailure(null)
       setDone(0)
       setStatus("idle")
+    } catch {
+      // Do not claim success or erase other scopes when ownership or
+      // deletion cannot be confirmed. Retain the scope for a safe retry.
+      setStatus("remove-failed")
     } finally {
       setRemoving(false)
     }
@@ -406,6 +437,24 @@ export default function OfflineSave() {
           max={Math.max(1, total)}
           aria-label="Offline save progress"
         />
+      </section>
+    )
+  }
+
+  if (status === "remove-failed") {
+    return (
+      <section aria-label="Offline" className="reader-offline">
+        <p className="reader-offline-status reader-offline-remove-error" role="alert">
+          Couldn’t remove the offline copy. Try again before leaving this device.
+        </p>
+        <button
+          type="button"
+          className="reader-offline-remove"
+          onClick={removeCopy}
+          disabled={removing}
+        >
+          {removing ? "Removing…" : "Retry removal"}
+        </button>
       </section>
     )
   }
