@@ -140,9 +140,13 @@ function makeNeutralKb() {
   writeFile(
     kb,
     "garden/index.md",
-    "# Garden Plots\n\nCultivated beds with an authored introduction.\n",
+    "# Garden Plots\n\nCultivated beds with an authored introduction.\n\n[Alpha Bed](alpha.md)\n",
   )
-  writeFile(kb, "garden/alpha.md", "# Alpha Bed\n\nFirst bed. See [[Garden Plots]] for the area.\n")
+  writeFile(
+    kb,
+    "garden/alpha.md",
+    "# Alpha Bed\n\nFirst bed. See [[Garden Plots]] for the area.\n\n[Garden home](index.md)\n\n[Meadow details](../notes/plain.md#details)\n",
+  )
   writeFile(
     kb,
     "garden/beta.md",
@@ -525,6 +529,19 @@ test("neutral synthetic corpus builds a complete static export with authored and
   // Indexed folder owns its route and introduction; virtual folders supply titles.
   const garden = readOut(outDir, "garden.html")
   assert.match(garden, /Garden Plots/, "authored folder introduction renders")
+  assert.ok(
+    garden.includes('href="/garden/alpha">Alpha Bed</a>'),
+    "folder body links to emitted note route",
+  )
+  const alpha = readOut(outDir, "garden/alpha.html")
+  assert.ok(
+    alpha.includes('href="/garden">Garden home</a>'),
+    "index.md links to folder route",
+  )
+  assert.ok(
+    alpha.includes('href="/notes/plain#details">Meadow details</a>'),
+    "parent-relative links keep headings on emitted note routes",
+  )
   const orchard = readOut(outDir, "orchard.html")
   assert.match(orchard, /<h1[^>]*>Orchard<\/h1>/, "virtual flat folder supplies a humanized title")
   for (let i = 1; i <= 12; i++) {
