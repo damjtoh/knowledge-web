@@ -10,8 +10,8 @@
  *
  * Regression for the prior Docker image failure: the search index covered
  * 151 staged pages while the export held only 9 HTML files and the sidebar
- * exposed only five root data-tree-url nodes. Absolute-path coverage in
- * knowledge-reader-static.test.mjs stays intact; this suite is the only
+ * exposed only five root data-tree-url nodes. Absolute-path coverage lives
+ * in tests/knowledge-reader-integrated.test.mjs; this suite is the only
  * caller that builds through the relative defaults.
  *
  * Safety: the suite never reads, moves, or deletes the checkout's

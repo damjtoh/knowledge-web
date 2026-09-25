@@ -201,14 +201,12 @@ cd reader && pnpm install --frozen-lockfile && pnpm run build
 pnpm dlx serve out   # local preview of the static reader export
 ```
 
-Run the synthetic suites through the `tsx` runner (never the plain Node
+Run the full suite through the `tsx` runner (never the plain Node
 runner for suites that import TypeScript reader modules):
 
 ```bash
-pnpm test tests/stage-content.test.mjs tests/knowledge-reader-contract.test.mjs tests/navigation.test.mjs tests/wiki-aliases.test.mjs
-pnpm run test:reader
-pnpm run test:reader:browser
-KNOWLEDGE_BASE_ROOT=/path/to/vault pnpm test tests/knowledge-reader-static.test.mjs tests/knowledge-reader-journey-browser.test.mjs tests/knowledge-reader-phone-browser.test.mjs
+pnpm test
+KNOWLEDGE_BASE_ROOT=/path/to/vault pnpm test
 ```
 
 The staged build tree plus generated site metadata live in the Publisher

@@ -30,20 +30,20 @@ jobs:
         run: >-
           pnpm test tests/stage-content.test.mjs
           tests/knowledge-reader-contract.test.mjs tests/navigation.test.mjs
-          tests/wiki-aliases.test.mjs tests/wikilink-spike.test.mjs
+          tests/wiki-aliases.test.mjs
       - name: Install reader dependencies
         run: pnpm --dir reader install --frozen-lockfile
-      - name: Build reader
-        run: pnpm --dir reader run build
-      - name: Reader static suite (retry once)
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install chromium --with-deps
+      - name: Reader integrated suite (retry once)
         shell: bash
         run: |
           for attempt in 1 2; do
-            if pnpm test tests/knowledge-reader-static.test.mjs; then
+            if pnpm test tests/knowledge-reader-integrated.test.mjs; then
               break
             elif [ "$attempt" -eq 2 ]; then
               exit 1
             else
-              echo "Static suite attempt $attempt failed, retrying..."
+              echo "Integrated suite attempt $attempt failed, retrying..."
             fi
           done
