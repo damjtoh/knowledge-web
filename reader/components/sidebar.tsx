@@ -5,9 +5,19 @@ import { usePathname } from "next/navigation"
 import { ChevronRight, File, Folder } from "lucide-react"
 import type { NavigationNode } from "../lib/navigation"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible"
-import { SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarMenuSub } from "./ui/sidebar"
+import {
+  SidebarGroupLabel,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarMenuSub,
+} from "./ui/sidebar"
 
 const STORAGE_KEY = "knowledge-reader-tree"
+
+const INITIAL_WINDOW = 4
+
+const PAGE_SIZE = 20
 
 function normalize(path: string | null): string {
   if (!path || path === "/") return "/"
@@ -94,6 +104,12 @@ function TreeNode({ node, state }: { node: NavigationNode; state: TreeState }) {
   const isAncestor = url !== "/" && !isExact && state.pathname.startsWith(`${url}/`)
   const isActive = isExact || isAncestor
   const Icon = node.isFolder ? Folder : File
+  const open = state.isOpen(node.url)
+  const [visibleCount, setVisibleCount] = useState(INITIAL_WINDOW)
+
+  useEffect(() => {
+    if (!open) setVisibleCount(INITIAL_WINDOW)
+  }, [open])
 
   const link = (
     <SidebarMenuButton
@@ -107,10 +123,18 @@ function TreeNode({ node, state }: { node: NavigationNode; state: TreeState }) {
         />
       }
       isActive={isActive}
-      className={isActive ? "is-active" : undefined}
+      className={isActive ? "is-active rounded-md bg-border" : "rounded-md"}
     >
       <Icon aria-hidden="true" />
-      <span className="reader-tree-label">{node.title}</span>
+      <span
+        className={
+          node.isFolder
+            ? "reader-tree-label text-13 font-semibold text-primary"
+            : "reader-tree-label text-13 font-normal"
+        }
+      >
+        {node.title}
+      </span>
     </SidebarMenuButton>
   )
 
@@ -122,7 +146,9 @@ function TreeNode({ node, state }: { node: NavigationNode; state: TreeState }) {
     )
   }
 
-  const open = state.isOpen(node.url)
+  const total = node.children.length
+  const visible = node.children.slice(0, visibleCount)
+  const hidden = total - visible.length
 
   return (
     <SidebarMenuItem data-tree-url={node.url}>
@@ -137,15 +163,32 @@ function TreeNode({ node, state }: { node: NavigationNode; state: TreeState }) {
             className="reader-tree-toggle"
             aria-label={open ? `Collapse ${node.title}` : `Expand ${node.title}`}
           >
-            <ChevronRight className="transition-transform" aria-hidden="true" />
+            <ChevronRight
+              className="size-3.5 text-muted-foreground transition-transform"
+              aria-hidden="true"
+            />
           </CollapsibleTrigger>
         </div>
         <CollapsibleContent keepMounted className="reader-tree-panel">
-          <SidebarMenuSub className="reader-tree-children">
-            {node.children.map((child) => (
-              <TreeNode key={child.url} node={child} state={state} />
-            ))}
-          </SidebarMenuSub>
+          <div className="pl-3.5">
+            <SidebarMenuSub className="reader-tree-children gap-0.5 border-l border-border py-1 pl-2.5">
+              {visible.map((child) => (
+                <TreeNode key={child.url} node={child} state={state} />
+              ))}
+              {hidden > 0 ? (
+                <SidebarMenuItem>
+                  <button
+                    type="button"
+                    data-tree-more
+                    onClick={() => setVisibleCount((count) => Math.min(count + PAGE_SIZE, total))}
+                    className="w-full rounded-md px-1.5 py-1 text-left font-mono text-2xs text-muted-foreground focus-visible:ring-2 focus-visible:outline-solid"
+                  >
+                    {`+ ${hidden} more in ${node.title}`}
+                  </button>
+                </SidebarMenuItem>
+              ) : null}
+            </SidebarMenuSub>
+          </div>
         </CollapsibleContent>
       </Collapsible>
     </SidebarMenuItem>
@@ -263,6 +306,9 @@ export default function Sidebar({ roots }: { roots: NavigationNode[] }) {
 
   return (
     <nav aria-label="Published sections" className="reader-sidebar-nav">
+      <SidebarGroupLabel className="text-2xs font-semibold tracking-label text-muted-foreground">
+        Published
+      </SidebarGroupLabel>
       <SidebarMenu className="reader-tree">
         {roots.map((root) => (
           <TreeNode key={root.url} node={root} state={state} />

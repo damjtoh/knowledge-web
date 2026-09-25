@@ -309,6 +309,9 @@ function deriveJourney(contentDir, metadata) {
 /** Generic desktop journey: home -> folder -> nested note -> breadcrumbs and Back. */
 async function runJourney(page, baseUrl, expect) {
   await page.goto(`${baseUrl}/`, { waitUntil: "networkidle", timeout: 15000 })
+  // Deep leaves page behind the more-row: reach it through explicit paging
+  // before asserting the same rendered leaf endpoint.
+  await revealTreeRoute(page, expect.leafRoute)
 
   const home = await page.evaluate((leafRoute) => {
     const links = Array.from(document.querySelectorAll(".reader-area-list a")).map((a) => ({
@@ -454,6 +457,7 @@ async function runJourney(page, baseUrl, expect) {
     }, resolvedNoteHref),
   ])
   assert.ok(page.url().includes(expect.leafRoute), `nested note route ${expect.leafRoute}`)
+  await revealTreeRoute(page, expect.leafRoute)
 
   const note = await page.evaluate((folderRoute) => {
     const folderLi = document.querySelector(
@@ -541,7 +545,7 @@ async function runJourney(page, baseUrl, expect) {
   assert.match(page.url(), /\/$/, "browser Back returns home")
 }
 
-/** Direct children of one tree branch, in rendered order. */
+/** Direct children of one tree branch, in rendered order (paging rows excluded). */
 async function directTreeChildren(page, folderRoute) {
   return await page.evaluate((route) => {
     const li = document.querySelector(
@@ -553,16 +557,105 @@ async function directTreeChildren(page, folderRoute) {
 
     if (!panel) return []
 
-    return Array.from(panel.querySelectorAll(":scope > ul > li")).map((child) => {
-      const row = child.querySelector(
-        ":scope > .reader-tree-collapsible > .reader-tree-row, :scope > .reader-tree-row",
+    return Array.from(panel.querySelectorAll(":scope > ul > li, :scope > div > ul > li"))
+      .map((child) => {
+        const row = child.querySelector(
+          ":scope > .reader-tree-collapsible > .reader-tree-row, :scope > .reader-tree-row",
+        )
+
+        const a = row ? row.querySelector("a") : null
+
+        return { text: a?.textContent?.trim() || "", href: a?.getAttribute("href") || "" }
+      })
+      .filter((child) => child.href !== "")
+  }, folderRoute)
+}
+
+/** More-row label inside one desktop branch, or null when all children show. */
+async function treeMoreRow(page, folderRoute) {
+  return await page.evaluate((route) => {
+    const li = document.querySelector(
+      `[data-slot="sidebar"] .reader-sidebar-nav li[data-tree-url="${route}"]`,
+    )
+
+    if (!li) return null
+
+    const more = li.querySelector(
+      ":scope > .reader-tree-collapsible > .reader-tree-panel [data-tree-more]",
+    )
+
+    return more ? more.textContent?.trim() || "" : null
+  }, folderRoute)
+}
+
+/** Click the desktop more-row until exhausted so full children are visible. */
+async function expandAllTreeRows(page, folderRoute) {
+  for (let i = 0; i < 10; i++) {
+    const hasMore = await page.evaluate((route) => {
+      const li = document.querySelector(
+        `[data-slot="sidebar"] .reader-sidebar-nav li[data-tree-url="${route}"]`,
       )
 
-      const a = row ? row.querySelector("a") : null
+      return !!li?.querySelector(
+        ":scope > .reader-tree-collapsible > .reader-tree-panel [data-tree-more]",
+      )
+    }, folderRoute)
 
-      return { text: a?.textContent?.trim() || "", href: a?.getAttribute("href") || "" }
-    })
-  }, folderRoute)
+    if (!hasMore) break
+    const before = (await directTreeChildren(page, folderRoute))?.length || 0
+
+    await page.evaluate((route) => {
+      const li = document.querySelector(
+        `[data-slot="sidebar"] .reader-sidebar-nav li[data-tree-url="${route}"]`,
+      )
+
+      li?.querySelector(
+        ":scope > .reader-tree-collapsible > .reader-tree-panel [data-tree-more]",
+      )?.click()
+    }, folderRoute)
+    await page.waitForFunction(
+      ([route, prev]) => {
+        const li = document.querySelector(
+          `[data-slot="sidebar"] .reader-sidebar-nav li[data-tree-url="${route}"]`,
+        )
+
+        if (!li) return true
+
+        const panel = li.querySelector(":scope > .reader-tree-collapsible > .reader-tree-panel")
+
+        if (!panel) return true
+
+        const rows = Array.from(
+          panel.querySelectorAll(":scope > ul > li, :scope > div > ul > li"),
+        ).filter((child) => {
+          const row = child.querySelector(
+            ":scope > .reader-tree-collapsible > .reader-tree-row, :scope > .reader-tree-row",
+          )
+
+          return !!row?.querySelector("a")
+        })
+
+        const more = panel.querySelector("[data-tree-more]")
+
+        return rows.length > prev || !more
+      },
+      [folderRoute, before],
+      { timeout: 5000 },
+    )
+  }
+}
+
+/** Open each ancestor disclosure and page through it so the target appears. */
+async function revealTreeRoute(page, targetRoute) {
+  const segments = targetRoute.split("/").filter(Boolean)
+  const prefixes = segments.map((_, i) => `/${segments.slice(0, i + 1).join("/")}`)
+
+  for (const prefix of prefixes.slice(0, -1)) {
+    const state = await disclosureState(page, prefix)
+
+    if (state === "false") await setDisclosure(page, prefix, true)
+    await expandAllTreeRows(page, prefix)
+  }
 }
 
 async function disclosureState(page, folderRoute) {
@@ -682,14 +775,6 @@ async function runTreeBehavior(page, baseUrl, expect) {
   const { folderRoute, leafRoute, leafTitle, folderChildren } = expect
   await page.goto(`${baseUrl}/`, { waitUntil: "networkidle", timeout: 15000 })
 
-  const children = await directTreeChildren(page, folderRoute)
-  assert.ok(children, "tree renders the folder branch")
-  assert.deepEqual(
-    children.map((c) => c.text),
-    folderChildren,
-    "folder children follow tree ordering",
-  )
-
   // Folder link navigates; the disclosure only expands.
   const folderHref = await page.evaluate((route) => {
     const li = document.querySelector(
@@ -710,6 +795,16 @@ async function runTreeBehavior(page, baseUrl, expect) {
   const homeUrl = page.url()
   await setDisclosure(page, folderRoute, true)
   assert.equal(page.url(), homeUrl, "disclosure expands without navigating")
+  // Long folders page behind the more-row: expand to exhaustion, then the
+  // full ordered children match the tree.
+  await expandAllTreeRows(page, folderRoute)
+  const children = await directTreeChildren(page, folderRoute)
+  assert.ok(children, "tree renders the folder branch")
+  assert.deepEqual(
+    children.map((c) => c.text),
+    folderChildren,
+    "folder children follow tree ordering",
+  )
   assert.ok(await treeLinkVisible(page, children[0].href), "disclosure reveals the branch children")
 
   // A second branch stays open alongside the first.
@@ -754,7 +849,9 @@ async function runTreeBehavior(page, baseUrl, expect) {
   assert.equal(await treeCurrent(page), folderRoute, "tree indicates the open folder")
 
   // Arriving at a deep page expands its ancestors and indicates it.
+  // Ancestor folders still page: reach the leaf through explicit paging.
   await page.goto(`${baseUrl}${leafRoute}`, { waitUntil: "networkidle", timeout: 15000 })
+  await revealTreeRoute(page, leafRoute)
   const segments = leafRoute.split("/").filter(Boolean)
   const prefixes = segments.map((_, i) => `/${segments.slice(0, i + 1).join("/")}`)
 
@@ -803,6 +900,7 @@ async function runTreeBehavior(page, baseUrl, expect) {
     "true",
     "navigation reopens the current page ancestors",
   )
+  await revealTreeRoute(page, leafRoute)
   assert.equal(await treeCurrent(page), leafRoute, `tree still indicates ${leafTitle} after Back`)
 
   // Deep branches and long titles stay readable at desktop width.
@@ -845,6 +943,187 @@ async function runTreeBehavior(page, baseUrl, expect) {
   for (const height of readability.toggleHeights) {
     assert.ok(height >= 44, `tree disclosure is ${height}px (expected >= 44)`)
   }
+}
+
+/**
+ * Desktop sidebar pagination on a long folder: first 4 plus the more-row,
+ * batch reveal of min(20, remaining), exhaustion removes the row, paging
+ * never navigates, and the active ancestor still pages (C8).
+ */
+async function runTreePagination(page, baseUrl, expect) {
+  const { paginationRoute, paginationTitle, paginationChildren, deepRoute } = expect
+  assert.ok(
+    paginationChildren.length > 4,
+    `canonical fixture has a long folder (got ${paginationChildren.length})`,
+  )
+  await page.goto(`${baseUrl}/`, { waitUntil: "networkidle", timeout: 15000 })
+
+  const publishedLabel = await page.evaluate(() => {
+    const nav = document.querySelector('[data-slot="sidebar"] .reader-sidebar-nav')
+
+    if (!nav) return null
+
+    const label = Array.from(nav.querySelectorAll('[data-slot="sidebar-group-label"]')).find(
+      (el) => (el.textContent?.trim() || "") === "Published",
+    )
+
+    return label ? label.className || "" : null
+  })
+
+  assert.ok(publishedLabel, "Published section label renders above the tree")
+
+  const state = await disclosureState(page, paginationRoute)
+
+  if (state === "false") await setDisclosure(page, paginationRoute, true)
+
+  const initial = await directTreeChildren(page, paginationRoute)
+  assert.equal(initial.length, 4, "expanded folder renders its first 4 children")
+  assert.deepEqual(
+    initial.map((c) => c.text),
+    paginationChildren.slice(0, 4),
+    "window keeps tree order",
+  )
+
+  const hiddenBefore = paginationChildren.length - 4
+  const moreBefore = await treeMoreRow(page, paginationRoute)
+  assert.ok(moreBefore, "trailing more-row renders when children remain")
+  assert.ok(
+    moreBefore.includes(`+ ${hiddenBefore} more in ${paginationTitle}`),
+    `more-row counts hidden children (got ${moreBefore})`,
+  )
+
+  const moreClasses = await page.evaluate((route) => {
+    const li = document.querySelector(
+      `[data-slot="sidebar"] .reader-sidebar-nav li[data-tree-url="${route}"]`,
+    )
+
+    return (
+      li?.querySelector(":scope > .reader-tree-collapsible > .reader-tree-panel [data-tree-more]")
+        ?.className || ""
+    )
+  }, paginationRoute)
+
+  for (const token of ["font-mono", "text-2xs", "text-muted-foreground", "px-1.5", "py-1"]) {
+    assert.ok(moreClasses.includes(token), `more-row carries ${token}`)
+  }
+
+  const urlBefore = page.url()
+
+  const sessionBefore = await page.evaluate(() =>
+    window.sessionStorage.getItem("knowledge-reader-tree"),
+  )
+
+  await page.evaluate((route) => {
+    const li = document.querySelector(
+      `[data-slot="sidebar"] .reader-sidebar-nav li[data-tree-url="${route}"]`,
+    )
+
+    li?.querySelector(
+      ":scope > .reader-tree-collapsible > .reader-tree-panel [data-tree-more]",
+    )?.click()
+  }, paginationRoute)
+
+  const batch = Math.min(20, hiddenBefore)
+
+  await page.waitForFunction(
+    ([route, total]) => {
+      const li = document.querySelector(
+        `[data-slot="sidebar"] .reader-sidebar-nav li[data-tree-url="${route}"]`,
+      )
+
+      const panel = li?.querySelector(":scope > .reader-tree-collapsible > .reader-tree-panel")
+
+      if (!panel) return false
+
+      const rows = Array.from(
+        panel.querySelectorAll(":scope > ul > li, :scope > div > ul > li"),
+      ).filter((child) => {
+        const row = child.querySelector(
+          ":scope > .reader-tree-collapsible > .reader-tree-row, :scope > .reader-tree-row",
+        )
+
+        return !!row?.querySelector("a")
+      })
+
+      return rows.length === total
+    },
+    [paginationRoute, 4 + batch],
+    { timeout: 5000 },
+  )
+
+  const after = await directTreeChildren(page, paginationRoute)
+  assert.equal(after.length, 4 + batch, "click reveals the next batch")
+  assert.deepEqual(
+    after.map((c) => c.text),
+    paginationChildren.slice(0, 4 + batch),
+    "revealed rows keep tree order and links",
+  )
+
+  const moreAfter = await treeMoreRow(page, paginationRoute)
+
+  if (4 + batch < paginationChildren.length) {
+    assert.ok(
+      moreAfter?.includes(
+        `+ ${paginationChildren.length - (4 + batch)} more in ${paginationTitle}`,
+      ),
+      "count label updates with remaining hidden",
+    )
+  } else {
+    assert.equal(moreAfter, null, "row disappears once all children are visible")
+  }
+
+  await expandAllTreeRows(page, paginationRoute)
+  const full = await directTreeChildren(page, paginationRoute)
+  assert.deepEqual(
+    full.map((c) => c.text),
+    paginationChildren,
+    "full children match after exhaustion",
+  )
+  assert.equal(await treeMoreRow(page, paginationRoute), null, "row is gone after exhaustion")
+  assert.equal(page.url(), urlBefore, "paging reveals without navigating")
+
+  const sessionAfter = await page.evaluate(() =>
+    window.sessionStorage.getItem("knowledge-reader-tree"),
+  )
+
+  assert.equal(sessionAfter, sessionBefore, "paging keeps client session storage")
+
+  // Keyboard: the more-row is reachable before exhaustion. Reopen a fresh
+  // window by collapsing and re-expanding so the control returns.
+  await setDisclosure(page, paginationRoute, false)
+  await setDisclosure(page, paginationRoute, true)
+  assert.ok(await treeMoreRow(page, paginationRoute), "more-row returns after reset")
+
+  const keyboardReachable = await page.evaluate((route) => {
+    const li = document.querySelector(
+      `[data-slot="sidebar"] .reader-sidebar-nav li[data-tree-url="${route}"]`,
+    )
+
+    const more = li?.querySelector(
+      ":scope > .reader-tree-collapsible > .reader-tree-panel [data-tree-more]",
+    )
+
+    if (!more) return { focusable: false, outline: null }
+    more.focus()
+
+    const active = document.activeElement === more
+
+    const style = active ? getComputedStyle(more) : null
+
+    return {
+      focusable: active,
+      outline: style ? { style: style.outlineStyle, width: style.outlineWidth } : null,
+    }
+  }, paginationRoute)
+
+  assert.ok(keyboardReachable.focusable, "keyboard reaches the more-row")
+
+  // Active-route ancestor still pages: the deep leaf needs explicit paging.
+  await page.goto(`${baseUrl}${deepRoute}`, { waitUntil: "networkidle", timeout: 15000 })
+  const ancestorMore = await treeMoreRow(page, "/notes")
+  assert.ok(ancestorMore, "active ancestor still pages")
+  await revealTreeRoute(page, deepRoute)
+  assert.ok(await treeLinkVisible(page, deepRoute), "deep leaf reachable through paging")
 }
 
 /**
@@ -3687,6 +3966,97 @@ async function ensureTreeOpen(page, route) {
       { timeout: 5000 },
     )
   }
+
+  await expandAllPhoneRows(page, route)
+}
+
+/** Click the phone drawer more-row until exhausted. */
+async function expandAllPhoneRows(page, route) {
+  for (let i = 0; i < 10; i++) {
+    const hasMore = await page.evaluate((target) => {
+      const scope = document.querySelector("#reader-browse-panel .reader-sidebar-nav") || document
+
+      const li = scope.querySelector(`li[data-tree-url="${target}"]`)
+
+      return !!li?.querySelector(
+        ":scope > .reader-tree-collapsible > .reader-tree-panel [data-tree-more]",
+      )
+    }, route)
+
+    if (!hasMore) break
+
+    const before = await page.evaluate((target) => {
+      const scope = document.querySelector("#reader-browse-panel .reader-sidebar-nav") || document
+
+      const li = scope.querySelector(`li[data-tree-url="${target}"]`)
+
+      const panel = li?.querySelector(":scope > .reader-tree-collapsible > .reader-tree-panel")
+
+      if (!panel) return 0
+
+      return Array.from(panel.querySelectorAll(":scope > ul > li, :scope > div > ul > li")).filter(
+        (child) => {
+          const row = child.querySelector(
+            ":scope > .reader-tree-collapsible > .reader-tree-row, :scope > .reader-tree-row",
+          )
+
+          return !!row?.querySelector("a")
+        },
+      ).length
+    }, route)
+
+    await page.evaluate((target) => {
+      const scope = document.querySelector("#reader-browse-panel .reader-sidebar-nav") || document
+
+      const li = scope.querySelector(`li[data-tree-url="${target}"]`)
+
+      li?.querySelector(
+        ":scope > .reader-tree-collapsible > .reader-tree-panel [data-tree-more]",
+      )?.click()
+    }, route)
+    await page.waitForFunction(
+      ([target, prev]) => {
+        const scope = document.querySelector("#reader-browse-panel .reader-sidebar-nav") || document
+
+        const li = scope.querySelector(`li[data-tree-url="${target}"]`)
+
+        if (!li) return true
+
+        const panel = li.querySelector(":scope > .reader-tree-collapsible > .reader-tree-panel")
+
+        if (!panel) return true
+
+        const rows = Array.from(
+          panel.querySelectorAll(":scope > ul > li, :scope > div > ul > li"),
+        ).filter((child) => {
+          const row = child.querySelector(
+            ":scope > .reader-tree-collapsible > .reader-tree-row, :scope > .reader-tree-row",
+          )
+
+          return !!row?.querySelector("a")
+        })
+
+        const more = panel.querySelector("[data-tree-more]")
+
+        return rows.length > prev || !more
+      },
+      [route, before],
+      { timeout: 5000 },
+    )
+  }
+}
+
+/** Open each phone ancestor and page through it so the target appears. */
+async function revealPhoneRoute(page, targetRoute) {
+  const segments = targetRoute.split("/").filter(Boolean)
+  const prefixes = segments.map((_, i) => `/${segments.slice(0, i + 1).join("/")}`)
+
+  for (const prefix of prefixes.slice(0, -1)) {
+    const state = await treeDisclosure(page, prefix)
+
+    if (state === "false") await ensureTreeOpen(page, prefix)
+    else if (state === "true") await expandAllPhoneRows(page, prefix)
+  }
 }
 
 async function openBrowse(page) {
@@ -3928,6 +4298,9 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
     true,
     `${label}: Browse opens the tree`,
   )
+
+  // Long folders page behind the more-row: reach the leaf through paging.
+  await revealPhoneRoute(page, expect.leafRoute)
 
   // The phone tree carries the nested note with its static route.
   const leafInTree = await page.evaluate((route) => {
@@ -5239,6 +5612,9 @@ test("synthetic browse journey covers home → folder → nested note → Back",
   const browser = await launchBrowser()
   const context = await createDesktopContext(browser)
   const folderChildren = expectedFolderChildren(contentDir, journey.folderEntry.path)
+  const orchardEntry = metadata.navigation.find((entry) => entry.path === "orchard")
+  const orchardTitle = orchardEntry ? expectedRootTitle(orchardEntry, contentDir) : "Orchard"
+  const orchardChildren = expectedFolderChildren(contentDir, "orchard")
 
   try {
     const treePage = await context.newPage()
@@ -5249,6 +5625,12 @@ test("synthetic browse journey covers home → folder → nested note → Back",
       leafTitle: journey.leafTitle,
       leafRoute: journey.leafRoute,
       folderChildren,
+    })
+    await runTreePagination(treePage, baseUrl, {
+      paginationRoute: "/orchard",
+      paginationTitle: orchardTitle,
+      paginationChildren: orchardChildren,
+      deepRoute: journey.leafRoute,
     })
     await runSidebarCollapse(treePage, baseUrl, {
       projection: metadata.title,

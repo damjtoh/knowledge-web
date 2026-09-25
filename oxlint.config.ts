@@ -87,9 +87,30 @@ const config: OxlintConfig = {
                 pattern: "^SidebarMenu$",
                 allow: ["reader-tree", "reader-projection-switcher", "gap-1"],
               },
-              { pattern: "^SidebarMenuSub$", allow: ["reader-tree-children"] },
+              // Published tree children indent and guide must stay on the
+              // menu sub itself; a wrapper would break the
+              // li > .reader-tree-collapsible > .reader-tree-panel selector.
+              {
+                pattern: "^SidebarMenuSub$",
+                allow: [
+                  "reader-tree-children",
+                  "gap-0.5",
+                  "border-l",
+                  "border-border",
+                  "py-1",
+                  "pl-2.5",
+                ],
+              },
+              // Published section label owns its muted 11px/600/0.6px
+              // tracking; the group owns layout padding.
+              {
+                pattern: "^SidebarGroupLabel$",
+                allow: ["text-2xs", "font-semibold", "tracking-label", "text-muted-foreground"],
+              },
               // Search and active hooks must live on the menu button itself;
               // a wrapper would break focus return and the 44px touch target.
+              // The tree selected wash lives on the button with the active
+              // hook so folder and note rows share one active-row element.
               {
                 pattern: "^SidebarMenuButton$",
                 allow: [
@@ -102,6 +123,7 @@ const config: OxlintConfig = {
                   "px-2.5",
                   "py-2",
                   "gap-2",
+                  "bg-border",
                 ],
               },
               // Desktop top chrome owns its header spacing from design.pen:
