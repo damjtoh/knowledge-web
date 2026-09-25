@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
-import { ChevronRight, File, Folder } from "lucide-react"
+import { ChevronDown, File, Folder } from "lucide-react"
 import type { NavigationNode } from "../lib/navigation"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible"
 import {
@@ -95,16 +95,26 @@ interface TreeState {
  * One published row adapted from registry sidebar-11's collapsible file
  * tree. Block sample data is not used: rows come from the published
  * navigation tree in metadata order. A folder keeps two separate controls:
- * its name is a plain anchor to its own page and a disclosure button
- * expands children without navigating.
+ * its name is a plain anchor to its own page and a glyph-free disclosure
+ * hit target at the row's right edge expands children without navigating.
+ * The row itself shows only a leading cue plus label: the folder icon when
+ * collapsed, a chevron-down when expanded.
  */
 function TreeNode({ node, state }: { node: NavigationNode; state: TreeState }) {
   const url = normalize(node.url)
   const isExact = state.pathname === url
   const isAncestor = url !== "/" && !isExact && state.pathname.startsWith(`${url}/`)
   const isActive = isExact || isAncestor
-  const Icon = node.isFolder ? Folder : File
   const open = state.isOpen(node.url)
+  // Collapsed folder rows keep the folder cue with a medium label; the
+  // expanded header swaps in a leading chevron-down with a semibold label
+  // instead. Note rows always keep the note cue with a truncated label.
+  const LeadingIcon = node.isFolder ? (open ? ChevronDown : Folder) : File
+
+  const labelClassName = node.isFolder
+    ? `reader-tree-label text-13 ${open ? "font-semibold" : "font-medium"} text-primary`
+    : "reader-tree-label text-xs font-normal text-muted-foreground truncate"
+
   const [visibleCount, setVisibleCount] = useState(INITIAL_WINDOW)
 
   useEffect(() => {
@@ -125,16 +135,8 @@ function TreeNode({ node, state }: { node: NavigationNode; state: TreeState }) {
       isActive={isActive}
       className={isActive ? "is-active rounded-md bg-border" : "rounded-md"}
     >
-      <Icon aria-hidden="true" />
-      <span
-        className={
-          node.isFolder
-            ? "reader-tree-label text-13 font-semibold text-primary"
-            : "reader-tree-label text-13 font-normal"
-        }
-      >
-        {node.title}
-      </span>
+      <LeadingIcon aria-hidden="true" className="size-3.5 text-muted-foreground" />
+      <span className={labelClassName}>{node.title}</span>
     </SidebarMenuButton>
   )
 
@@ -162,12 +164,7 @@ function TreeNode({ node, state }: { node: NavigationNode; state: TreeState }) {
           <CollapsibleTrigger
             className="reader-tree-toggle"
             aria-label={open ? `Collapse ${node.title}` : `Expand ${node.title}`}
-          >
-            <ChevronRight
-              className="size-3.5 text-muted-foreground transition-transform"
-              aria-hidden="true"
-            />
-          </CollapsibleTrigger>
+          />
         </div>
         <CollapsibleContent keepMounted className="reader-tree-panel">
           <div className="pl-3.5">

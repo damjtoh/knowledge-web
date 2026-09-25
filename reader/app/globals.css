@@ -36,11 +36,14 @@ body {
   min-width: 0;
 }
 
-/* Desktop sidebar width: 320px at the lg breakpoint. Plain override next
-   to the sidebar-inset containment rule; the registry primitive itself is
-   untouched. */
+/* Desktop sidebar width: 320px at the lg breakpoint. The registry
+   SidebarProvider sets --sidebar-width: 16rem inline on the wrapper, so a
+   stylesheet var on that same element would lose. Setting the var on the
+   sidebar element instead wins by nearer-ancestor inheritance and flows to
+   the gap, the fixed container, and the offcanvas offsets together; the
+   registry primitive itself is untouched. */
 [data-slot="sidebar"] {
-  width: 20rem;
+  --sidebar-width: 20rem;
 }
 
 body {
@@ -294,7 +297,6 @@ body {
   text-decoration: none;
   color: #404040;
   border-radius: 6px;
-  border-left: 2px solid transparent;
   overflow-wrap: break-word;
 }
 
@@ -307,14 +309,13 @@ body {
   font-weight: 700;
   color: #171717;
   background: #f5f5f5;
-  border-left-color: #171717;
 }
 
 /* Folder-and-note tree: nested branches under each published root keep
    the sidebar link style. Root order follows generated metadata and
    child order follows the navigation tree. Each folder row holds its
-   page link plus a separate disclosure button, so visiting a folder
-   never collides with expanding it. */
+   page link plus a glyph-free disclosure hit target at the row's right
+   edge, so visiting a folder never collides with expanding it. */
 .reader-tree,
 .reader-tree-children {
   list-style: none;
@@ -336,6 +337,15 @@ body {
   min-width: 0;
 }
 
+/* Grid items default to min-width auto, which lets one unbroken
+   single-line label force its whole branch wider than the sidebar or
+   drawer. Zeroing it keeps every branch inside its container so labels
+   truncate instead of overflowing. */
+.reader-tree > li,
+.reader-tree-children > li {
+  min-width: 0;
+}
+
 .reader-tree-row {
   display: flex;
   align-items: stretch;
@@ -354,34 +364,22 @@ body {
   flex: 1 1 auto;
   min-width: 0;
   overflow-wrap: anywhere;
-  white-space: normal;
 }
 
+/* Glyph-free disclosure hit target at the row's right edge: a separate
+   flex sibling of the page link, so label clicks navigate while right-edge
+   clicks expand or collapse. It renders as the design's empty spacer slot;
+   stretch keeps the 44px touch target the journeys assert. */
 .reader-tree-toggle {
   flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
+  align-self: stretch;
+  width: 1.5rem;
   min-height: 44px;
-  color: #525252;
+  padding: 0;
   background: transparent;
   border: 1px solid transparent;
   border-radius: 6px;
   cursor: pointer;
-}
-
-.reader-tree-toggle:hover {
-  background: #f5f5f5;
-  color: #171717;
-}
-
-.reader-tree-toggle svg {
-  transition: transform 0.15s ease;
-}
-
-.reader-tree-toggle[aria-expanded="true"] svg {
-  transform: rotate(90deg);
 }
 
 .reader-main {
@@ -1336,20 +1334,10 @@ body {
 .dark .reader-sidebar-nav a.is-active {
   color: #fff;
   background: #262626;
-  border-left-color: #fafafa;
 }
 
 .dark .reader-tree-children {
   border-left-color: #262626;
-}
-
-.dark .reader-tree-toggle {
-  color: #d4d4d4;
-}
-
-.dark .reader-tree-toggle:hover {
-  background: #262626;
-  color: #fafafa;
 }
 
 .dark .reader-breadcrumbs ol {
