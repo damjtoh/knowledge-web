@@ -35,7 +35,7 @@ export default async function HomePage() {
       : undefined
 
   return (
-    <article className="reader-article reader-home-article">
+    <article className="reader-article">
       {AuthoredBody ? (
         <AuthoredBody />
       ) : (

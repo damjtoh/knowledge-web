@@ -105,10 +105,10 @@ export default function ReaderChrome({
 
   return (
     <div
-      className="reader-chrome min-h-screen bg-white text-neutral-900 antialiased dark:bg-neutral-950 dark:text-neutral-100"
+      className="reader-chrome min-h-screen antialiased"
       data-browse={browseOpen ? "open" : "closed"}
     >
-      <header className="reader-header bg-white dark:bg-neutral-950">
+      <header className="reader-header">
         <a className="reader-home" href="/">
           {title}
         </a>
@@ -136,7 +136,7 @@ export default function ReaderChrome({
       <div className="reader-shell">
         <aside
           id="reader-browse-panel"
-          className="reader-sidebar rounded-lg bg-white dark:bg-neutral-950"
+          className="reader-sidebar rounded-lg"
         >
           <button
             type="button"

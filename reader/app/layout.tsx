@@ -64,7 +64,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }}
         />
       </head>
-      <body className="bg-white text-neutral-900 antialiased dark:bg-neutral-950 dark:text-neutral-100">
+      <body className="antialiased">
         <ReaderChrome title={metadata.title} roots={roots}>
           {children}
         </ReaderChrome>
