@@ -96,6 +96,15 @@ const config: OxlintConfig = {
               // renders no wrapper DOM, so full-viewport width/height and
               // safe-area containment cannot move to a parent.
               { pattern: "^SheetContent$", allow: ["reader-phone-drawer"] },
+              // Home root cards use the registry Card surface (not a
+              // hand-written CSS card). Hook classes carry only readable
+              // long-title wrapping and folder/note meta layout; the Card
+              // primitive owns the surface and there is no wrapper that can
+              // own them without breaking the card composition.
+              { pattern: "^Card$", allow: ["reader-home-card"] },
+              { pattern: "^CardHeader$", allow: ["reader-home-card-header"] },
+              { pattern: "^CardTitle$", allow: ["reader-home-card-title"] },
+              { pattern: "^CardDescription$", allow: ["reader-home-card-meta"] },
               // Visible Close touch target must live on the Sheet close
               // button itself; a wrapper would break focus return and the
               // 44px touch target.
