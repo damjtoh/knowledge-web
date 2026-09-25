@@ -83,8 +83,8 @@ because it names no Markdown page worth browsing.
 - `title` and `canonicalHostname` plus resolved `navigation` roots are
   emitted as deterministic generated site metadata JSON outside the staged
   content tree (default `site-identity.json`), so each Web Projection
-  carries its own identity without modifying `quartz.config.yaml` or another
-  tracked configuration file. See ADR-0002 for the Quartz replacement and
+  carries its own identity without modifying a tracked configuration file.
+  See ADR-0002 for the reader replacement decision and
   ADR-0003 for the generic reader decision.
 
 ## Validation rules
@@ -166,4 +166,4 @@ Rules:
   manifest path, or an unselected path.
 
 The reader build consumes staged content plus this identity file. Staging
-never modifies `quartz.config.yaml` or another tracked configuration file.
+never modifies a tracked configuration file.

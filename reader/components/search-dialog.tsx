@@ -70,7 +70,7 @@ export default function SearchDialog({
     return () => {
       cancelled = true
     }
-  }, [open ])
+  }, [open])
 
   const trimmed = query.trim()
   const loading = open && trimmed !== "" && !index && !indexFailed
@@ -151,7 +151,12 @@ export default function SearchDialog({
             {open && trimmed === "" ? <span>Type to find a note.</span> : null}
           </div>
           {results.length > 0 ? (
-            <ul id={listId} role="listbox" aria-label="Search results" className="reader-search-list">
+            <ul
+              id={listId}
+              role="listbox"
+              aria-label="Search results"
+              className="reader-search-list"
+            >
               {results.map((hit, i) => (
                 <li
                   key={`${hit.url}-${i}`}

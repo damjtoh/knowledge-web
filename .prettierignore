@@ -1,4 +1,6 @@
-public
 node_modules
-.quartz-cache
 reader/next-env.d.ts
+.agents/
+tools/oxlint/anti-slop/
+pnpm-lock.yaml
+reader/pnpm-lock.yaml

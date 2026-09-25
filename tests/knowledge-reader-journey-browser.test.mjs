@@ -139,7 +139,7 @@ async function stageKb(kbRoot, contentDir, identityFile) {
 }
 
 async function buildReader(contentDir, identityFile) {
-  await execFileAsync("npm", ["run", "build"], {
+  await execFileAsync("pnpm", ["run", "build"], {
     cwd: READER_ROOT,
     timeout: 600000,
     env: {

@@ -204,12 +204,12 @@ test("default-input build exports nested pages and keeps search on emitted route
   delete env.READER_CONTENT_DIR
   delete env.READER_SITE_METADATA_FILE
   try {
-    await execFileAsync("npm", ["ci", "--no-audit", "--no-fund"], {
+    await execFileAsync("pnpm", ["install", "--frozen-lockfile", "--prefer-offline"], {
       cwd: fakeReader,
       timeout: 600000,
       env,
     })
-    await execFileAsync("npm", ["run", "build"], {
+    await execFileAsync("pnpm", ["run", "build"], {
       cwd: fakeReader,
       timeout: 600000,
       env,

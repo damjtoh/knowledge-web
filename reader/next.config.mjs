@@ -19,6 +19,14 @@ const config = {
   output: "export",
   poweredByHeader: false,
   outputFileTracingRoot: path.join(readerDir, ".."),
+  webpack: (config) => {
+    // Next 16 webpack module resolution skips dot directories, so the
+    // tsconfig `@/*` alias cannot reach the generated `.source/` tree
+    // (Turbopack resolves it, webpack does not). Alias it explicitly or a
+    // clean build fails on `@/.source/server`.
+    config.resolve.alias["@/.source"] = path.join(readerDir, ".source")
+    return config
+  },
 }
 
 export default withMDX(config)

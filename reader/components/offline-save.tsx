@@ -10,13 +10,7 @@ const SAVE_TIMEOUT_MS = 60000
 const UPDATE_CHECK_MS = 60_000
 
 type Status =
-  | "checking"
-  | "unsupported"
-  | "idle"
-  | "saving"
-  | "ready"
-  | "incomplete"
-  | "remove-failed"
+  "checking" | "unsupported" | "idle" | "saving" | "ready" | "incomplete" | "remove-failed"
 type Failure = "access" | "storage" | "interrupted" | "cleared" | null
 
 interface OfflineManifest {

@@ -18,9 +18,9 @@
  *      selected content has no root `index.md`.
  *   5. Emits deterministic generated site identity (title, canonical
  *      hostname, and resolved navigation roots) as JSON outside the staged
- *      content tree. Staging never
- *      modifies `quartz.config.yaml` or another tracked configuration file.
- *      See docs/adr-0002-quartz-replacement-reader.md.
+ *      content tree. Staging never modifies a tracked configuration file.
+ *      See docs/adr-0002-quartz-replacement-reader.md and
+ *      docs/adr-0004-remove-quartz-rollback.md.
  *
  * Usage:
  *   node scripts/stage-content.mjs \
@@ -36,7 +36,7 @@ import { fileURLToPath } from "node:url"
 
 const PUBLISHER_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const DEFAULT_MANIFEST_NAME = "publication.manifest.yaml"
-const TRACKED_QUARTZ_CONFIG = path.join(PUBLISHER_ROOT, "quartz.config.yaml")
+const TRACKED_RUNTIME_CONFIG = path.join(PUBLISHER_ROOT, "nginx.conf")
 
 // A canonical hostname: DNS labels separated by dots, no scheme, port, path,
 // userinfo, or whitespace. At least one dot is required so single-label names
@@ -143,7 +143,9 @@ async function loadYaml() {
   try {
     return await import("yaml")
   } catch {
-    fail('the "yaml" package is required; run `npm ci` in the Publisher before staging')
+    fail(
+      'the "yaml" package is required; run `pnpm install --frozen-lockfile` in the Publisher before staging',
+    )
     return null
   }
 }
@@ -618,8 +620,8 @@ async function main() {
         `site identity file ${identityFile} must not be inside the Knowledge Base root ${kbRoot}`,
       )
     }
-    if (identityReal === TRACKED_QUARTZ_CONFIG) {
-      fail(`site identity file must not overwrite the tracked Quartz configuration`)
+    if (identityReal === TRACKED_RUNTIME_CONFIG) {
+      fail(`site identity file must not overwrite the tracked runtime configuration`)
     }
   }
   if (identityFile === contentDir || identityFile.startsWith(contentDir + path.sep)) {

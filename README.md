@@ -60,26 +60,22 @@ Excluded (intentionally absent):
 ## Repository layout
 
 ```text
-quartz/                    Quartz v5 source (pinned, see docs/UPSTREAM.md; rollback only, see docs/adr-0002-quartz-replacement-reader.md)
 scripts/stage-content.mjs  Manifest validation + content staging + generated site metadata
+scripts/wikilink-spike.mjs Wikilink syntax proof pipeline for the reader
 reader/                    Knowledge reader (static Next.js export over staged content + generated metadata)
+tools/oxlint/anti-slop/    Vendored Oxlint lint plugin (see docs/UPSTREAM.md)
 tests/                     Focused contract tests (synthetic fixtures only)
-quartz.config.yaml         Quartz configuration (generic placeholders; staging never mutates it)
-site-identity.json         Generated site metadata (title, canonicalHostname, navigation; gitignored build output)
-package.json               npm scripts; deps pinned by package-lock.json
-quartz.lock.json           Community plugin pins (exact commits)
 nginx.conf                 Minimal stateless runtime configuration for consumers
+package.json               pnpm scripts; deps pinned by pnpm-lock.yaml
 docs/                      Manifest contract, adoption guide, vocabulary, ADRs, provenance
 ```
 
 ## Building a site
 
-### Static Knowledge reader build (current)
-
 ```bash
-npm ci                        # install pinned npm dependencies
+pnpm install --frozen-lockfile  # install pinned dependencies
 node scripts/stage-content.mjs --kb-root /path/to/knowledge-base
-cd reader && npm ci && npm run build   # emits the static reader into reader/out/
+cd reader && pnpm install --frozen-lockfile && pnpm run build   # emits the static reader into reader/out/
 ```
 
 `stage-content.mjs` validates the manifest, copies only allowlisted content
@@ -89,40 +85,23 @@ deterministic generated site metadata (`site-identity.json` with `title`,
 `canonicalHostname`, and ordered `navigation`) outside the
 staged tree. The reader build consumes only staged content
 (`READER_CONTENT_DIR`) plus generated metadata
-(`READER_SITE_METADATA_FILE`). Staging never modifies `quartz.config.yaml`
-or another tracked configuration file. The Knowledge Base is never modified.
+(`READER_SITE_METADATA_FILE`). Staging never modifies another tracked
+configuration file. The Knowledge Base is never modified.
 See [the manifest contract](docs/manifest.md) and the
 [Knowledge reader](reader/README.md).
-
-### Quartz rollback (separate)
-
-Quartz remains vendored for rollback only:
-
-```bash
-npm ci                        # install pinned npm dependencies
-npm run install-plugins       # install community plugins at their pinned commits
-node scripts/stage-content.mjs --kb-root /path/to/knowledge-base
-npm run build                 # emits the Quartz static site into public/
-```
-
-Do not mix the two outputs: the Knowledge reader emits `reader/out/`;
-the Quartz rollback emits `public/`. The publisher, allowlist,
-staging, canonical Markdown/Git, and stateless runtime boundaries are
-retained (see docs/adr-0002-quartz-replacement-reader.md and
-docs/adr-0003-generic-knowledge-reader.md).
 
 ## Testing
 
 ```bash
 # Focused publisher + navigation suites (tsx runner)
-npm test -- tests/stage-content.test.mjs tests/knowledge-reader-contract.test.mjs tests/navigation.test.mjs tests/wiki-aliases.test.mjs
+pnpm test tests/stage-content.test.mjs tests/knowledge-reader-contract.test.mjs tests/navigation.test.mjs tests/wiki-aliases.test.mjs
 
 # Synthetic Knowledge reader production suites (no vault required)
-npm run test:reader          # static + journey + phone suites
-npm run test:reader:browser  # journey + phone suites only
+pnpm run test:reader          # static + journey + phone suites
+pnpm run test:reader:browser  # journey + phone suites only
 
 # Real-corpus matrix (same generic suites against a vault checkout)
-KNOWLEDGE_BASE_ROOT=/path/to/vault npm test -- tests/knowledge-reader-static.test.mjs tests/knowledge-reader-journey-browser.test.mjs tests/knowledge-reader-phone-browser.test.mjs
+KNOWLEDGE_BASE_ROOT=/path/to/vault pnpm test tests/knowledge-reader-static.test.mjs tests/knowledge-reader-journey-browser.test.mjs tests/knowledge-reader-phone-browser.test.mjs
 ```
 
 ## Documentation
@@ -134,11 +113,11 @@ KNOWLEDGE_BASE_ROOT=/path/to/vault npm test -- tests/knowledge-reader-static.tes
 - [Architectural decision record](docs/adr-0001-knowledge-web-publisher.md)
 - [Quartz replacement decision](docs/adr-0002-quartz-replacement-reader.md)
 - [Generic knowledge reader decision](docs/adr-0003-generic-knowledge-reader.md)
+- [Quartz rollback removal decision](docs/adr-0004-remove-quartz-rollback.md)
 - [Provenance and pinning](docs/UPSTREAM.md)
 
 ## License
 
-The Quartz source vendored in `quartz/` is MIT-licensed
-([LICENSE.txt](LICENSE.txt)). See [docs/UPSTREAM.md](docs/UPSTREAM.md) for the
-exact upstream revision and the one local modification carried by this
-repository. The Publisher's own files are MIT-licensed as well.
+The Publisher's own files are MIT-licensed ([LICENSE.txt](LICENSE.txt)).
+The vendored lint plugin under `tools/oxlint/anti-slop/` carries its
+upstream licenses inside that directory.

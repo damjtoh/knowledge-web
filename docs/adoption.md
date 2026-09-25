@@ -1,8 +1,8 @@
 # Adopting the Publisher in a Knowledge Base
 
 Adoption is deliberately thin: a Knowledge Base adds a Publication Manifest
-and a small multi-stage container build. It does **not** copy Quartz or the
-Publisher into its own repository.
+and a small multi-stage container build. It does **not** copy the Publisher
+into its own repository.
 
 ## 1. Declare what to publish
 
@@ -90,7 +90,7 @@ navigation:
   - workout
 ```
 
-## 2. Build the static Knowledge reader (current)
+## 2. Build the static Knowledge reader
 
 Stage the allowlist, then build the reader from staged content plus
 generated metadata only. The reader never reads the Knowledge Base or the
@@ -99,29 +99,26 @@ and `READER_SITE_METADATA_FILE`.
 
 ```bash
 node scripts/stage-content.mjs --kb-root /path/to/knowledge-base
-cd reader && npm ci && npm run build   # emits the static reader into reader/out/
+cd reader && pnpm install --frozen-lockfile && pnpm run build   # emits the static reader into reader/out/
 ```
 
-Preview the export with an nginx-style static server (`npx serve out`).
+Preview the export with an nginx-style static server (`pnpm dlx serve out`).
 `reader/.source/`, `reader/.next/`, and `reader/out/` are disposable build
 artifacts and stay untracked. See the [Knowledge reader](../reader/README.md)
 and [the manifest contract](manifest.md).
 
-## 3. Quartz rollback Docker build (separate)
-
-The build below is the Quartz rollback path. It is separate from the
-static Knowledge reader build above.
+## 3. Container build
 
 The build fetches the public Publisher at an **immutable commit SHA** (never
 a branch or a mutable tag), installs its locked dependencies, validates the
-manifest, stages the allowlisted content, builds the static site, and copies
-only the generated output into a minimal nginx runtime.
+manifest, stages the allowlisted content, builds the static reader, and
+copies only the generated output into a minimal nginx runtime.
 
 ```dockerfile
 # syntax=docker/dockerfile:1
-FROM node:22-alpine AS publisher
+FROM node:26-alpine AS publisher
 
-# git is required by Quartz to install its community plugins
+# git is required to fetch the Publisher at an immutable revision
 RUN apk add --no-cache git
 
 # Immutable Publisher revision: the full commit SHA of the public
@@ -136,12 +133,12 @@ RUN git init -q \
     && git fetch -q --depth 1 origin ${PUBLISHER_REV} \
     && git checkout -q FETCH_HEAD
 
-# Locked npm dependencies, then community plugins at their pinned commits
-RUN npm ci && npm run install-plugins
+# pnpm installs the locked dependencies
+RUN npm install -g pnpm@12 && pnpm install --frozen-lockfile
 
 # Stage the Knowledge Base: manifest validation, allowlisted content copy,
 # landing page generation, generated site identity emission. Staging never
-# mutates quartz.config.yaml or another tracked configuration file.
+# mutates a tracked configuration file.
 WORKDIR /kb
 COPY . .
 RUN node /publisher/scripts/stage-content.mjs \
@@ -149,13 +146,13 @@ RUN node /publisher/scripts/stage-content.mjs \
     --content-dir /publisher/content \
     --identity-file /publisher/site-identity.json
 
-WORKDIR /publisher
-RUN npm run build
+WORKDIR /publisher/reader
+RUN pnpm install --frozen-lockfile && pnpm run build
 
 # ---- Runtime: minimal nginx, stateless ----
 FROM nginx:alpine
 COPY --from=publisher /publisher/nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=publisher /publisher/public /usr/share/nginx/html
+COPY --from=publisher /publisher/reader/out /usr/share/nginx/html
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
 ```
@@ -169,16 +166,16 @@ Notes:
   volume, no Git, no sync worker, no API.
 - Keep `ARG PUBLISHER_REV` explicit so a rebuild cannot change behavior
   because a remote branch or tag moved.
-- Quartz remains vendored for rollback only (see
-  ADR-0002). The publisher, allowlist, staging, canonical Markdown/Git, and
-  stateless runtime boundaries are retained.
+- The publisher allowlist, staging, canonical Markdown/Git, and stateless
+  runtime boundaries are retained (see ADR-0002, ADR-0003, ADR-0004).
 
 ## 4. Runtime contract
 
-The image serves the generated `public/` directory through the Publisher's
-`nginx.conf` (`index index.html;` plus `try_files $uri $uri.html $uri/ =404;`
-and long-lived immutable caching under `/static/`). It listens on port 80,
-requires no environment variables, and holds no state.
+The image serves the generated `reader/out/` directory through the
+Publisher's `nginx.conf` (`index index.html;` plus
+`try_files $uri $uri.html $uri/ =404;` and long-lived immutable caching
+under `/_next/static/`). It listens on port 80, requires no environment
+variables, and holds no state.
 
 ## 5. Upgrading the Publisher
 
@@ -196,40 +193,24 @@ contains, the proxy controls who may reach it. Both boundaries are required.
 
 ## 7. Local development
 
-### Knowledge reader (current)
-
 ```bash
 git clone <publisher repo> /tmp/publisher && cd /tmp/publisher
-npm ci
+pnpm install --frozen-lockfile
 node scripts/stage-content.mjs --kb-root /path/to/knowledge-base
-cd reader && npm ci && npm run build
-npx serve out   # local preview of the static reader export
+cd reader && pnpm install --frozen-lockfile && pnpm run build
+pnpm dlx serve out   # local preview of the static reader export
 ```
 
 Run the synthetic suites through the `tsx` runner (never the plain Node
 runner for suites that import TypeScript reader modules):
 
 ```bash
-npm test -- tests/stage-content.test.mjs tests/knowledge-reader-contract.test.mjs tests/navigation.test.mjs tests/wiki-aliases.test.mjs
-npm run test:reader
-npm run test:reader:browser
-KNOWLEDGE_BASE_ROOT=/path/to/vault npm test -- tests/knowledge-reader-static.test.mjs tests/knowledge-reader-journey-browser.test.mjs tests/knowledge-reader-phone-browser.test.mjs
+pnpm test tests/stage-content.test.mjs tests/knowledge-reader-contract.test.mjs tests/navigation.test.mjs tests/wiki-aliases.test.mjs
+pnpm run test:reader
+pnpm run test:reader:browser
+KNOWLEDGE_BASE_ROOT=/path/to/vault pnpm test tests/knowledge-reader-static.test.mjs tests/knowledge-reader-journey-browser.test.mjs tests/knowledge-reader-phone-browser.test.mjs
 ```
 
 The staged build tree plus generated site metadata live in the Publisher
 checkout (`content/`, `site-identity.json`, `reader/out/`), never in
-the Knowledge Base.
-
-### Quartz rollback (separate)
-
-```bash
-git clone <publisher repo> /tmp/publisher && cd /tmp/publisher
-npm ci && npm run install-plugins
-node scripts/stage-content.mjs --kb-root /path/to/knowledge-base
-npm run build
-npm run serve   # local preview at http://localhost:8080
-```
-
-The staged build tree plus generated site identity live in the Publisher
-checkout (`content/`, `site-identity.json`, `public/`, `.quartz/`), never in
 the Knowledge Base.

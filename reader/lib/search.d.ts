@@ -44,8 +44,4 @@ export type SearchIndex = object
 
 export function buildSearchIndex(pages: SearchPageInput[]): SearchIndexData
 export function loadSearchIndex(data: unknown): SearchIndex
-export function searchNotes(
-  index: SearchIndex,
-  query: string,
-  limit?: number,
-): SearchHit[]
+export function searchNotes(index: SearchIndex, query: string, limit?: number): SearchHit[]

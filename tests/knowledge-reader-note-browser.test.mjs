@@ -276,7 +276,7 @@ async function stageAndBuild(kbRoot) {
     ],
     { cwd: PUBLISHER_ROOT, timeout: 120000 },
   )
-  await execFileAsync("npm", ["run", "build"], {
+  await execFileAsync("pnpm", ["run", "build"], {
     cwd: READER_ROOT,
     timeout: 600000,
     env: {

@@ -125,10 +125,7 @@ async function main() {
   // Field mapping and excerpt shaping live in the shared search module;
   // the script only feeds it the staged extraction.
   const pages = rels.map((rel) => {
-    const raw = fs.readFileSync(
-      path.join(contentDir, ...rel.split("/")),
-      "utf8",
-    )
+    const raw = fs.readFileSync(path.join(contentDir, ...rel.split("/")), "utf8")
     const { data, body } = splitFrontmatter(raw)
     // Frontmatter contributes the title only; every other frontmatter
     // value stays out of the index. Only the body is structured, so

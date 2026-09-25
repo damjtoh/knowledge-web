@@ -5,6 +5,7 @@
   "version": "0.1.0",
   "type": "module",
   "license": "MIT",
+  "packageManager": "pnpm@12.6.0",
   "scripts": {
     "build": "next build --webpack && node ./scripts/build-search-index.mjs && node ./scripts/build-offline.mjs",
     "dev": "next dev",
@@ -29,6 +30,11 @@
     "postcss": "^8.5.28",
     "shadcn": "^4.21.0",
     "tailwindcss": "^4.3.3",
+    "typescript": "7.0.2",
     "workbox-build": "^7.4.1"
+  },
+  "engines": {
+    "node": ">=26",
+    "pnpm": ">=12"
   }
 }

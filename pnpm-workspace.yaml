@@ -1,0 +1,4 @@
+# pnpm ≥11 keeps settings here instead of the package.json "pnpm" field.
+# esbuild ships a prebuilt binary; its install script only validates it.
+allowBuilds:
+  esbuild: true

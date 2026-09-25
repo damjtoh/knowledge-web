@@ -312,7 +312,7 @@ async function stageKb(kbRoot, contentDir, identityFile) {
 }
 
 async function buildReader(contentDir, identityFile) {
-  await execFileAsync("npm", ["run", "build"], {
+  await execFileAsync("pnpm", ["run", "build"], {
     cwd: READER_ROOT,
     timeout: 600000,
     env: {
@@ -999,18 +999,16 @@ test("neutral synthetic corpus builds a complete static export with authored and
     await new Promise((resolve) => server.close(resolve))
   }
 
-  // Quartz and its rollback build stay available and unchanged. Root
-  // package files are Publisher machinery (Step 7 reader scripts live
-  // there), so only the Quartz rollback paths are checked here.
-  const quartzTouched = porcelain.filter((line) =>
-    / (quartz\/|plugins\/|quartz\.config\.yaml|quartz\.lock\.json|nginx\.conf)$/.test(line.trim()),
+  // Publisher machinery stays unchanged by reader test runs. Root package
+  // files are Publisher machinery (reader scripts live there).
+  const machineryTouched = porcelain.filter((line) =>
+    /(^| )(nginx\.conf|package\.json|pnpm-lock\.yaml|scripts\/|tools\/)/.test(line.trim()),
   )
   assert.deepEqual(
-    quartzTouched,
+    machineryTouched,
     [],
-    `Quartz machinery must be unchanged (got: ${quartzTouched.join("; ")})`,
+    `Publisher machinery must be unchanged (got: ${machineryTouched.join("; ")})`,
   )
-  assert.ok(fs.existsSync(path.join(PUBLISHER_ROOT, "quartz", "bootstrap-cli.mjs")))
 })
 
 test("offline precache revisions follow exported files without a reader build", async () => {

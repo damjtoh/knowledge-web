@@ -137,22 +137,6 @@ non-Markdown assets never enter the index. Pages omitted from the
 `navigation` presentation list stay searchable. No API route or server
 is involved.
 
-### Quartz rollback (separate)
-
-Quartz remains vendored for rollback only. It is not part of the
-Knowledge reader build:
-
-```bash
-# From the publisher root: Quartz plugin install, stage, and build
-npm ci
-npm run install-plugins
-node scripts/stage-content.mjs --kb-root <knowledge-base-root>
-npm run build   # emits the Quartz static site into public/
-```
-
-Do not mix the two outputs: the Knowledge reader emits `reader/out/`;
-the Quartz rollback emits `public/`.
-
 ## Contract tests
 
 All commands run from the publisher root through the `tsx` test runner.

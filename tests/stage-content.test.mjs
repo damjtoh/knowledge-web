@@ -21,10 +21,10 @@ import { test, after } from "node:test"
 const execFileAsync = promisify(execFile)
 const PUBLISHER_ROOT = path.resolve(import.meta.dirname, "..")
 const STAGE_SCRIPT = path.join(PUBLISHER_ROOT, "scripts", "stage-content.mjs")
-const TRACKED_CONFIG = path.join(PUBLISHER_ROOT, "quartz.config.yaml")
+const TRACKED_CONFIG = path.join(PUBLISHER_ROOT, "nginx.conf")
 
 // Captured before any test runs: staging must never modify the tracked
-// quartz.config.yaml (tests use isolated temporary copies).
+// runtime configuration (tests use isolated temporary copies).
 const trackedConfigHashBefore = sha256(TRACKED_CONFIG)
 
 const tmpRoots = []
@@ -229,7 +229,7 @@ test("emits deterministic generated site identity outside the staged content tre
   )
 })
 
-test("leaves the tracked Quartz configuration byte-identical after staging", async () => {
+test("leaves the tracked runtime configuration byte-identical after staging", async () => {
   const kb = makeKb()
   writeManifest(kb, validManifest)
   const contentDir = path.join(tmpdir("out"), "content")
@@ -245,8 +245,7 @@ test("leaves the tracked Quartz configuration byte-identical after staging", asy
     "tracked config must match pre-test hash",
   )
   const tracked = fs.readFileSync(TRACKED_CONFIG, "utf8")
-  assert.match(tracked, /pageTitle: Knowledge Web/, "tracked config stays generic")
-  assert.match(tracked, /baseUrl: localhost/, "tracked hostname stays generic")
+  assert.match(tracked, /index index\.html;/, "tracked config stays generic")
   assert.ok(!tracked.includes("Shared Vault"), "no staging residue in tracked config")
   assert.ok(!tracked.includes("shared.dami.dev"), "no staging hostname in tracked config")
 })
