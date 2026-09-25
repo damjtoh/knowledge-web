@@ -85,25 +85,6 @@ body {
   max-width: 100%;
 }
 
-.reader-home {
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
-  min-width: 0;
-  font-weight: 700;
-  font-size: 1rem;
-  letter-spacing: -0.01em;
-  text-decoration: none;
-  color: #171717;
-  overflow-wrap: anywhere;
-}
-
-.reader-home:hover {
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  text-decoration-color: #a3a3a3;
-}
-
 /* Compact Browse control: phone-only. Desktop keeps the sidebar. */
 .reader-chrome {
   min-width: 0;
@@ -805,14 +786,6 @@ body {
   outline-offset: 2px;
 }
 
-.reader-footer {
-  border-top: 1px solid #e5e5e5;
-  background: #fafafa;
-  padding: 1rem;
-  color: #525252;
-  font-size: 0.85rem;
-}
-
 @media (max-width: 899px) {
   .reader-browse-toggle {
     display: inline-flex;
@@ -1313,14 +1286,6 @@ body {
   border-bottom-color: #262626;
 }
 
-.dark .reader-home {
-  color: #fafafa;
-}
-
-.dark .reader-home:hover {
-  text-decoration-color: #525252;
-}
-
 .dark .reader-browse-toggle {
   color: #fafafa;
   background: #171717;
@@ -1488,12 +1453,6 @@ body {
 
 .dark .reader-appearance-option:focus-visible {
   outline-color: #fafafa;
-}
-
-.dark .reader-footer {
-  border-top-color: #262626;
-  background: #111;
-  color: #a3a3a3;
 }
 
 /**
