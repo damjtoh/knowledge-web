@@ -16,7 +16,10 @@ const config: OxlintConfig = {
     ".playwright-cli/**",
     "tools/oxlint/anti-slop/**",
   ],
-  jsPlugins: [{ name: "anti-slop", specifier: "./tools/oxlint/anti-slop/index.ts" }],
+  jsPlugins: [
+    { name: "anti-slop", specifier: "./tools/oxlint/anti-slop/index.ts" },
+    "@shadcn/lint",
+  ],
   rules: {
     "oxc/no-accumulating-spread": "error",
     "anti-slop/no-array-filter-map": "error",
@@ -38,6 +41,19 @@ const config: OxlintConfig = {
     "anti-slop/require-readable-spacing": "error",
     "anti-slop/require-safety-comment-for-type-assertion": "error",
   },
+  overrides: [
+    {
+      files: ["reader/**"],
+      rules: {
+        "shadcn/no-restyle": "error",
+        "shadcn/no-raw-colors": "error",
+        "shadcn/no-arbitrary-values": "error",
+        "shadcn/no-inline-styles": "error",
+        "shadcn/no-unknown-classes": "error",
+        "shadcn/require-static-classes": "error",
+      },
+    },
+  ],
 }
 
 export default config

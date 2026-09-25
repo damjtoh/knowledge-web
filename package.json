@@ -32,6 +32,7 @@
   "devDependencies": {
     "@flowershow/remark-wiki-link": "^3.4.0",
     "@oxlint/plugins": "1.85.0",
+    "@shadcn/lint": "0.2.0",
     "@types/node": "^25.0.10",
     "oxlint": "1.85.0",
     "prettier": "^3.8.1",
