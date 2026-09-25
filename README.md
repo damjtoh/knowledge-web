@@ -61,7 +61,6 @@ Excluded (intentionally absent):
 
 ```text
 scripts/stage-content.mjs  Manifest validation + content staging + generated site metadata
-scripts/wikilink-spike.mjs Wikilink syntax proof pipeline for the reader
 reader/                    Knowledge reader (static Next.js export over staged content + generated metadata)
 tools/oxlint/anti-slop/    Vendored Oxlint lint plugin (see docs/UPSTREAM.md)
 tests/                     Focused contract tests (synthetic fixtures only)
@@ -92,16 +91,15 @@ See [the manifest contract](docs/manifest.md) and the
 
 ## Testing
 
+One canonical command runs the whole suite through the `tsx` runner
+(serial; never the plain Node runner — navigation imports TypeScript
+reader modules that plain Node cannot load):
+
 ```bash
-# Focused publisher + navigation suites (tsx runner)
-pnpm test tests/stage-content.test.mjs tests/knowledge-reader-contract.test.mjs tests/navigation.test.mjs tests/wiki-aliases.test.mjs
+pnpm test
 
-# Synthetic Knowledge reader production suites (no vault required)
-pnpm run test:reader          # static + journey + phone suites
-pnpm run test:reader:browser  # journey + phone suites only
-
-# Real-corpus matrix (same generic suites against a vault checkout)
-KNOWLEDGE_BASE_ROOT=/path/to/vault pnpm test tests/knowledge-reader-static.test.mjs tests/knowledge-reader-journey-browser.test.mjs tests/knowledge-reader-phone-browser.test.mjs
+# Same suite against a real vault checkout
+KNOWLEDGE_BASE_ROOT=/path/to/vault pnpm test
 ```
 
 ## Documentation

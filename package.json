@@ -10,10 +10,7 @@
     "check": "pnpm run lint && pnpm exec prettier . --check",
     "lint": "oxlint",
     "format": "pnpm exec prettier . --write",
-    "test": "tsx --test --test-concurrency=1",
-    "test:reader": "tsx --test --test-concurrency=1 tests/knowledge-reader-static.test.mjs tests/knowledge-reader-journey-browser.test.mjs tests/knowledge-reader-phone-browser.test.mjs",
-    "test:reader:browser": "tsx --test --test-concurrency=1 tests/knowledge-reader-journey-browser.test.mjs tests/knowledge-reader-phone-browser.test.mjs",
-    "test:contract": "node --test --test-concurrency=1 'tests/*.test.mjs'"
+    "test": "tsx --test --test-concurrency=1"
   },
   "engines": {
     "node": ">=26",

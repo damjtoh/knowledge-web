@@ -144,26 +144,16 @@ Never use the plain Node runner for these suites: they import TypeScript
 reader modules that plain Node cannot load.
 
 ```bash
-# Fast static boundary (no build, no vault required)
-npm test -- tests/knowledge-reader-contract.test.mjs
-
-# Synthetic production build + output inspection (no vault required)
-npm test -- tests/knowledge-reader-static.test.mjs
-
-# Synthetic production-build browser journeys (no vault required)
-npm test -- tests/knowledge-reader-journey-browser.test.mjs tests/knowledge-reader-phone-browser.test.mjs
-
-# Shortcuts defined in the root package.json
-npm run test:reader          # static + journey + phone suites
-npm run test:reader:browser  # journey + phone suites only
+# Full suite: unit contracts plus the integrated production-build browser
+# suite (desktop + phone journeys, no vault required)
+pnpm test
 ```
 
-A real corpus uses the same generic entry points with only the test
-harness variable:
+A real corpus uses the same entry point with only the test harness
+variable:
 
 ```bash
-KNOWLEDGE_BASE_ROOT=/path/to/vault npm test -- tests/knowledge-reader-static.test.mjs
-KNOWLEDGE_BASE_ROOT=/path/to/vault npm test -- tests/knowledge-reader-journey-browser.test.mjs tests/knowledge-reader-phone-browser.test.mjs
+KNOWLEDGE_BASE_ROOT=/path/to/vault pnpm test
 ```
 
 The reader receives only staged content and generated metadata. No
