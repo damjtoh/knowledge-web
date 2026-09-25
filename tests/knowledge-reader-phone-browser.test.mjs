@@ -532,6 +532,8 @@ async function assertTouchTargets(page, label) {
     ".reader-search-trigger",
     ".reader-search-result",
     ".reader-home",
+    ".reader-drawer-close",
+    ".reader-drawer-home",
     ".reader-area-list a",
     ".reader-group-list a",
     ".reader-breadcrumbs a",
@@ -654,15 +656,123 @@ async function openBrowse(page) {
     () => document.querySelector(".reader-chrome")?.getAttribute("data-browse") === "open",
     { timeout: 5000 },
   )
+  await page.waitForSelector("#reader-browse-panel", { visible: true, timeout: 5000 })
 }
 
-/** Phone assertions: sidebar hidden until Browse opens, then home -> folder -> note. */
+async function closeBrowseViaClose(page) {
+  await page.evaluate(() => {
+    document.querySelector('#reader-browse-panel [data-slot="sheet-close"]')?.click()
+  })
+  await page.waitForFunction(
+    () => document.querySelector(".reader-chrome")?.getAttribute("data-browse") === "closed",
+    { timeout: 5000 },
+  )
+  // The Sheet exit transition keeps the panel visible briefly; wait for
+  // it to hide before asserting dismissal.
+  await page.waitForSelector("#reader-browse-panel", { hidden: true, timeout: 5000 })
+}
+
+/** Phone drawer fills the usable viewport, respects safe areas, and scrolls the tree independently. */
+async function assertPhoneDrawerViewport(page, label) {
+  const drawer = await page.evaluate(() => {
+    const el = document.querySelector("#reader-browse-panel")
+
+    if (!el) return null
+    const rect = el.getBoundingClientRect()
+    const style = getComputedStyle(el)
+    const tree = document.querySelector(".reader-phone-drawer-tree")
+    const treeStyle = tree ? getComputedStyle(tree) : null
+
+    return {
+      width: rect.width,
+      height: rect.height,
+      innerWidth: window.innerWidth,
+      innerHeight: window.innerHeight,
+      overflowX: style.overflowX,
+      treeOverflowY: treeStyle ? treeStyle.overflowY : "",
+      treeScrollHeight: tree ? tree.scrollHeight : 0,
+      treeClientHeight: tree ? tree.clientHeight : 0,
+      closeText:
+        document
+          .querySelector('#reader-browse-panel [data-slot="sheet-close"]')
+          ?.textContent?.trim() || "",
+      closeHeight:
+        document
+          .querySelector('#reader-browse-panel [data-slot="sheet-close"]')
+          ?.getBoundingClientRect().height || 0,
+      homeVisible: (() => {
+        const home = document.querySelector("#reader-browse-panel .reader-drawer-home")
+
+        if (!home) return false
+        const rect = home.getBoundingClientRect()
+
+        return rect.width > 0 && rect.height > 0
+      })(),
+      drawerSearchText:
+        document
+          .querySelector("#reader-browse-panel .reader-search-trigger")
+          ?.textContent?.trim() || "",
+      drawerSearchHeight:
+        document
+          .querySelector("#reader-browse-panel .reader-search-trigger")
+          ?.getBoundingClientRect().height || 0,
+      dialogRole: document.querySelector("#reader-browse-panel")?.getAttribute("role") || "",
+      labelledBy:
+        document.querySelector("#reader-browse-panel")?.getAttribute("aria-labelledby") || "",
+    }
+  })
+
+  assert.ok(drawer, `${label}: phone drawer is in the document`)
+  assert.ok(
+    drawer.width >= drawer.innerWidth - 2,
+    `${label}: drawer fills viewport width (${drawer.width}px vs ${drawer.innerWidth}px)`,
+  )
+  assert.ok(
+    drawer.height >= drawer.innerHeight - 2,
+    `${label}: drawer fills viewport height (${drawer.height}px vs ${drawer.innerHeight}px)`,
+  )
+  assert.ok(
+    drawer.treeOverflowY === "auto" || drawer.treeOverflowY === "scroll",
+    `${label}: tree scrolls independently (overflow-y ${drawer.treeOverflowY})`,
+  )
+  assert.equal(drawer.closeText, "Close", `${label}: drawer has a visible named Close`)
+  assert.ok(drawer.closeHeight >= 44, `${label}: Close is ${drawer.closeHeight}px (expected >= 44)`)
+  assert.ok(drawer.homeVisible, `${label}: drawer Home stays reachable`)
+  assert.equal(drawer.drawerSearchText, "Search", `${label}: drawer Search stays reachable`)
+  assert.ok(
+    drawer.drawerSearchHeight >= 44,
+    `${label}: drawer Search is ${drawer.drawerSearchHeight}px (expected >= 44)`,
+  )
+  assert.ok(
+    drawer.dialogRole === "dialog" || drawer.dialogRole === "alertdialog",
+    `${label}: drawer is a dialog (role ${drawer.dialogRole})`,
+  )
+}
+
+/** Background stays locked while the drawer is open and releases on close. */
+async function assertBackgroundScrollLock(page, label) {
+  const locked = await page.evaluate(() => ({
+    bodyOverflow: getComputedStyle(document.body).overflow,
+    bodyStyle: document.body.style.overflow,
+    htmlOverflow: getComputedStyle(document.documentElement).overflow,
+  }))
+
+  assert.ok(
+    locked.bodyOverflow === "hidden" ||
+      locked.bodyStyle === "hidden" ||
+      locked.htmlOverflow === "hidden" ||
+      document.body.hasAttribute("data-scroll-locked"),
+    `${label}: background scroll locks while the drawer is open (body ${locked.bodyOverflow}/${locked.bodyStyle})`,
+  )
+}
+
+/** Phone assertions: drawer hidden until Browse opens, then home -> folder -> note. */
 async function runPhoneJourney(page, baseUrl, expect, label) {
   await goto(page, `${baseUrl}/`)
   assert.equal(
-    await isVisible(page, ".reader-sidebar"),
+    await isVisible(page, "#reader-browse-panel"),
     false,
-    `${label}: permanent sidebar is hidden on the phone home`,
+    `${label}: phone drawer stays hidden until Browse opens`,
   )
   assert.ok(await isVisible(page, ".reader-browse-toggle"), `${label}: Browse control is visible`)
 
@@ -675,7 +785,51 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
   await assertLandmarks(page, `${label} home`, { breadcrumb: false })
 
   await openBrowse(page)
-  assert.equal(await isVisible(page, ".reader-sidebar"), true, `${label}: Browse opens the panel`)
+  assert.equal(
+    await isVisible(page, "#reader-browse-panel"),
+    true,
+    `${label}: Browse opens the drawer`,
+  )
+  await assertPhoneDrawerViewport(page, `${label} drawer`)
+  await assertBackgroundScrollLock(page, `${label} drawer`)
+
+  // Focus moves into the drawer while it is open.
+  const focusInDrawer = await page.evaluate(() => {
+    const panel = document.querySelector("#reader-browse-panel")
+    const active = document.activeElement
+
+    return !!panel && !!active && panel.contains(active)
+  })
+
+  assert.ok(focusInDrawer, `${label}: focus stays in the drawer while open`)
+
+  // Drawer Search opens the one shared dialog; dismissing it returns
+  // focus into the still-open drawer without a second dialog.
+  await page.evaluate(() => {
+    document.querySelector("#reader-browse-panel .reader-search-trigger")?.click()
+  })
+  await searchDialogOpen(page)
+  assert.equal(
+    await page.evaluate(() => document.querySelectorAll('[data-slot="dialog-content"]').length),
+    1,
+    `${label}: drawer Search opens the shared dialog`,
+  )
+  await page.keyboard.press("Escape")
+  await searchDialogClosed(page)
+
+  const focusBackInDrawer = await page.evaluate(() => {
+    const panel = document.querySelector("#reader-browse-panel")
+    const active = document.activeElement
+
+    return !!panel && !!active && panel.contains(active)
+  })
+
+  assert.ok(focusBackInDrawer, `${label}: Search close returns focus into the drawer`)
+  assert.equal(
+    await isVisible(page, "#reader-browse-panel"),
+    true,
+    `${label}: drawer stays open after Search closes`,
+  )
 
   const expanded = await page.evaluate(() =>
     document.querySelector(".reader-browse-toggle")?.getAttribute("aria-expanded"),
@@ -689,14 +843,18 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
     `${label}: Browse shows the same tree roots in published order`,
   )
 
-  await page.evaluate(() => {
-    document.querySelector(".reader-browse-toggle")?.click()
-  })
-  await page.waitForFunction(
-    () => document.querySelector(".reader-chrome")?.getAttribute("data-browse") === "closed",
-    { timeout: 5000 },
+  await closeBrowseViaClose(page)
+  assert.equal(
+    await isVisible(page, "#reader-browse-panel"),
+    false,
+    `${label}: Close dismisses the drawer`,
   )
-  assert.equal(await isVisible(page, ".reader-sidebar"), false, `${label}: Browse closes the panel`)
+  const focusReturned = await page.evaluate(() => document.activeElement?.className || "")
+
+  assert.ok(
+    String(focusReturned).includes("reader-browse-toggle"),
+    `${label}: dismissing returns focus to Browse`,
+  )
 
   const folderHref = (
     await page.evaluate(() =>
@@ -719,7 +877,11 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
   await assertTouchTargets(page, `${label} folder`)
 
   await openBrowse(page)
-  assert.equal(await isVisible(page, ".reader-sidebar"), true, `${label}: Browse opens the tree`)
+  assert.equal(
+    await isVisible(page, "#reader-browse-panel"),
+    true,
+    `${label}: Browse opens the tree`,
+  )
 
   // The phone tree carries the nested note with its static route.
   const leafInTree = await page.evaluate((route) => {
@@ -784,10 +946,18 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
     { timeout: 5000 },
   )
   assert.equal(
-    await isVisible(page, ".reader-sidebar"),
+    await isVisible(page, "#reader-browse-panel"),
     false,
-    `${label}: selecting a tree page closes Browse`,
+    `${label}: selecting a tree page closes the drawer`,
   )
+
+  const drawerUrlState = await page.evaluate(() => ({
+    hash: window.location.hash,
+    search: window.location.search,
+  }))
+
+  assert.equal(drawerUrlState.hash, "", `${label}: drawer adds no URL hash state`)
+  assert.ok(!drawerUrlState.search.includes("browse"), `${label}: drawer adds no URL query state`)
 
   const note = await page.evaluate(() => ({
     h1: document.querySelector("article h1")?.textContent?.trim() || "",
@@ -1078,7 +1248,12 @@ async function runKeyboardChecks(page, baseUrl, label) {
     () => document.querySelector(".reader-chrome")?.getAttribute("data-browse") === "open",
     { timeout: 5000 },
   )
-  assert.equal(await isVisible(page, ".reader-sidebar"), true, `${label}: Enter opens Browse`)
+  await page.waitForSelector("#reader-browse-panel", { visible: true, timeout: 5000 })
+  assert.equal(
+    await isVisible(page, "#reader-browse-panel"),
+    true,
+    `${label}: Enter opens the drawer`,
+  )
   await page.keyboard.press("Escape")
   await page.waitForFunction(
     () => document.querySelector(".reader-chrome")?.getAttribute("data-browse") === "closed",

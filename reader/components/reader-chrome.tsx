@@ -8,6 +8,7 @@ import SearchDialog, { SEARCH_INPUT_ID } from "./search-dialog"
 import ReaderTree from "./sidebar"
 import { AppSidebar } from "./app-sidebar"
 import { Separator } from "./ui/separator"
+import { Sheet, SheetClose, SheetContent, SheetTitle } from "./ui/sheet"
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "./ui/sidebar"
 import type { NavigationNode } from "../lib/navigation"
 
@@ -26,14 +27,19 @@ function normalize(path: string | null): string {
  * header with the registry SidebarTrigger, the reading column, and the
  * footer. Block sample data is not used: shell structure only.
  *
- * There is one navigation model: the same generic tree feeds the desktop
- * Sidebar and the transitional phone Browse panel. The Browse toggle keeps
- * no URL or history state, so browser Back always moves through real page
- * history. Hiding the desktop sidebar keeps the same mounted tree, so
- * restoring exposes identical branches. There is one Search dialog: all
- * trigger controls and Command+K/Control+K share its open state, and
- * closing it returns focus to the control that had focus before it
- * opened.
+ * Phone navigation is the registry Sheet drawer (side left, full
+ * viewport, safe-area aware) with the same published tree: a fixed header
+ * with a visible Close, Home and Search actions, and a scrollable tree
+ * middle. The Sheet primitive owns focus containment, Escape dismissal,
+ * and background scroll lock; dismissing returns focus to the Browse
+ * toggle. Offline actions stay outside the drawer until a later slice
+ * moves them; dismissing the drawer returns to reading where the footer
+ * offline control remains available.
+ * Plain anchors navigate, so selecting a page closes the drawer through
+ * the route change without adding drawer state to URL history. There is
+ * one Search dialog: all trigger controls and Command+K/Control+K share
+ * its open state, and closing it returns focus to the control that had
+ * focus before it opened.
  */
 export default function ReaderChrome({
   title,
@@ -54,26 +60,18 @@ export default function ReaderChrome({
   searchOpenRef.current = searchOpen
 
   // Plain anchors navigate, so leaving Browse is normal page history:
-  // close the phone panel whenever the route changes.
+  // close the phone drawer whenever the route changes.
   useEffect(() => {
     setBrowseOpen(false)
   }, [pathname])
 
-  // Escape closes the phone panel and returns focus to the toggle.
-  useEffect(() => {
-    if (!browseOpen) return
+  const handleBrowseOpenChange = useCallback((open: boolean) => {
+    setBrowseOpen(open)
 
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setBrowseOpen(false)
-        toggleRef.current?.focus()
-      }
+    if (!open) {
+      toggleRef.current?.focus()
     }
-
-    document.addEventListener("keydown", onKeyDown)
-
-    return () => document.removeEventListener("keydown", onKeyDown)
-  }, [browseOpen])
+  }, [])
 
   const openSearch = useCallback((origin: HTMLElement | null) => {
     searchOpenerRef.current = origin
@@ -149,11 +147,37 @@ export default function ReaderChrome({
             </div>
           </header>
           <div className="reader-shell">
-            <aside id="reader-browse-panel" className="reader-sidebar rounded-lg">
-              <ReaderTree roots={roots} />
-            </aside>
             <div className="reader-main">{children}</div>
           </div>
+          <Sheet open={browseOpen} onOpenChange={handleBrowseOpenChange}>
+            <SheetContent
+              id="reader-browse-panel"
+              side="left"
+              showCloseButton={false}
+              keepMounted
+              className="reader-phone-drawer"
+            >
+              <div className="reader-phone-drawer-header">
+                <SheetTitle>Browse</SheetTitle>
+                <SheetClose className="reader-drawer-close">Close</SheetClose>
+              </div>
+              <div className="reader-phone-drawer-actions">
+                <a className="reader-drawer-home" href="/">
+                  Home
+                </a>
+                <button
+                  type="button"
+                  className="reader-search-trigger"
+                  onClick={(event) => openSearch(event.currentTarget)}
+                >
+                  Search
+                </button>
+              </div>
+              <div className="reader-phone-drawer-tree">
+                <ReaderTree roots={roots} />
+              </div>
+            </SheetContent>
+          </Sheet>
           <SearchDialog open={searchOpen} onOpenChange={handleSearchOpenChange} />
           <footer className="reader-footer">
             <span>{title}</span>

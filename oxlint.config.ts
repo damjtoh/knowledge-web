@@ -92,6 +92,14 @@ const config: OxlintConfig = {
               // Separator spacing and responsive visibility must stay on the
               // separator; it renders no wrapper DOM.
               { pattern: "^Separator$", allow: ["mr-2", "hidden", "md:block"] },
+              // Phone drawer dimensions must stay on the Sheet popup: Sheet
+              // renders no wrapper DOM, so full-viewport width/height and
+              // safe-area containment cannot move to a parent.
+              { pattern: "^SheetContent$", allow: ["reader-phone-drawer"] },
+              // Visible Close touch target must live on the Sheet close
+              // button itself; a wrapper would break focus return and the
+              // 44px touch target.
+              { pattern: "^SheetClose$", allow: ["reader-drawer-close"] },
             ],
           },
         ],

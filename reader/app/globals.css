@@ -83,6 +83,10 @@ body {
 }
 
 /* Compact Browse control: phone-only. Desktop keeps the sidebar. */
+.reader-chrome {
+  min-width: 0;
+}
+
 .reader-browse-toggle {
   display: none;
   align-items: center;
@@ -101,6 +105,101 @@ body {
   background: #f5f5f5;
 }
 
+/**
+ * Phone navigation drawer: registry Sheet content, full viewport.
+ *
+ * The drawer primitive itself comes from the registry Sheet (focus
+ * containment, Escape, overlay, background scroll lock). These classes
+ * only give it usable phone dimensions: full viewport width and height,
+ * safe-area padding, a fixed header with a visible Close, and a
+ * scrollable tree middle so long labels and deep branches stay readable
+ * without horizontal overflow. Essential controls keep the 44px touch
+ * target used by Browse and navigation.
+ */
+.reader-phone-drawer {
+  width: 100dvw;
+  max-width: 100dvw;
+  height: 100dvh;
+  max-height: 100dvh;
+  min-width: 0;
+  gap: 0;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  overflow-x: hidden;
+}
+
+.reader-phone-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #e5e5e5;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.reader-phone-drawer-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #f5f5f5;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.reader-drawer-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0.5rem 1rem;
+  font: inherit;
+  font-weight: 600;
+  color: #171717;
+  background: #fff;
+  border: 1px solid #d4d4d4;
+  border-radius: 8px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.reader-drawer-close:hover {
+  background: #f5f5f5;
+}
+
+.reader-drawer-home {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0.5rem 1rem;
+  font: inherit;
+  font-weight: 600;
+  color: #171717;
+  background: #fff;
+  border: 1px solid #d4d4d4;
+  border-radius: 8px;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.reader-drawer-home:hover {
+  background: #f5f5f5;
+}
+
+.reader-phone-drawer-tree {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0.75rem 1rem calc(1rem + env(safe-area-inset-bottom));
+  min-width: 0;
+}
+
 .reader-shell {
   display: flex;
   gap: 2rem;
@@ -112,17 +211,11 @@ body {
   box-sizing: border-box;
 }
 
-/* Desktop sidebar layout comes from registry sidebar-11. The
-   transitional phone Browse panel keeps its semantic hook only; it is
-   hidden on desktop where the registry Sidebar owns navigation. */
-.reader-sidebar {
-  width: 230px;
-  flex-shrink: 0;
-  min-width: 0;
-}
-
+/* Desktop sidebar layout comes from registry sidebar-11. Phone
+   navigation is the registry Sheet drawer (#reader-browse-panel); no
+   inline phone panel remains in the reading column. */
 @media (min-width: 900px) {
-  #reader-browse-panel {
+  .reader-browse-toggle {
     display: none;
   }
 }
@@ -556,16 +649,6 @@ body {
   .reader-shell {
     flex-direction: column;
     gap: 1rem;
-  }
-
-  /* Phone layouts hide the permanent sidebar: note content stays
-     primary until the reader opens Browse. */
-  .reader-chrome[data-browse="closed"] .reader-sidebar {
-    display: none;
-  }
-
-  .reader-sidebar {
-    width: auto;
   }
 
   /* Narrow screens indent less so deep branches keep readable titles. */
@@ -1071,6 +1154,34 @@ body {
 }
 
 .dark .reader-browse-toggle:hover {
+  background: #262626;
+}
+
+.dark .reader-phone-drawer-header {
+  border-bottom-color: #262626;
+}
+
+.dark .reader-phone-drawer-actions {
+  border-bottom-color: #262626;
+}
+
+.dark .reader-drawer-close {
+  color: #fafafa;
+  background: #171717;
+  border-color: #404040;
+}
+
+.dark .reader-drawer-close:hover {
+  background: #262626;
+}
+
+.dark .reader-drawer-home {
+  color: #fafafa;
+  background: #171717;
+  border-color: #404040;
+}
+
+.dark .reader-drawer-home:hover {
   background: #262626;
 }
 
