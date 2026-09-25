@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
+import { ChevronRight, File, Folder } from "lucide-react"
 import type { NavigationNode } from "../lib/navigation"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible"
+import { SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarMenuSub } from "./ui/sidebar"
 
 const STORAGE_KEY = "knowledge-reader-tree"
 
@@ -73,60 +75,57 @@ function readStored(): string[] {
   }
 }
 
-function ChevronIcon() {
-  return (
-    <svg
-      aria-hidden="true"
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="m9 18 6-6-6-6" />
-    </svg>
-  )
-}
-
 interface TreeState {
   pathname: string
   isOpen: (url: string) => boolean
   setOpen: (url: string, open: boolean) => void
 }
 
+/**
+ * One published row adapted from registry sidebar-11's collapsible file
+ * tree. Block sample data is not used: rows come from the published
+ * navigation tree in metadata order. A folder keeps two separate controls:
+ * its name is a plain anchor to its own page and a disclosure button
+ * expands children without navigating.
+ */
 function TreeNode({ node, state }: { node: NavigationNode; state: TreeState }) {
   const url = normalize(node.url)
   const isExact = state.pathname === url
   const isAncestor = url !== "/" && !isExact && state.pathname.startsWith(`${url}/`)
   const isActive = isExact || isAncestor
+  const Icon = node.isFolder ? Folder : File
 
   const link = (
-    <a
-      href={node.url}
-      data-tree-link
-      aria-current={isExact ? "page" : isAncestor ? "true" : undefined}
-      data-active={isActive ? "true" : undefined}
+    <SidebarMenuButton
+      render={
+        <a
+          href={node.url}
+          data-tree-link
+          aria-current={isExact ? "page" : isAncestor ? "true" : undefined}
+          data-active={isActive ? "true" : undefined}
+          data-tree-kind={node.isFolder ? "folder" : "note"}
+        />
+      }
+      isActive={isActive}
       className={isActive ? "is-active" : undefined}
     >
-      {node.title}
-    </a>
+      <Icon aria-hidden="true" />
+      <span className="reader-tree-label">{node.title}</span>
+    </SidebarMenuButton>
   )
 
   if (!node.isFolder || node.children.length === 0) {
     return (
-      <li data-tree-url={node.url}>
+      <SidebarMenuItem data-tree-url={node.url}>
         <div className="reader-tree-row">{link}</div>
-      </li>
+      </SidebarMenuItem>
     )
   }
 
   const open = state.isOpen(node.url)
 
   return (
-    <li data-tree-url={node.url}>
+    <SidebarMenuItem data-tree-url={node.url}>
       <Collapsible
         className="reader-tree-collapsible"
         open={open}
@@ -138,18 +137,18 @@ function TreeNode({ node, state }: { node: NavigationNode; state: TreeState }) {
             className="reader-tree-toggle"
             aria-label={open ? `Collapse ${node.title}` : `Expand ${node.title}`}
           >
-            <ChevronIcon />
+            <ChevronRight className="transition-transform" aria-hidden="true" />
           </CollapsibleTrigger>
         </div>
         <CollapsibleContent keepMounted className="reader-tree-panel">
-          <ul className="reader-tree-children">
+          <SidebarMenuSub className="reader-tree-children">
             {node.children.map((child) => (
               <TreeNode key={child.url} node={child} state={state} />
             ))}
-          </ul>
+          </SidebarMenuSub>
         </CollapsibleContent>
       </Collapsible>
-    </li>
+    </SidebarMenuItem>
   )
 }
 
@@ -158,17 +157,19 @@ function TreeNode({ node, state }: { node: NavigationNode; state: TreeState }) {
  * generated metadata and child order follows the navigation tree; this
  * component renders that order without rebuilding it.
  *
- * A folder keeps two separate controls: its name links to its own page
- * (authored or virtual) and a disclosure button opens its children
- * without navigating. Several branches stay expanded together. The
- * current page's ancestor branches open on arrival because visibility is
- * derived from the URL during render. A branch the reader deliberately
- * closes stays closed only while the pathname is unchanged: the close is
- * scoped to its page and any navigation (link or Back) releases it in
- * the same commit as the route change. Hand-opened branches persist in
- * session storage, so they survive page visits and browser Back within
- * the session. Links stay plain anchors, so all movement uses normal
- * static URLs and browser history.
+ * Composition follows registry sidebar-11 (SidebarMenu with Collapsible
+ * branches and lucide folder/note cues) but every row is published
+ * content: a folder name links to its own page (authored or virtual) and
+ * a disclosure button opens its children without navigating. Several
+ * branches stay expanded together. The current page's ancestor branches
+ * open on arrival because visibility is derived from the URL during
+ * render. A branch the reader deliberately closes stays closed only while
+ * the pathname is unchanged: the close is scoped to its page and any
+ * navigation (link or Back) releases it in the same commit as the route
+ * change. Hand-opened branches persist in session storage, so they
+ * survive page visits and browser Back within the session. Links stay
+ * plain anchors, so all movement uses normal static URLs and browser
+ * history.
  */
 export default function Sidebar({ roots }: { roots: NavigationNode[] }) {
   const pathname = normalize(usePathname() ?? "/")
@@ -262,11 +263,11 @@ export default function Sidebar({ roots }: { roots: NavigationNode[] }) {
 
   return (
     <nav aria-label="Published sections" className="reader-sidebar-nav">
-      <ul className="reader-tree">
+      <SidebarMenu className="reader-tree">
         {roots.map((root) => (
           <TreeNode key={root.url} node={root} state={state} />
         ))}
-      </ul>
+      </SidebarMenu>
     </nav>
   )
 }

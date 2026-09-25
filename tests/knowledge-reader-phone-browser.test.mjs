@@ -532,6 +532,8 @@ async function assertTouchTargets(page, label) {
     ".reader-search-trigger",
     ".reader-search-result",
     ".reader-home",
+    ".reader-drawer-close",
+    ".reader-drawer-home",
     ".reader-area-list a",
     ".reader-group-list a",
     ".reader-breadcrumbs a",
@@ -579,7 +581,13 @@ async function assertLandmarks(page, label, { breadcrumb = true } = {}) {
 /** Top-level tree roots in rendered order (published root order). */
 async function browseRoots(page) {
   return await page.evaluate(() => {
-    return Array.from(document.querySelectorAll(".reader-sidebar-nav > ul > li")).map((li) => {
+    const scope =
+      document.querySelector("#reader-browse-panel .reader-sidebar-nav") ||
+      document.querySelector(".reader-sidebar-nav")
+
+    if (!scope) return []
+
+    return Array.from(scope.querySelectorAll(":scope > ul > li")).map((li) => {
       const row = li.querySelector(
         ":scope > .reader-tree-collapsible > .reader-tree-row, :scope > .reader-tree-row",
       )
@@ -596,7 +604,8 @@ async function browseRoots(page) {
 
 async function treeDisclosure(page, route) {
   return await page.evaluate((target) => {
-    const li = document.querySelector(`.reader-sidebar-nav li[data-tree-url="${target}"]`)
+    const scope = document.querySelector("#reader-browse-panel .reader-sidebar-nav") || document
+    const li = scope.querySelector(`li[data-tree-url="${target}"]`)
 
     const button = li
       ? li.querySelector(
@@ -614,14 +623,16 @@ async function ensureTreeOpen(page, route) {
   if (state !== "true") {
     assert.equal(state, "false", `tree branch ${route} has a disclosure control`)
     await page.evaluate((target) => {
-      const li = document.querySelector(`.reader-sidebar-nav li[data-tree-url="${target}"]`)
+      const scope = document.querySelector("#reader-browse-panel .reader-sidebar-nav") || document
+      const li = scope.querySelector(`li[data-tree-url="${target}"]`)
       li?.querySelector(
         ":scope > .reader-tree-collapsible > .reader-tree-row > .reader-tree-toggle",
       )?.click()
     }, route)
     await page.waitForFunction(
       (target) => {
-        const li = document.querySelector(`.reader-sidebar-nav li[data-tree-url="${target}"]`)
+        const scope = document.querySelector("#reader-browse-panel .reader-sidebar-nav") || document
+        const li = scope.querySelector(`li[data-tree-url="${target}"]`)
 
         const button = li
           ? li.querySelector(
@@ -645,15 +656,123 @@ async function openBrowse(page) {
     () => document.querySelector(".reader-chrome")?.getAttribute("data-browse") === "open",
     { timeout: 5000 },
   )
+  await page.waitForSelector("#reader-browse-panel", { visible: true, timeout: 5000 })
 }
 
-/** Phone assertions: sidebar hidden until Browse opens, then home -> folder -> note. */
+async function closeBrowseViaClose(page) {
+  await page.evaluate(() => {
+    document.querySelector('#reader-browse-panel [data-slot="sheet-close"]')?.click()
+  })
+  await page.waitForFunction(
+    () => document.querySelector(".reader-chrome")?.getAttribute("data-browse") === "closed",
+    { timeout: 5000 },
+  )
+  // The Sheet exit transition keeps the panel visible briefly; wait for
+  // it to hide before asserting dismissal.
+  await page.waitForSelector("#reader-browse-panel", { hidden: true, timeout: 5000 })
+}
+
+/** Phone drawer fills the usable viewport, respects safe areas, and scrolls the tree independently. */
+async function assertPhoneDrawerViewport(page, label) {
+  const drawer = await page.evaluate(() => {
+    const el = document.querySelector("#reader-browse-panel")
+
+    if (!el) return null
+    const rect = el.getBoundingClientRect()
+    const style = getComputedStyle(el)
+    const tree = document.querySelector(".reader-phone-drawer-tree")
+    const treeStyle = tree ? getComputedStyle(tree) : null
+
+    return {
+      width: rect.width,
+      height: rect.height,
+      innerWidth: window.innerWidth,
+      innerHeight: window.innerHeight,
+      overflowX: style.overflowX,
+      treeOverflowY: treeStyle ? treeStyle.overflowY : "",
+      treeScrollHeight: tree ? tree.scrollHeight : 0,
+      treeClientHeight: tree ? tree.clientHeight : 0,
+      closeText:
+        document
+          .querySelector('#reader-browse-panel [data-slot="sheet-close"]')
+          ?.textContent?.trim() || "",
+      closeHeight:
+        document
+          .querySelector('#reader-browse-panel [data-slot="sheet-close"]')
+          ?.getBoundingClientRect().height || 0,
+      homeVisible: (() => {
+        const home = document.querySelector("#reader-browse-panel .reader-drawer-home")
+
+        if (!home) return false
+        const rect = home.getBoundingClientRect()
+
+        return rect.width > 0 && rect.height > 0
+      })(),
+      drawerSearchText:
+        document
+          .querySelector("#reader-browse-panel .reader-search-trigger")
+          ?.textContent?.trim() || "",
+      drawerSearchHeight:
+        document
+          .querySelector("#reader-browse-panel .reader-search-trigger")
+          ?.getBoundingClientRect().height || 0,
+      dialogRole: document.querySelector("#reader-browse-panel")?.getAttribute("role") || "",
+      labelledBy:
+        document.querySelector("#reader-browse-panel")?.getAttribute("aria-labelledby") || "",
+    }
+  })
+
+  assert.ok(drawer, `${label}: phone drawer is in the document`)
+  assert.ok(
+    drawer.width >= drawer.innerWidth - 2,
+    `${label}: drawer fills viewport width (${drawer.width}px vs ${drawer.innerWidth}px)`,
+  )
+  assert.ok(
+    drawer.height >= drawer.innerHeight - 2,
+    `${label}: drawer fills viewport height (${drawer.height}px vs ${drawer.innerHeight}px)`,
+  )
+  assert.ok(
+    drawer.treeOverflowY === "auto" || drawer.treeOverflowY === "scroll",
+    `${label}: tree scrolls independently (overflow-y ${drawer.treeOverflowY})`,
+  )
+  assert.equal(drawer.closeText, "Close", `${label}: drawer has a visible named Close`)
+  assert.ok(drawer.closeHeight >= 44, `${label}: Close is ${drawer.closeHeight}px (expected >= 44)`)
+  assert.ok(drawer.homeVisible, `${label}: drawer Home stays reachable`)
+  assert.equal(drawer.drawerSearchText, "Search", `${label}: drawer Search stays reachable`)
+  assert.ok(
+    drawer.drawerSearchHeight >= 44,
+    `${label}: drawer Search is ${drawer.drawerSearchHeight}px (expected >= 44)`,
+  )
+  assert.ok(
+    drawer.dialogRole === "dialog" || drawer.dialogRole === "alertdialog",
+    `${label}: drawer is a dialog (role ${drawer.dialogRole})`,
+  )
+}
+
+/** Background stays locked while the drawer is open and releases on close. */
+async function assertBackgroundScrollLock(page, label) {
+  const locked = await page.evaluate(() => ({
+    bodyOverflow: getComputedStyle(document.body).overflow,
+    bodyStyle: document.body.style.overflow,
+    htmlOverflow: getComputedStyle(document.documentElement).overflow,
+  }))
+
+  assert.ok(
+    locked.bodyOverflow === "hidden" ||
+      locked.bodyStyle === "hidden" ||
+      locked.htmlOverflow === "hidden" ||
+      document.body.hasAttribute("data-scroll-locked"),
+    `${label}: background scroll locks while the drawer is open (body ${locked.bodyOverflow}/${locked.bodyStyle})`,
+  )
+}
+
+/** Phone assertions: drawer hidden until Browse opens, then home -> folder -> note. */
 async function runPhoneJourney(page, baseUrl, expect, label) {
   await goto(page, `${baseUrl}/`)
   assert.equal(
-    await isVisible(page, ".reader-sidebar"),
+    await isVisible(page, "#reader-browse-panel"),
     false,
-    `${label}: permanent sidebar is hidden on the phone home`,
+    `${label}: phone drawer stays hidden until Browse opens`,
   )
   assert.ok(await isVisible(page, ".reader-browse-toggle"), `${label}: Browse control is visible`)
 
@@ -663,10 +782,54 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
 
   assert.ok(toggleHeight >= 44, `${label}: Browse control is ${toggleHeight}px (expected >= 44)`)
   await assertNoPageOverflow(page, `${label} home`)
-  await assertLandmarks(page, `${label} home`, { breadcrumb: false })
+  await assertLandmarks(page, `${label} home`)
 
   await openBrowse(page)
-  assert.equal(await isVisible(page, ".reader-sidebar"), true, `${label}: Browse opens the panel`)
+  assert.equal(
+    await isVisible(page, "#reader-browse-panel"),
+    true,
+    `${label}: Browse opens the drawer`,
+  )
+  await assertPhoneDrawerViewport(page, `${label} drawer`)
+  await assertBackgroundScrollLock(page, `${label} drawer`)
+
+  // Focus moves into the drawer while it is open.
+  const focusInDrawer = await page.evaluate(() => {
+    const panel = document.querySelector("#reader-browse-panel")
+    const active = document.activeElement
+
+    return !!panel && !!active && panel.contains(active)
+  })
+
+  assert.ok(focusInDrawer, `${label}: focus stays in the drawer while open`)
+
+  // Drawer Search opens the one shared dialog; dismissing it returns
+  // focus into the still-open drawer without a second dialog.
+  await page.evaluate(() => {
+    document.querySelector("#reader-browse-panel .reader-search-trigger")?.click()
+  })
+  await searchDialogOpen(page)
+  assert.equal(
+    await page.evaluate(() => document.querySelectorAll('[data-slot="dialog-content"]').length),
+    1,
+    `${label}: drawer Search opens the shared dialog`,
+  )
+  await page.keyboard.press("Escape")
+  await searchDialogClosed(page)
+
+  const focusBackInDrawer = await page.evaluate(() => {
+    const panel = document.querySelector("#reader-browse-panel")
+    const active = document.activeElement
+
+    return !!panel && !!active && panel.contains(active)
+  })
+
+  assert.ok(focusBackInDrawer, `${label}: Search close returns focus into the drawer`)
+  assert.equal(
+    await isVisible(page, "#reader-browse-panel"),
+    true,
+    `${label}: drawer stays open after Search closes`,
+  )
 
   const expanded = await page.evaluate(() =>
     document.querySelector(".reader-browse-toggle")?.getAttribute("aria-expanded"),
@@ -680,14 +843,18 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
     `${label}: Browse shows the same tree roots in published order`,
   )
 
-  await page.evaluate(() => {
-    document.querySelector(".reader-browse-toggle")?.click()
-  })
-  await page.waitForFunction(
-    () => document.querySelector(".reader-chrome")?.getAttribute("data-browse") === "closed",
-    { timeout: 5000 },
+  await closeBrowseViaClose(page)
+  assert.equal(
+    await isVisible(page, "#reader-browse-panel"),
+    false,
+    `${label}: Close dismisses the drawer`,
   )
-  assert.equal(await isVisible(page, ".reader-sidebar"), false, `${label}: Browse closes the panel`)
+  const focusReturned = await page.evaluate(() => document.activeElement?.className || "")
+
+  assert.ok(
+    String(focusReturned).includes("reader-browse-toggle"),
+    `${label}: dismissing returns focus to Browse`,
+  )
 
   const folderHref = (
     await page.evaluate(() =>
@@ -696,7 +863,7 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
         href: a.getAttribute("href") || "",
       })),
     )
-  ).find((l) => l.text === expect.folderTitle)?.href
+  ).find((l) => l.href === expect.folderRoute)?.href
 
   assert.ok(folderHref, `${label}: home links the folder from staged content`)
   await Promise.all([
@@ -710,11 +877,16 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
   await assertTouchTargets(page, `${label} folder`)
 
   await openBrowse(page)
-  assert.equal(await isVisible(page, ".reader-sidebar"), true, `${label}: Browse opens the tree`)
+  assert.equal(
+    await isVisible(page, "#reader-browse-panel"),
+    true,
+    `${label}: Browse opens the tree`,
+  )
 
   // The phone tree carries the nested note with its static route.
   const leafInTree = await page.evaluate((route) => {
-    const a = document.querySelector(`.reader-sidebar-nav a[href="${route}"]`)
+    const scope = document.querySelector("#reader-browse-panel .reader-sidebar-nav") || document
+    const a = scope.querySelector(`a[href="${route}"]`)
 
     return a ? a.textContent?.trim() || "" : null
   }, expect.leafRoute)
@@ -723,8 +895,14 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
 
   // Deep branches and long titles stay readable while browsing.
   const panelReadable = await page.evaluate(() => {
-    const links = Array.from(document.querySelectorAll(".reader-sidebar-nav a"))
-    const toggles = Array.from(document.querySelectorAll(".reader-tree-toggle"))
+    const scope = document.querySelector("#reader-browse-panel .reader-sidebar-nav") || document
+    const links = Array.from(scope.querySelectorAll("a"))
+
+    const toggles = Array.from(
+      (document.querySelector("#reader-browse-panel") || document).querySelectorAll(
+        ".reader-tree-toggle",
+      ),
+    )
 
     return {
       widest: Math.max(0, ...links.map((a) => a.getBoundingClientRect().right)),
@@ -755,7 +933,8 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
   await Promise.all([
     page.waitForNavigation({ waitUntil: "networkidle0", timeout: 15000 }),
     page.evaluate((route) => {
-      document.querySelector(`.reader-sidebar-nav a[href="${route}"]`)?.click()
+      const scope = document.querySelector("#reader-browse-panel .reader-sidebar-nav") || document
+      scope.querySelector(`a[href="${route}"]`)?.click()
     }, expect.leafRoute),
   ])
   assert.ok(
@@ -767,14 +946,24 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
     { timeout: 5000 },
   )
   assert.equal(
-    await isVisible(page, ".reader-sidebar"),
+    await isVisible(page, "#reader-browse-panel"),
     false,
-    `${label}: selecting a tree page closes Browse`,
+    `${label}: selecting a tree page closes the drawer`,
   )
+
+  const drawerUrlState = await page.evaluate(() => ({
+    hash: window.location.hash,
+    search: window.location.search,
+  }))
+
+  assert.equal(drawerUrlState.hash, "", `${label}: drawer adds no URL hash state`)
+  assert.ok(!drawerUrlState.search.includes("browse"), `${label}: drawer adds no URL query state`)
 
   const note = await page.evaluate(() => ({
     h1: document.querySelector("article h1")?.textContent?.trim() || "",
-    crumbs: Array.from(document.querySelectorAll(".reader-breadcrumbs li")).map((li) => ({
+    crumbs: Array.from(
+      document.querySelectorAll(".reader-breadcrumbs [data-slot='breadcrumb-item']"),
+    ).map((li) => ({
       text: li.textContent?.trim() || "",
       href: li.querySelector("a")?.getAttribute("href") || null,
     })),
@@ -933,9 +1122,11 @@ async function runDerivedOverflowProbes(
   await goto(page, `${baseUrl}${probes.deep.route}`)
 
   const crumbs = await page.evaluate(() =>
-    Array.from(document.querySelectorAll(".reader-breadcrumbs li")).map((li) => ({
-      text: li.textContent?.trim() || "",
-    })),
+    Array.from(document.querySelectorAll(".reader-breadcrumbs [data-slot='breadcrumb-item']")).map(
+      (li) => ({
+        text: li.textContent?.trim() || "",
+      }),
+    ),
   )
 
   assert.ok(
@@ -1061,7 +1252,12 @@ async function runKeyboardChecks(page, baseUrl, label) {
     () => document.querySelector(".reader-chrome")?.getAttribute("data-browse") === "open",
     { timeout: 5000 },
   )
-  assert.equal(await isVisible(page, ".reader-sidebar"), true, `${label}: Enter opens Browse`)
+  await page.waitForSelector("#reader-browse-panel", { visible: true, timeout: 5000 })
+  assert.equal(
+    await isVisible(page, "#reader-browse-panel"),
+    true,
+    `${label}: Enter opens the drawer`,
+  )
   await page.keyboard.press("Escape")
   await page.waitForFunction(
     () => document.querySelector(".reader-chrome")?.getAttribute("data-browse") === "closed",
@@ -1074,10 +1270,14 @@ async function runKeyboardChecks(page, baseUrl, label) {
   )
 }
 
-/** Desktop keeps the persistent sidebar and hides the Browse control. */
+/** Desktop keeps the persistent registry sidebar and hides the Browse control. */
 async function runDesktopChecks(page, baseUrl, expect, label) {
   await goto(page, `${baseUrl}/`)
-  assert.equal(await isVisible(page, ".reader-sidebar"), true, `${label}: sidebar stays visible`)
+  assert.equal(
+    await isVisible(page, '[data-slot="sidebar"]'),
+    true,
+    `${label}: registry sidebar stays visible`,
+  )
   assert.equal(
     await isVisible(page, ".reader-browse-toggle"),
     false,
@@ -1163,6 +1363,7 @@ async function runOutputInspection(outDir, workDir, kbRoot, sentinel) {
     "cn",
     "fumadocs-core",
     "fumadocs-mdx",
+    "lucide-react",
     "minisearch",
     "next",
     "react",
@@ -1415,6 +1616,218 @@ async function runPhoneSearchDialog(page, baseUrl, expect, label) {
   await assertTouchTargets(page, `${label} search`)
 }
 
+/**
+ * Offline and appearance placement on phones.
+ *
+ * The closed drawer leaves a compact display-only cue in the reading
+ * header; opening the drawer reveals appearance plus detailed offline
+ * actions in a fixed footer that stays reachable while the tree scrolls.
+ * Both read one mounted state. Choosing appearance or opening the drawer
+ * never starts a save; the old page footer is gone.
+ */
+async function runPhoneOfflinePlacement(page, baseUrl, label) {
+  await goto(page, `${baseUrl}/`)
+  assert.equal(
+    await page.evaluate(() => !!document.querySelector(".reader-footer")),
+    false,
+    `${label}: old page footer does not duplicate shell controls`,
+  )
+  await page.waitForSelector(".reader-offline-cue", { visible: true, timeout: 15000 })
+
+  const cue = await page.evaluate(() => {
+    const el = document.querySelector(".reader-offline-cue")
+
+    if (!el) return null
+    const style = getComputedStyle(el)
+    const rect = el.getBoundingClientRect()
+
+    return {
+      text: el.textContent?.trim() || "",
+      state: el.getAttribute("data-offline-state") || "",
+      visible: style.display !== "none" && rect.width > 0 && rect.height > 0,
+      tag: el.tagName,
+    }
+  })
+
+  assert.ok(cue && cue.visible, `${label}: closed drawer leaves a compact offline cue`)
+  assert.equal(cue.tag, "P", `${label}: cue never initiates a save`)
+  await page.waitForFunction(
+    () =>
+      document.querySelector(".reader-offline-cue")?.getAttribute("data-offline-state") === "idle",
+    { timeout: 20000 },
+  )
+  assert.match(
+    await page.evaluate(
+      () => document.querySelector(".reader-offline-cue")?.textContent?.trim() || "",
+    ),
+    /Not saved offline/,
+    `${label}: idle cue is concise`,
+  )
+
+  await page.evaluate(() => document.querySelector(".reader-offline-cue")?.click())
+  await new Promise((resolve) => setTimeout(resolve, 500))
+
+  const afterCue = await page.evaluate(async () => {
+    let hasReg = false
+    let count = 0
+
+    try {
+      hasReg = !!(await navigator.serviceWorker.getRegistration())
+    } catch {}
+
+    try {
+      count = (await caches.keys()).length
+    } catch {}
+
+    return { hasReg, count }
+  })
+
+  assert.equal(afterCue.hasReg, false, `${label}: cue does not start a save`)
+  assert.equal(afterCue.count, 0, `${label}: cue downloads nothing`)
+
+  await openBrowse(page)
+
+  const afterOpen = await page.evaluate(async () => {
+    let hasReg = false
+    let count = 0
+
+    try {
+      hasReg = !!(await navigator.serviceWorker.getRegistration())
+    } catch {}
+
+    try {
+      count = (await caches.keys()).length
+    } catch {}
+
+    return { hasReg, count }
+  })
+
+  assert.equal(afterOpen.hasReg, false, `${label}: opening the drawer does not start a save`)
+  assert.equal(afterOpen.count, 0, `${label}: opening the drawer downloads nothing`)
+
+  const footer = await page.evaluate(() => {
+    const el = document.querySelector(".reader-phone-drawer-footer")
+
+    if (!el) return null
+    const rect = el.getBoundingClientRect()
+    const style = getComputedStyle(el)
+
+    return {
+      visible: style.display !== "none" && rect.width > 0 && rect.height > 0,
+      bottom: rect.bottom,
+      inner: window.innerHeight,
+    }
+  })
+
+  assert.ok(footer && footer.visible, `${label}: drawer footer shows actions`)
+  assert.ok(
+    footer.bottom <= footer.inner + 1,
+    `${label}: drawer footer stays reachable while the tree scrolls`,
+  )
+
+  const drawer = await page.evaluate(() => {
+    const group = document.querySelector(
+      '.reader-phone-drawer-footer [role="group"][aria-label="Appearance"]',
+    )
+
+    return {
+      hasAppearance: !!group,
+      appearanceText: group?.textContent?.trim() || "",
+      hasSave: !!document.querySelector(".reader-phone-drawer-footer .reader-offline-save"),
+      size:
+        document.querySelector(".reader-phone-drawer-footer .reader-offline-size")?.textContent ||
+        "",
+      trust:
+        document.querySelector(".reader-phone-drawer-footer .reader-offline-trust")?.textContent ||
+        "",
+    }
+  })
+
+  assert.ok(
+    drawer.hasAppearance &&
+      drawer.appearanceText.includes("Light") &&
+      drawer.appearanceText.includes("Dark") &&
+      drawer.appearanceText.includes("System"),
+    `${label}: drawer footer shows appearance`,
+  )
+  assert.ok(drawer.hasSave, `${label}: drawer footer shows Save for offline use`)
+  assert.match(drawer.size, /B/, `${label}: estimated size stays clear`)
+  assert.match(drawer.trust, /trust/i, `${label}: trusted-device reminder stays clear`)
+
+  const shared = await page.evaluate(() => ({
+    cue: document.querySelector(".reader-offline-cue")?.getAttribute("data-offline-state") || "",
+    detail:
+      document
+        .querySelector(".reader-phone-drawer-footer .reader-offline")
+        ?.getAttribute("data-offline-state") || "",
+  }))
+
+  assert.equal(shared.cue, "idle", `${label}: cue shares the mounted offline state`)
+  assert.equal(shared.detail, "idle", `${label}: drawer details share the mounted offline state`)
+
+  const scroll = await page.evaluate(() => {
+    const tree = document.querySelector(".reader-phone-drawer-tree")
+    const style = tree ? getComputedStyle(tree) : null
+
+    return {
+      overflowY: style ? style.overflowY : "",
+      height: tree ? tree.getBoundingClientRect().height : 0,
+    }
+  })
+
+  assert.ok(
+    scroll.overflowY === "auto" || scroll.overflowY === "scroll",
+    `${label}: drawer tree scrolls independently`,
+  )
+
+  await page.evaluate(() => {
+    const buttons = Array.from(
+      document.querySelectorAll(
+        '.reader-phone-drawer-footer [role="group"][aria-label="Appearance"] button',
+      ),
+    )
+
+    buttons.find((button) => (button.textContent || "").includes("Dark"))?.click()
+  })
+  await page.waitForFunction(() => document.documentElement.classList.contains("dark"), {
+    timeout: 5000,
+  })
+
+  const afterAppearance = await page.evaluate(async () => {
+    let hasReg = false
+    let count = 0
+
+    try {
+      hasReg = !!(await navigator.serviceWorker.getRegistration())
+    } catch {}
+
+    try {
+      count = (await caches.keys()).length
+    } catch {}
+
+    return { hasReg, count }
+  })
+
+  assert.equal(afterAppearance.hasReg, false, `${label}: choosing appearance does not save`)
+  assert.equal(afterAppearance.count, 0, `${label}: choosing appearance downloads nothing`)
+
+  await page.evaluate(() => {
+    const buttons = Array.from(
+      document.querySelectorAll(
+        '.reader-phone-drawer-footer [role="group"][aria-label="Appearance"] button',
+      ),
+    )
+
+    buttons.find((button) => (button.textContent || "").includes("System"))?.click()
+  })
+  await closeBrowseViaClose(page)
+  assert.equal(
+    await isVisible(page, ".reader-offline-cue"),
+    true,
+    `${label}: cue remains after the drawer closes`,
+  )
+}
+
 test("synthetic phone journey covers Browse, overflow, keyboard, and refresh", async () => {
   assert.ok(
     fs.existsSync(path.join(READER_ROOT, "node_modules", "next")),
@@ -1447,6 +1860,9 @@ test("synthetic phone journey covers Browse, overflow, keyboard, and refresh", a
     })
     await withPage(browser, NARROW_PHONE, async (page) => {
       await runPhoneSearchDialog(page, built.baseUrl, expect, "narrow phone")
+    })
+    await withPage(browser, NARROW_PHONE, async (page) => {
+      await runPhoneOfflinePlacement(page, built.baseUrl, "narrow phone")
     })
     await withPage(browser, LARGER_PHONE, async (page) => {
       await runPhoneJourney(page, built.baseUrl, expect, "larger phone")

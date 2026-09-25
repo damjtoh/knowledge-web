@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react"
 import { Button } from "./ui/button"
 
 type Appearance = "light" | "dark" | "system"
@@ -96,19 +96,31 @@ function MonitorIcon() {
   )
 }
 
+interface AppearanceValue {
+  appearance: Appearance
+  choose: (choice: Appearance) => void
+}
+
+const AppearanceContext = createContext<AppearanceValue | null>(null)
+
 /**
- * Appearance control: Light, Dark, System.
+ * Single mounted appearance choice for the reader shell.
  *
- * Built on the official shadcn Button registry component (the only
- * registry component this feature needs). Icons are inline SVG so the
- * reader adds no icon runtime dependency. System is the initial state
- * when nothing is saved and follows later device changes via matchMedia.
- * An explicit Light/Dark/System choice is saved locally and restored on
- * later visits (plus the head inline script applies it before first
- * paint). Native buttons keep keyboard operation; aria-pressed exposes
- * the selected state under the "Appearance" group name.
+ * One provider at the shell root keeps the desktop SidebarFooter and the
+ * phone drawer footer in sync. Choosing a mode never starts an offline
+ * save; it only applies the theme and stores the explicit choice locally.
+ * The head inline script applies the saved choice before first paint so
+ * Light/Dark/System restores without a flash.
  */
-export default function AppearanceControl() {
+export function useAppearance(): AppearanceValue {
+  const value = useContext(AppearanceContext)
+
+  if (!value) throw new Error("useAppearance must be used within AppearanceProvider.")
+
+  return value
+}
+
+export function AppearanceProvider({ children }: { children: React.ReactNode }) {
   const [appearance, setAppearance] = useState<Appearance>("system")
 
   useEffect(() => {
@@ -141,6 +153,25 @@ export default function AppearanceControl() {
 
     applyAppearance(choice)
   }, [])
+
+  const value = useMemo(() => ({ appearance, choose }), [appearance, choose])
+
+  return <AppearanceContext.Provider value={value}>{children}</AppearanceContext.Provider>
+}
+
+/**
+ * Appearance control: Light, Dark, System.
+ *
+ * Built on the official shadcn Button registry component. Icons are inline
+ * SVG so the reader adds no icon runtime dependency. System is the initial
+ * state when nothing is saved and follows later device changes via
+ * matchMedia. An explicit Light/Dark/System choice is saved locally and
+ * restored on later visits (plus the head inline script applies it before
+ * first paint). Native buttons keep keyboard operation; aria-pressed
+ * exposes the selected state under the "Appearance" group name.
+ */
+export default function AppearanceControl() {
+  const { appearance, choose } = useAppearance()
 
   const options: { value: Appearance; label: string; Icon: () => React.JSX.Element }[] = [
     { value: "light", label: "Light", Icon: SunIcon },

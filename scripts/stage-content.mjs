@@ -7,18 +7,19 @@
  * build. It:
  *   1. Loads and validates the Knowledge Base's Publication Manifest
  *      (site title, canonical hostname, explicit content allowlist, optional
- *      ordered navigation).
+ *      ordered navigation, optional owner-declared projection destinations).
  *   2. Rejects invalid manifests before any build output is produced:
  *      missing fields, empty allowlists, nonexistent selections, absolute
  *      paths, parent traversal, out-of-root selections, symlink escapes,
- *      and invalid navigation entries.
+ *      invalid navigation entries, and unsafe or conflicting destinations.
  *   3. Copies ONLY allowlisted content, byte-for-byte, into an isolated
  *      build content directory. The Knowledge Base is never modified.
  *   4. Generates a synthetic landing page in the build tree only when the
  *      selected content has no root `index.md`.
  *   5. Emits deterministic generated site identity (title, canonical
- *      hostname, and resolved navigation roots) as JSON outside the staged
- *      content tree. Staging never modifies a tracked configuration file.
+ *      hostname, resolved navigation roots, and explicitly declared
+ *      projection destinations) as JSON outside the staged content tree.
+ *      Staging never modifies a tracked configuration file.
  *      See docs/adr-0002-quartz-replacement-reader.md and
  *      docs/adr-0004-remove-quartz-rollback.md.
  *
@@ -387,6 +388,138 @@ function parseNavigation(manifest, selections) {
   return { explicit: true, entries }
 }
 
+/**
+ * Normalize an absolute secure HTTPS origin to `https://hostname`, or null
+ * when unsafe or malformed. Rejects non-HTTPS schemes, credentials, ports,
+ * paths, queries, fragments, whitespace, and non-DNS hostnames.
+ */
+function normalizeDestinationOrigin(trimmed) {
+  if (/\s/.test(trimmed)) return null
+
+  let parsed
+
+  try {
+    parsed = new URL(trimmed)
+  } catch {
+    return null
+  }
+
+  if (parsed.protocol !== "https:") return null
+
+  if (parsed.username !== "" || parsed.password !== "") return null
+
+  if (parsed.port !== "") return null
+
+  if (parsed.search !== "" || parsed.hash !== "") return null
+
+  if (parsed.pathname !== "" && parsed.pathname !== "/") return null
+
+  if (!HOSTNAME_RE.test(parsed.hostname)) return null
+
+  return parsed.origin
+}
+
+/**
+ * Parse optional `destinations` after `select` validation.
+ * Returns null when the shape is invalid (errors already recorded),
+ * `{ explicit: false, entries: [] }` when absent (legacy manifests stay
+ * valid and emit no destinations), or
+ * `{ explicit: true, entries: [{ rawName, name, rawOrigin, origin }] }`
+ * when present. Origins normalize to `https://hostname` (lowercased, no
+ * trailing slash). Checks non-empty list shape, display names, absolute
+ * secure HTTPS origins, normalized duplicates, and conflicts with the
+ * current canonical hostname. Destinations are presentation links only:
+ * they never broaden the allowlist and are never auto-discovered.
+ */
+function parseDestinations(manifest, canonicalHostname) {
+  const rawDest = manifest.destinations
+
+  if (rawDest === undefined) return { explicit: false, entries: [] }
+
+  if (!Array.isArray(rawDest) || rawDest.length === 0) {
+    fail(
+      'manifest "destinations", when present, must be a non-empty list of display-name/origin entries',
+    )
+
+    return null
+  }
+
+  const canonical = String(canonicalHostname ?? "")
+    .trim()
+    .toLowerCase()
+
+  const entries = []
+  const seenOrigins = new Map()
+  const seenNames = new Map()
+
+  for (const raw of rawDest) {
+    if (raw === null || Object(raw) !== raw || raw instanceof Function || Array.isArray(raw)) {
+      fail("every destination must be a mapping with a display name and a secure HTTPS origin")
+
+      continue
+    }
+
+    const { name: rawName, origin: rawOrigin } = raw
+
+    if (String(rawName) !== rawName || rawName.trim() === "") {
+      fail("every destination must declare a non-empty display name")
+
+      continue
+    }
+
+    const name = rawName.trim()
+
+    if (String(rawOrigin) !== rawOrigin || rawOrigin.trim() === "") {
+      fail(`destination "${name}" must declare a non-empty secure HTTPS origin`)
+
+      continue
+    }
+
+    const normalized = normalizeDestinationOrigin(rawOrigin.trim())
+
+    if (normalized === null) {
+      fail(
+        `destination "${name}" origin "${rawOrigin}" is not a secure absolute HTTPS origin ` +
+          `(use "https://hostname" with no path, query, fragment, credentials, or port)`,
+      )
+
+      continue
+    }
+
+    if (seenOrigins.has(normalized)) {
+      fail(
+        `destination "${name}" duplicates "${seenOrigins.get(normalized)}" ` +
+          `(both resolve to "${normalized}")`,
+      )
+
+      continue
+    }
+
+    seenOrigins.set(normalized, name)
+
+    if (seenNames.has(name)) {
+      fail(`destination name "${name}" is declared more than once; display names must be unique`)
+
+      continue
+    }
+
+    seenNames.set(name, normalized)
+
+    if (normalized.replace(/^https:\/\//, "") === canonical) {
+      fail(
+        `destination "${name}" origin "${normalized}" matches the current canonical hostname; ` +
+          `a projection never lists itself as another destination`,
+      )
+
+      continue
+    }
+
+    entries.push({ rawName, name, rawOrigin, origin: normalized })
+  }
+
+  return { explicit: true, entries }
+}
+
 function isMarkdownPath(rel) {
   return /\.mdx?$/i.test(rel)
 }
@@ -636,15 +769,25 @@ function maybeGenerateLandingPage(contentDir, selections, title, yaml) {
 
 /**
  * Emit deterministic generated site identity outside the staged content tree.
- * The file carries only the manifest title, canonical hostname, and resolved
- * navigation roots, with stable key order and formatting. It never modifies
- * a tracked config file. Navigation entries carry relative public paths only.
+ * The file carries only the manifest title, canonical hostname, resolved
+ * navigation roots, and explicitly declared projection destinations, with
+ * stable key order and formatting. It never modifies
+ * a tracked config file. Navigation entries carry relative public paths only;
+ * destinations carry explicit display names plus absolute secure HTTPS
+ * origins only.
  */
-function writeSiteIdentity(identityFile, title, canonicalHostname, navigationRoots) {
+function writeSiteIdentity(
+  identityFile,
+  title,
+  canonicalHostname,
+  navigationRoots,
+  destinationRoots = [],
+) {
   const payload = {
     title: title.trim(),
     canonicalHostname: canonicalHostname.trim(),
     navigation: navigationRoots.map((root) => ({ path: root.path, kind: root.kind })),
+    destinations: destinationRoots.map((dest) => ({ name: dest.name, origin: dest.origin })),
   }
 
   const body = `${JSON.stringify(payload, null, 2)}\n`
@@ -701,6 +844,10 @@ async function main() {
   const selections = manifest ? validateManifest(manifest, kbRootReal) : []
   const navigationRequest = manifest ? parseNavigation(manifest, selections) : null
 
+  const destinationsRequest = manifest
+    ? parseDestinations(manifest, manifest.canonicalHostname)
+    : null
+
   // The build content directory must never live inside the Knowledge Base:
   // staging into it would mutate canonical content or recurse into itself.
   if (kbRoot && contentDir && kbRootReal) {
@@ -752,6 +899,12 @@ async function main() {
     console.log(`    navigation:        ${navigationRequest.entries.map((e) => e.rel).join(", ")}`)
   }
 
+  if (destinationsRequest?.explicit) {
+    console.log(
+      `    destinations:      ${destinationsRequest.entries.map((e) => `${e.name} (${e.origin})`).join(", ")}`,
+    )
+  }
+
   // Stage into a temporary directory first so a failure never leaves a
   // partial build content tree behind.
   const stagingDir = `${contentDir}.staging-${process.pid}`
@@ -790,13 +943,30 @@ async function main() {
     die()
   }
 
+  // Declared destinations are presentation links only: they map to the
+  // validated entries in manifest order and never touch staged content.
+  let destinationRoots = []
+
+  if (destinationsRequest?.explicit) {
+    destinationRoots = destinationsRequest.entries.map((entry) => ({
+      name: entry.name,
+      origin: entry.origin,
+    }))
+  }
+
   // Swap the fully staged tree into place.
   fs.rmSync(contentDir, { recursive: true, force: true })
   fs.renameSync(stagingDir, contentDir)
   console.log(`  ✓ staged ${countFiles(contentDir)} files into ${contentDir}`)
 
   maybeGenerateLandingPage(contentDir, selections, manifest.title, yaml)
-  writeSiteIdentity(identityFile, manifest.title, manifest.canonicalHostname, navigationRoots)
+  writeSiteIdentity(
+    identityFile,
+    manifest.title,
+    manifest.canonicalHostname,
+    navigationRoots,
+    destinationRoots,
+  )
 
   console.log(
     "✓ staging complete; staged content plus generated site identity are ready for the reader build",

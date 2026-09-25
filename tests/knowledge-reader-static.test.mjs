@@ -779,6 +779,7 @@ test("neutral synthetic corpus builds a complete static export with authored and
     "cn",
     "fumadocs-core",
     "fumadocs-mdx",
+    "lucide-react",
     "minisearch",
     "next",
     "react",

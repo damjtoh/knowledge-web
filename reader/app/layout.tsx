@@ -29,8 +29,10 @@ function toClientNode(node: NavigationNode): NavigationNode {
 }
 
 /**
- * Reader shell: site header, persistent desktop tree sidebar, reading
- * column, footer. Sidebar labels and routes come from the generic
+ * Reader shell: reading header, persistent desktop tree sidebar with
+ * footer-owned appearance plus offline actions, reading column, and a
+ * phone Browse drawer with the same tree plus footer actions. Sidebar
+ * labels and routes come from the generic
  * navigation tree built from staged pages and generated metadata roots;
  * active state comes from the URL. On phones the sidebar becomes a Browse
  * panel with the same tree. No
@@ -65,7 +67,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body className="antialiased">
-        <ReaderChrome title={metadata.title} roots={roots}>
+        <ReaderChrome title={metadata.title} destinations={metadata.destinations} roots={roots}>
           {children}
         </ReaderChrome>
       </body>

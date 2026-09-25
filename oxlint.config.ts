@@ -66,8 +66,83 @@ const config: OxlintConfig = {
               // wrapper DOM, so there is no parent element to move it to.
               { pattern: "^DialogContent$", allow: ["sm:max-w-lg"] },
               // Touch-target sizing must live on the button itself, same as
-              // the tree toggle above.
-              { pattern: "^Button$", allow: ["reader-appearance-option"] },
+              // the tree toggle above. Offline actions share the same
+              // 44px target and the browser journeys query them by hook
+              // class; a wrapper would break activation and selectors.
+              {
+                pattern: "^Button$",
+                allow: [
+                  "reader-appearance-option",
+                  "reader-offline-save",
+                  "reader-offline-retry",
+                  "reader-offline-reload",
+                  "reader-offline-remove",
+                ],
+              },
+              // Registry sidebar-11 tree hooks: published root order and
+              // active cues must stay on the menu elements the browser
+              // journeys query; wrappers would break
+              // .reader-sidebar-nav > ul > li and active selectors.
+              { pattern: "^SidebarMenu$", allow: ["reader-tree", "reader-projection-switcher"] },
+              { pattern: "^SidebarMenuSub$", allow: ["reader-tree-children"] },
+              // Search and active hooks must live on the menu button itself;
+              // a wrapper would break focus return and the 44px touch target.
+              {
+                pattern: "^SidebarMenuButton$",
+                allow: [
+                  "reader-search-trigger",
+                  "reader-search-sidebar",
+                  "reader-sidebar-home",
+                  "reader-projection-trigger",
+                  "is-active",
+                ],
+              },
+              // Projection switcher trigger owns its hook through the
+              // dropdown trigger render composition; the menu button has
+              // no other wrapper that can own it.
+              { pattern: "^DropdownMenuTrigger$", allow: ["reader-projection-trigger"] },
+              // Projection menu width must stay on the dropdown popup: the
+              // menu renders in a portal with no wrapper DOM.
+              { pattern: "^DropdownMenuContent$", allow: ["reader-projection-menu"] },
+              // Projection choices carry only readable long-name wrapping;
+              // the DropdownMenu primitive owns the menu surface and the
+              // anchors must stay on the menu items.
+              {
+                pattern: "^DropdownMenuItem$",
+                allow: ["reader-projection-current", "reader-projection-choice"],
+              },
+              // Registry shell layout: trigger offset and mobile visibility
+              // must stay on the trigger itself; the header has no wrapper
+              // that can own them without breaking the sample header row.
+              { pattern: "^SidebarTrigger$", allow: ["-ml-1", "max-md:hidden"] },
+              // Separator spacing and responsive visibility must stay on the
+              // separator; it renders no wrapper DOM.
+              { pattern: "^Separator$", allow: ["mr-2", "hidden", "md:block"] },
+              // Phone drawer dimensions must stay on the Sheet popup: Sheet
+              // renders no wrapper DOM, so full-viewport width/height and
+              // safe-area containment cannot move to a parent.
+              { pattern: "^SheetContent$", allow: ["reader-phone-drawer"] },
+              // Home root cards use the registry Card surface (not a
+              // hand-written CSS card). Hook classes carry only readable
+              // long-title wrapping and folder/note meta layout; the Card
+              // primitive owns the surface and there is no wrapper that can
+              // own them without breaking the card composition.
+              { pattern: "^Card$", allow: ["reader-home-card"] },
+              { pattern: "^CardHeader$", allow: ["reader-home-card-header"] },
+              { pattern: "^CardTitle$", allow: ["reader-home-card-title"] },
+              { pattern: "^CardDescription$", allow: ["reader-home-card-meta"] },
+              // Visible Close touch target must live on the Sheet close
+              // button itself; a wrapper would break focus return and the
+              // 44px touch target.
+              { pattern: "^SheetClose$", allow: ["reader-drawer-close"] },
+              // Sidebar and drawer footers own offline plus appearance
+              // layout (border, scroll cap, safe-area reachability). The
+              // registry Footer elements render no wrapper DOM, so the
+              // hook must stay on the footer itself; a parent would scope
+              // the wrong element and break the fixed-footer/tree-scroll
+              // split.
+              { pattern: "^SidebarFooter$", allow: ["reader-sidebar-footer"] },
+              { pattern: "^SheetFooter$", allow: ["reader-phone-drawer-footer"] },
             ],
           },
         ],
@@ -78,7 +153,15 @@ const config: OxlintConfig = {
         // allow-listed by exact name so no other unknown class passes.
         "shadcn/no-unknown-classes": [
           "error",
-          { allow: ["reader-tree-panel", "reader-offline-remove-error"] },
+          {
+            allow: [
+              "reader-tree-panel",
+              "reader-offline-remove-error",
+              "reader-tree-label",
+              "reader-sidebar-home",
+              "reader-sidebar-brand",
+            ],
+          },
         ],
         "shadcn/require-static-classes": "error",
       },

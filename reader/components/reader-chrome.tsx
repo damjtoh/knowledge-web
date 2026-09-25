@@ -2,11 +2,18 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { usePathname } from "next/navigation"
-import AppearanceControl from "./appearance-control"
-import OfflineSave from "./offline-save"
+import AppearanceControl, { AppearanceProvider } from "./appearance-control"
+import OfflineSave, { OfflineCue, OfflineProvider } from "./offline-save"
+import { ProjectionSwitcher } from "./projection-switcher"
 import SearchDialog, { SEARCH_INPUT_ID } from "./search-dialog"
-import Sidebar from "./sidebar"
+import ReaderTree from "./sidebar"
+import { AppSidebar } from "./app-sidebar"
+import ReadingBreadcrumbs from "./reading-breadcrumbs"
+import { Separator } from "./ui/separator"
+import { Sheet, SheetClose, SheetContent, SheetFooter, SheetTitle } from "./ui/sheet"
+import { SidebarInset, SidebarProvider, SidebarTrigger } from "./ui/sidebar"
 import type { NavigationNode } from "../lib/navigation"
+import type { ProjectionDestination } from "../lib/site"
 
 function normalize(path: string | null): string {
   if (!path || path === "/") return "/"
@@ -15,22 +22,43 @@ function normalize(path: string | null): string {
 }
 
 /**
- * Reader shell: site header with phone-only Search and Browse controls, the
- * published folder-and-note tree (persistent on desktop with its own Search
- * control, collapsible panel on phones), the reading column, and the footer.
+ * Reader shell adapted from registry sidebar-11.
  *
- * There is one navigation model: the same generic tree feeds desktop and
- * phone. The toggle keeps no URL or history state, so browser Back always
- * moves through real page history. There is one Search dialog: both trigger
- * controls and Command+K/Control+K share its open state, and closing it
- * returns focus to the control that had focus before it opened.
+ * The desktop sidebar is the registry Sidebar (offcanvas, fully hidden,
+ * no icon rail) with a SidebarHeader (projection switcher, Home,
+ * Search), SidebarContent (published tree), and SidebarFooter
+ * (appearance plus offline status/actions). The reading inset holds a
+ * header with the registry SidebarTrigger, Separator, Breadcrumb route
+ * trail, a compact phone-only offline cue, and Search/Browse actions,
+ * plus the reading column. There is no page footer: the old footer
+ * offline control moved into the sidebar and drawer footers. Block
+ * sample data is not used: shell structure only.
+ *
+ * Phone navigation is the registry Sheet drawer (side left, full
+ * viewport, safe-area aware) with the same published tree: a fixed header
+ * with a visible Close, Home and Search actions, a scrollable tree
+ * middle, and a registry SheetFooter with appearance plus detailed
+ * offline actions that stays reachable while the tree scrolls. The Sheet
+ * primitive owns focus containment, Escape dismissal, and background
+ * scroll lock; dismissing returns focus to the Browse toggle. One
+ * OfflineProvider at the shell root shares a single mounted offline
+ * state between the desktop footer, the drawer footer, and the closed-
+ * phone header cue; the cue is display-only and never starts a save.
+ * Choosing appearance or opening the drawer never starts a save.
+ * Plain anchors navigate, so selecting a page closes the drawer through
+ * the route change without adding drawer state to URL history. There is
+ * one Search dialog: all trigger controls and Command+K/Control+K share
+ * its open state, and closing it returns focus to the control that had
+ * focus before it opened.
  */
 export default function ReaderChrome({
   title,
+  destinations,
   roots,
   children,
 }: {
   title: string
+  destinations: ProjectionDestination[]
   roots: NavigationNode[]
   children: React.ReactNode
 }) {
@@ -44,26 +72,18 @@ export default function ReaderChrome({
   searchOpenRef.current = searchOpen
 
   // Plain anchors navigate, so leaving Browse is normal page history:
-  // close the phone panel whenever the route changes.
+  // close the phone drawer whenever the route changes.
   useEffect(() => {
     setBrowseOpen(false)
   }, [pathname])
 
-  // Escape closes the phone panel and returns focus to the toggle.
-  useEffect(() => {
-    if (!browseOpen) return
+  const handleBrowseOpenChange = useCallback((open: boolean) => {
+    setBrowseOpen(open)
 
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setBrowseOpen(false)
-        toggleRef.current?.focus()
-      }
+    if (!open) {
+      toggleRef.current?.focus()
     }
-
-    document.addEventListener("keydown", onKeyDown)
-
-    return () => document.removeEventListener("keydown", onKeyDown)
-  }, [browseOpen])
+  }, [])
 
   const openSearch = useCallback((origin: HTMLElement | null) => {
     searchOpenerRef.current = origin
@@ -108,50 +128,87 @@ export default function ReaderChrome({
       className="reader-chrome min-h-screen antialiased"
       data-browse={browseOpen ? "open" : "closed"}
     >
-      <header className="reader-header">
-        <a className="reader-home" href="/">
-          {title}
-        </a>
-        <div className="reader-header-actions">
-          <AppearanceControl />
-          <button
-            type="button"
-            className="reader-search-trigger reader-search-header"
-            onClick={(event) => openSearch(event.currentTarget)}
-          >
-            Search
-          </button>
-          <button
-            ref={toggleRef}
-            type="button"
-            className="reader-browse-toggle shrink-0"
-            aria-expanded={browseOpen}
-            aria-controls="reader-browse-panel"
-            onClick={() => setBrowseOpen((open) => !open)}
-          >
-            Browse
-          </button>
-        </div>
-      </header>
-      <div className="reader-shell">
-        <aside id="reader-browse-panel" className="reader-sidebar rounded-lg">
-          <button
-            type="button"
-            className="reader-search-trigger reader-search-sidebar"
-            onClick={(event) => openSearch(event.currentTarget)}
-          >
-            <span>Search</span>
-            <kbd aria-hidden="true">⌘K</kbd>
-          </button>
-          <Sidebar roots={roots} />
-        </aside>
-        <main className="reader-main">{children}</main>
-      </div>
-      <SearchDialog open={searchOpen} onOpenChange={handleSearchOpenChange} />
-      <footer className="reader-footer">
-        <span>{title}</span>
-        <OfflineSave />
-      </footer>
+      <AppearanceProvider>
+        <OfflineProvider>
+          <SidebarProvider>
+            <AppSidebar
+              title={title}
+              destinations={destinations}
+              roots={roots}
+              onSearch={openSearch}
+            />
+            <SidebarInset>
+              <header className="reader-header">
+                <div className="reader-header-trail">
+                  <SidebarTrigger className="-ml-1 max-md:hidden" />
+                  <Separator orientation="vertical" className="mr-2 hidden md:block" />
+                  <ReadingBreadcrumbs roots={roots} siteTitle={title} />
+                </div>
+                <div className="reader-header-actions">
+                  <OfflineCue />
+                  <button
+                    type="button"
+                    className="reader-search-trigger reader-search-header"
+                    onClick={(event) => openSearch(event.currentTarget)}
+                  >
+                    Search
+                  </button>
+                  <button
+                    ref={toggleRef}
+                    type="button"
+                    className="reader-browse-toggle shrink-0"
+                    aria-expanded={browseOpen}
+                    aria-controls="reader-browse-panel"
+                    onClick={() => setBrowseOpen((open) => !open)}
+                  >
+                    Browse
+                  </button>
+                </div>
+              </header>
+              <div className="reader-shell">
+                <div className="reader-main">{children}</div>
+              </div>
+              <Sheet open={browseOpen} onOpenChange={handleBrowseOpenChange}>
+                <SheetContent
+                  id="reader-browse-panel"
+                  side="left"
+                  showCloseButton={false}
+                  keepMounted
+                  className="reader-phone-drawer"
+                >
+                  <div className="reader-phone-drawer-header">
+                    <SheetTitle>Browse</SheetTitle>
+                    <SheetClose className="reader-drawer-close">Close</SheetClose>
+                  </div>
+                  <div className="reader-phone-drawer-switcher">
+                    <ProjectionSwitcher current={title} destinations={destinations} />
+                  </div>
+                  <div className="reader-phone-drawer-actions">
+                    <a className="reader-drawer-home" href="/">
+                      Home
+                    </a>
+                    <button
+                      type="button"
+                      className="reader-search-trigger"
+                      onClick={(event) => openSearch(event.currentTarget)}
+                    >
+                      Search
+                    </button>
+                  </div>
+                  <div className="reader-phone-drawer-tree">
+                    <ReaderTree roots={roots} />
+                  </div>
+                  <SheetFooter className="reader-phone-drawer-footer">
+                    <AppearanceControl />
+                    <OfflineSave />
+                  </SheetFooter>
+                </SheetContent>
+              </Sheet>
+              <SearchDialog open={searchOpen} onOpenChange={handleSearchOpenChange} />
+            </SidebarInset>
+          </SidebarProvider>
+        </OfflineProvider>
+      </AppearanceProvider>
     </div>
   )
 }
