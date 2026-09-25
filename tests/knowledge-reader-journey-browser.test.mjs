@@ -21,165 +21,27 @@
 import assert from "node:assert/strict"
 import { execFile } from "node:child_process"
 import fs from "node:fs"
-import http from "node:http"
-import os from "node:os"
 import path from "node:path"
 import { promisify } from "node:util"
-import { test, after } from "node:test"
+import { test } from "node:test"
+import {
+  PUBLISHER_ROOT,
+  READER_ROOT,
+  buildReader,
+  cleanReaderArtifacts,
+  closeServer,
+  createDesktopContext,
+  installReaderCleanup,
+  launchBrowser,
+  serveOut,
+  stageKb,
+  tmpdir,
+} from "./helpers/reader-env.mjs"
+import { LONG_SLUG, writeSyntheticKb } from "./fixtures/synthetic-kb.mjs"
 
 const execFileAsync = promisify(execFile)
 
-const PUBLISHER_ROOT = path.resolve(import.meta.dirname, "..")
-
-const READER_ROOT = path.join(PUBLISHER_ROOT, "reader")
-
-const STAGE_SCRIPT = path.join(PUBLISHER_ROOT, "scripts", "stage-content.mjs")
-
-const tmpRoots = []
-
-function tmpdir(prefix) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `knowledge-journey-${prefix}-`))
-  tmpRoots.push(dir)
-
-  return dir
-}
-
-after(() => {
-  for (const dir of [".source", ".next", "out"]) {
-    fs.rmSync(path.join(READER_ROOT, dir), { recursive: true, force: true })
-  }
-
-  for (const dir of tmpRoots) fs.rmSync(dir, { recursive: true, force: true })
-})
-
-function findChrome() {
-  const candidates =
-    process.platform === "darwin"
-      ? ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"]
-      : ["/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser"]
-
-  for (const candidate of candidates) {
-    try {
-      if (fs.existsSync(candidate)) return candidate
-    } catch {}
-  }
-
-  if (process.env.CHROME_PATH && fs.existsSync(process.env.CHROME_PATH)) {
-    return process.env.CHROME_PATH
-  }
-
-  return null
-}
-
-/** Minimal nginx-style static server: try $uri, then $uri.html. */
-function createStaticServer(dir) {
-  const mime = {
-    ".html": "text/html",
-    ".css": "text/css",
-    ".js": "text/javascript",
-    ".json": "application/json",
-    ".txt": "text/plain",
-    ".webmanifest": "application/manifest+json",
-    ".svg": "image/svg+xml",
-  }
-
-  const loginPage =
-    "<html><head><title>Sign in</title></head>" +
-    "<body><h1>Sign in</h1><p>Cloudflare Access sign in to continue.</p></body></html>"
-
-  const server = http.createServer((req, res) => {
-    try {
-      const urlPath = decodeURIComponent((req.url || "/").split("?")[0])
-
-      // Test-only access simulation: when armed, one published file answers
-      // like an online session that expired mid-save (redirect to a
-      // same-origin sign-in page), so the save must stay incomplete and
-      // cache no login output as publication. The stub itself is not an
-      // export file and never enters the precache.
-      if (server.accessRedirectFor && urlPath === server.accessRedirectFor) {
-        res.writeHead(302, { Location: "/access-signin" })
-        res.end("redirect")
-
-        return
-      }
-
-      if (urlPath === "/access-signin") {
-        res.writeHead(200, { "Content-Type": "text/html" })
-        res.end(loginPage)
-
-        return
-      }
-
-      const base = path.join(dir, urlPath === "/" ? "index.html" : urlPath)
-      const candidates = [base, `${base}.html`, path.join(base, "index.html")]
-
-      const filePath = candidates.find(
-        (candidate) => fs.existsSync(candidate) && fs.statSync(candidate).isFile(),
-      )
-
-      if (!filePath) {
-        res.writeHead(404)
-        res.end("not found")
-
-        return
-      }
-
-      const headers = {
-        "Content-Type": mime[path.extname(filePath).toLowerCase()] || "application/octet-stream",
-      }
-
-      // Mirror the deployed worker cache headers so update checks see a
-      // new publication instead of a cached worker.
-      if (filePath.endsWith("sw.js") || filePath.endsWith("offline.json")) {
-        headers["Cache-Control"] = "no-cache"
-      }
-
-      res.writeHead(200, headers)
-      fs.createReadStream(filePath).pipe(res)
-    } catch (error) {
-      res.writeHead(500)
-      res.end(String(error))
-    }
-  })
-
-  server.accessRedirectFor = null
-
-  return server
-}
-
-async function stageKb(kbRoot, contentDir, identityFile) {
-  await execFileAsync(
-    process.execPath,
-    [
-      STAGE_SCRIPT,
-      "--kb-root",
-      kbRoot,
-      "--content-dir",
-      contentDir,
-      "--identity-file",
-      identityFile,
-    ],
-    { cwd: PUBLISHER_ROOT, timeout: 120000 },
-  )
-}
-
-async function buildReader(contentDir, identityFile) {
-  await execFileAsync("pnpm", ["run", "build"], {
-    cwd: READER_ROOT,
-    timeout: 600000,
-    env: {
-      ...process.env,
-      READER_CONTENT_DIR: contentDir,
-      READER_SITE_METADATA_FILE: identityFile,
-    },
-  })
-}
-
-function writeFile(root, rel, content) {
-  const abs = path.join(root, rel)
-  fs.mkdirSync(path.dirname(abs), { recursive: true })
-  fs.writeFileSync(abs, content)
-}
+installReaderCleanup()
 
 function humanizeSegment(seg) {
   const spaced = seg.replace(/[-_]+/g, " ").trim()
@@ -273,105 +135,16 @@ function countTopLevelH1s(absPath) {
   return count
 }
 
-const LONG_TITLE =
-  "An extremely long packing checklist title that keeps going SupercalifragilisticexpialidociousSupercalifragilisticexpialidocious"
-
-const LONG_SLUG = "long-packing-checklist-title-that-keeps-going-for-wrapping-probes"
-
-/** Neutral synthetic vault: authored root, indexed and virtual folders, flat and nested shapes. */
+/**
+ * Canonical synthetic Knowledge Base for the desktop journey.
+ *
+ * Written by the shared fixture; staging stays with the harness so the
+ * journey derives every expectation from staged content and metadata.
+ */
 function makeJourneyKb() {
   const kb = tmpdir("kb-journey")
-  writeFile(
-    kb,
-    "index.md",
-    [
-      "---",
-      'title: "Garden Home"',
-      "---",
-      "",
-      "# Garden Home",
-      "",
-      "Welcome to the neutral journey garden.",
-      "",
-    ].join("\n"),
-  )
-  writeFile(
-    kb,
-    "garden/index.md",
-    "# Garden Plots\n\nCultivated beds with an authored introduction.\n",
-  )
-  writeFile(kb, "garden/alpha.md", "# Alpha Bed\n\nFirst bed.\n")
-  writeFile(kb, "garden/beta.md", "# Beta Bed\n\nSecond bed.\n")
-  writeFile(
-    kb,
-    "notes/guide.md",
-    [
-      "---",
-      'title: "Field Guide"',
-      "---",
-      "",
-      "# Ignored H1",
-      "",
-      "Wide table:",
-      "",
-      "| Day | Morning | Midday | Afternoon | Evening | Night | Cost | Notes |",
-      "|---|---|---|---|---|---|---|---|",
-      "| One | Kayak | Lunch | Trek | Dinner | Sleep | 85 € | Long day |",
-      "",
-      "- [ ] open task",
-      "- [x] done task",
-      "",
-      "```js",
-      "const alias = '[[Field Guide]]';",
-      "```",
-      "",
-      "See [[Plain Meadow]] and [[Missing Page]].",
-      "",
-      "See https://example.com/field-guide for details.",
-      "",
-      "![Meadow view](https://example.com/photos/very-wide-panoramic-meadow-view.jpg)",
-      "",
-    ].join("\n"),
-  )
-  writeFile(
-    kb,
-    "notes/plain.md",
-    "# Plain Meadow\n\nJust a body.\n\n## Details\n\nSection content.\n",
-  )
-  writeFile(kb, "notes/nest/inner/leaf.md", "# Inner Leaf\n\nDeep nested note.\n")
-  writeFile(kb, `notes/${LONG_SLUG}.md`, `# ${LONG_TITLE}\n\nPack light.\n`)
 
-  for (let i = 1; i <= 12; i++) {
-    const n = String(i).padStart(2, "0")
-    writeFile(kb, `orchard/note-${n}.md`, `# Orchard Note ${n}\n\nFlat orchard note ${n}.\n`)
-  }
-
-  writeFile(kb, "standalone.md", "# Lone Pine\n\nStandalone file.\n")
-  writeFile(kb, "assets/photo.png", "not-a-real-png")
-  writeFile(kb, "unselected.md", "# Unselected\n\nFixture sentinel must never appear.\n")
-  writeFile(
-    kb,
-    "publication.manifest.yaml",
-    [
-      "title: Journey Garden",
-      "canonicalHostname: journey.example.com",
-      "select:",
-      "  - index.md",
-      "  - garden",
-      "  - notes",
-      "  - orchard",
-      "  - standalone.md",
-      "  - assets",
-      "navigation:",
-      "  - standalone.md",
-      "  - orchard",
-      "  - notes",
-      "  - garden",
-      "",
-    ].join("\n"),
-  )
-
-  return kb
+  return writeSyntheticKb(kb)
 }
 
 function routeForStagedMarkdown(rel) {
@@ -523,45 +296,9 @@ function deriveJourney(contentDir, metadata) {
   return { areas, folderEntry, folderTitle, folderRoute, leafRel, leafTitle, leafRoute }
 }
 
-async function launchBrowser() {
-  const chromePath = findChrome()
-  let puppeteer
-
-  try {
-    puppeteer = await import("puppeteer-core")
-  } catch (error) {
-    assert.fail(`puppeteer-core not available: ${error.message}`)
-  }
-
-  const browser = await puppeteer
-    .launch({
-      executablePath: chromePath || undefined,
-      headless: "new",
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-gpu",
-        "--disable-dev-shm-usage",
-      ],
-    })
-    .catch((error) => {
-      assert.fail(`Failed to launch Chrome: ${error.message}`)
-    })
-
-  return browser
-}
-
-async function serveOut(outDir) {
-  const server = createStaticServer(outDir)
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve))
-  const addr = server.address()
-
-  return { server, baseUrl: `http://${addr.address}:${addr.port}` }
-}
-
 /** Generic desktop journey: home -> folder -> nested note -> breadcrumbs and Back. */
 async function runJourney(page, baseUrl, expect) {
-  await page.goto(`${baseUrl}/`, { waitUntil: "networkidle0", timeout: 15000 })
+  await page.goto(`${baseUrl}/`, { waitUntil: "networkidle", timeout: 15000 })
 
   const home = await page.evaluate((leafRoute) => {
     const links = Array.from(document.querySelectorAll(".reader-area-list a")).map((a) => ({
@@ -624,7 +361,10 @@ async function runJourney(page, baseUrl, expect) {
   assert.ok(folderHref, "home folder link has an href from staged content")
   assert.equal(folderHref, expect.folderRoute, "home folder href matches the derived route")
   await Promise.all([
-    page.waitForNavigation({ waitUntil: "networkidle0", timeout: 15000 }),
+    page.waitForURL((url) => url.href.includes(folderHref), {
+      waitUntil: "networkidle",
+      timeout: 15000,
+    }),
     page.evaluate((href) => {
       document.querySelector(`.reader-area-list a[href="${href}"]`)?.click()
     }, folderHref),
@@ -690,7 +430,10 @@ async function runJourney(page, baseUrl, expect) {
 
   if (!resolvedNoteHref) resolvedNoteHref = expect.leafRoute
   await Promise.all([
-    page.waitForNavigation({ waitUntil: "networkidle0", timeout: 15000 }),
+    page.waitForURL((url) => url.href.includes(resolvedNoteHref), {
+      waitUntil: "networkidle",
+      timeout: 15000,
+    }),
     page.evaluate((href) => {
       const direct = Array.from(document.querySelectorAll(".reader-group-list a")).find(
         (el) => el.getAttribute("href") === href,
@@ -754,17 +497,20 @@ async function runJourney(page, baseUrl, expect) {
   const crumbHref = note.crumbs.length > 1 ? note.crumbs[1].href : null
   assert.ok(crumbHref, "breadcrumbs link a parent")
   await Promise.all([
-    page.waitForNavigation({ waitUntil: "networkidle0", timeout: 15000 }),
+    page.waitForFunction(
+      (href) => window.location.pathname === href || window.location.pathname === `${href}/`,
+      crumbHref,
+      { timeout: 15000 },
+    ),
     page.evaluate((href) => {
       document.querySelector(`.reader-breadcrumbs a[href="${href}"]`)?.click()
     }, crumbHref),
   ])
+  await page.waitForLoadState("networkidle", { timeout: 15000 })
   await Promise.all([
-    page.waitForFunction(
-      (route) => window.location.href.includes(route),
-      { timeout: 15000 },
-      expect.leafRoute,
-    ),
+    page.waitForFunction((route) => window.location.href.includes(route), expect.leafRoute, {
+      timeout: 15000,
+    }),
     page.goBack(),
   ])
   assert.ok(page.url().includes(expect.leafRoute), "browser Back returns to the nested note")
@@ -772,14 +518,14 @@ async function runJourney(page, baseUrl, expect) {
     page.waitForFunction(
       ([leaf, folder]) =>
         window.location.href.includes(folder) && !window.location.href.includes(leaf),
-      { timeout: 15000 },
       [expect.leafRoute, expect.folderRoute],
+      { timeout: 15000 },
     ),
     page.goBack(),
   ])
   assert.ok(page.url().includes(expect.folderRoute), "browser Back returns to the folder")
   await Promise.all([
-    page.waitForFunction(() => window.location.pathname === "/", { timeout: 15000 }),
+    page.waitForFunction(() => window.location.pathname === "/", null, { timeout: 15000 }),
     page.goBack(),
   ])
   assert.match(page.url(), /\/$/, "browser Back returns home")
@@ -836,7 +582,7 @@ async function setDisclosure(page, folderRoute, open) {
     )?.click()
   }, folderRoute)
   await page.waitForFunction(
-    (route, want) => {
+    ([route, want]) => {
       const li = document.querySelector(
         `[data-slot="sidebar"] .reader-sidebar-nav li[data-tree-url="${route}"]`,
       )
@@ -849,9 +595,8 @@ async function setDisclosure(page, folderRoute, open) {
 
       return button && button.getAttribute("aria-expanded") === want
     },
+    [folderRoute, open ? "true" : "false"],
     { timeout: 5000 },
-    folderRoute,
-    open ? "true" : "false",
   )
 }
 
@@ -925,7 +670,7 @@ function expectedFolderChildren(contentDir, folderPath) {
  */
 async function runTreeBehavior(page, baseUrl, expect) {
   const { folderRoute, leafRoute, leafTitle, folderChildren } = expect
-  await page.goto(`${baseUrl}/`, { waitUntil: "networkidle0", timeout: 15000 })
+  await page.goto(`${baseUrl}/`, { waitUntil: "networkidle", timeout: 15000 })
 
   const children = await directTreeChildren(page, folderRoute)
   assert.ok(children, "tree renders the folder branch")
@@ -985,7 +730,10 @@ async function runTreeBehavior(page, baseUrl, expect) {
 
   // The folder name reaches its page through a normal static URL.
   await Promise.all([
-    page.waitForNavigation({ waitUntil: "networkidle0", timeout: 15000 }),
+    page.waitForURL((url) => url.href.includes(folderRoute), {
+      waitUntil: "networkidle",
+      timeout: 15000,
+    }),
     page.evaluate((route) => {
       document
         .querySelector(`[data-slot="sidebar"] .reader-sidebar-nav a[href="${route}"]`)
@@ -996,7 +744,7 @@ async function runTreeBehavior(page, baseUrl, expect) {
   assert.equal(await treeCurrent(page), folderRoute, "tree indicates the open folder")
 
   // Arriving at a deep page expands its ancestors and indicates it.
-  await page.goto(`${baseUrl}${leafRoute}`, { waitUntil: "networkidle0", timeout: 15000 })
+  await page.goto(`${baseUrl}${leafRoute}`, { waitUntil: "networkidle", timeout: 15000 })
   const segments = leafRoute.split("/").filter(Boolean)
   const prefixes = segments.map((_, i) => `/${segments.slice(0, i + 1).join("/")}`)
 
@@ -1022,7 +770,10 @@ async function runTreeBehavior(page, baseUrl, expect) {
   // Open branches survive navigation; the deliberate close holds where
   // the page did not change, then releases on the next navigation.
   await Promise.all([
-    page.waitForNavigation({ waitUntil: "networkidle0", timeout: 15000 }),
+    page.waitForURL((url) => url.href.includes(otherRoot), {
+      waitUntil: "networkidle",
+      timeout: 15000,
+    }),
     page.evaluate((route) => {
       document
         .querySelector(`[data-slot="sidebar"] .reader-sidebar-nav a[href="${route}"]`)
@@ -1032,12 +783,10 @@ async function runTreeBehavior(page, baseUrl, expect) {
   assert.ok(page.url().includes(otherRoot), "second branch link opens its route")
   assert.equal(await disclosureState(page, otherRoot), "true", "opened branch survives navigation")
   assert.equal(await disclosureState(page, folderRoute), "false", "closed branch stays closed away")
-  await page.goBack({ waitUntil: "networkidle0", timeout: 15000 })
-  await page.waitForFunction(
-    (route) => window.location.href.includes(route),
-    { timeout: 15000 },
-    leafRoute,
-  )
+  await page.goBack({ waitUntil: "networkidle", timeout: 15000 })
+  await page.waitForFunction((route) => window.location.href.includes(route), leafRoute, {
+    timeout: 15000,
+  })
   assert.equal(await disclosureState(page, otherRoot), "true", "opened branch survives Back")
   assert.equal(
     await disclosureState(page, folderRoute),
@@ -1094,7 +843,7 @@ async function runTreeBehavior(page, baseUrl, expect) {
  * keyboard operation, and long titles.
  */
 async function runSidebarCollapse(page, baseUrl, expect) {
-  await page.goto(`${baseUrl}/`, { waitUntil: "networkidle0", timeout: 15000 })
+  await page.goto(`${baseUrl}/`, { waitUntil: "networkidle", timeout: 15000 })
 
   const header = await page.evaluate(() => {
     const sidebarHeader = document.querySelector('[data-slot="sidebar-header"]')
@@ -1150,12 +899,14 @@ async function runSidebarCollapse(page, baseUrl, expect) {
   await page.waitForFunction(
     () =>
       document.querySelector('[data-slot="sidebar"]')?.getAttribute("data-state") === "collapsed",
+    null,
     { timeout: 5000 },
   )
   await page.waitForFunction(
     () =>
       (document.querySelector('[data-slot="sidebar-gap"]')?.getBoundingClientRect().width || 0) <=
       1,
+    null,
     { timeout: 5000 },
   )
 
@@ -1188,6 +939,7 @@ async function runSidebarCollapse(page, baseUrl, expect) {
   await page.waitForFunction(
     () =>
       document.querySelector('[data-slot="sidebar"]')?.getAttribute("data-state") === "expanded",
+    null,
     { timeout: 5000 },
   )
 
@@ -1227,15 +979,16 @@ async function runSidebarCollapse(page, baseUrl, expect) {
 
 /** Wait until the Search dialog is open with its input focused. */
 async function dialogOpen(page, timeout = 5000) {
-  await page.waitForSelector('[data-slot="dialog-content"]', { visible: true, timeout })
+  await page.waitForSelector('[data-slot="dialog-content"]', { state: "visible", timeout })
   await page.waitForFunction(
     () => document.activeElement && document.activeElement.id === "reader-search-input",
+    null,
     { timeout },
   )
 }
 
 async function dialogClosed(page) {
-  await page.waitForFunction(() => !document.querySelector('[data-slot="dialog-content"]'), {
+  await page.waitForFunction(() => !document.querySelector('[data-slot="dialog-content"]'), null, {
     timeout: 5000,
   })
 }
@@ -1264,7 +1017,7 @@ async function pressShortcut(page, modifier) {
  * static route, shortcut open, Escape with focus return.
  */
 async function runSearchDialog(page, baseUrl, expect) {
-  await page.goto(`${baseUrl}/`, { waitUntil: "networkidle0", timeout: 15000 })
+  await page.goto(`${baseUrl}/`, { waitUntil: "networkidle", timeout: 15000 })
 
   const controls = await page.evaluate(() => {
     const each = (sel) => {
@@ -1317,11 +1070,12 @@ async function runSearchDialog(page, baseUrl, expect) {
   await setSearchQuery(page, "zzz-no-such-note-qqq9")
   await page.waitForFunction(
     () => document.querySelector(".reader-search-status")?.textContent?.includes("No results"),
+    null,
     { timeout: 10000 },
   )
 
   await setSearchQuery(page, expect.leafTitle)
-  await page.waitForSelector(".reader-search-result", { visible: true, timeout: 10000 })
+  await page.waitForSelector(".reader-search-result", { state: "visible", timeout: 10000 })
 
   const results = await page.evaluate(() =>
     Array.from(document.querySelectorAll(".reader-search-result")).map((a) => ({
@@ -1375,7 +1129,10 @@ async function runSearchDialog(page, baseUrl, expect) {
 
   assert.equal(highlighted, firstHref, "highlight tracks the first result")
   await Promise.all([
-    page.waitForNavigation({ waitUntil: "networkidle0", timeout: 15000 }),
+    page.waitForURL((url) => url.href.includes(firstHref), {
+      waitUntil: "networkidle",
+      timeout: 15000,
+    }),
     page.keyboard.press("Enter"),
   ])
   assert.ok(page.url().includes(firstHref), "Enter opens the highlighted static route")
@@ -1387,7 +1144,7 @@ async function runSearchDialog(page, baseUrl, expect) {
   assert.ok(landed.length > 0, "result navigation lands on a readable page")
 
   // Shortcut opens and focuses; repeating it keeps exactly one dialog.
-  await page.goto(`${baseUrl}/`, { waitUntil: "networkidle0", timeout: 15000 })
+  await page.goto(`${baseUrl}/`, { waitUntil: "networkidle", timeout: 15000 })
   await page.evaluate(() => document.querySelector(".reader-search-sidebar")?.focus())
   await pressShortcut(page, "Control")
   await dialogOpen(page)
@@ -1421,33 +1178,28 @@ async function runSearchDialog(page, baseUrl, expect) {
 }
 
 /** Loading state: the dialog announces while the static index is in flight. */
-async function runSearchIndexLoading(browser, baseUrl) {
-  const page = await browser.newPage()
+async function runSearchIndexLoading(context, baseUrl) {
+  const page = await context.newPage()
 
   try {
-    await page.setViewport({ width: 1280, height: 800 })
-    await page.setRequestInterception(true)
+    await page.setViewportSize({ width: 1280, height: 800 })
     let releaseIndex = () => {}
 
     const gate = new Promise((resolve) => {
       releaseIndex = resolve
     })
 
-    page.on("request", (req) => {
-      try {
-        if (req.url().endsWith("/search-index.json")) {
-          gate.then(() => Promise.resolve(req.continue()).catch(() => {}))
-        } else {
-          Promise.resolve(req.continue()).catch(() => {})
-        }
-      } catch {}
+    await page.route("**/search-index.json", async (route) => {
+      await gate
+      await route.continue()
     })
-    await page.goto(`${baseUrl}/`, { waitUntil: "networkidle0", timeout: 15000 })
+    await page.goto(`${baseUrl}/`, { waitUntil: "networkidle", timeout: 15000 })
     await pressShortcut(page, "Control")
     await dialogOpen(page)
     await setSearchQuery(page, "garden")
     await page.waitForFunction(
       () => document.querySelector(".reader-search-status")?.textContent?.includes("Searching"),
+      null,
       { timeout: 10000 },
     )
     assert.equal(
@@ -1456,34 +1208,26 @@ async function runSearchIndexLoading(browser, baseUrl) {
       "no results render before the index arrives",
     )
     releaseIndex()
-    await page.waitForSelector(".reader-search-result", { visible: true, timeout: 15000 })
+    await page.waitForSelector(".reader-search-result", { state: "visible", timeout: 15000 })
   } finally {
     await page.close()
   }
 }
 
 /** Failed index fetch: graceful feedback, no crash, dialog still closes. */
-async function runSearchIndexFailure(browser, baseUrl) {
-  const page = await browser.newPage()
+async function runSearchIndexFailure(context, baseUrl) {
+  const page = await context.newPage()
 
   try {
-    await page.setViewport({ width: 1280, height: 800 })
-    await page.setRequestInterception(true)
-    page.on("request", (req) => {
-      try {
-        if (req.url().endsWith("/search-index.json")) {
-          Promise.resolve(req.abort()).catch(() => {})
-        } else {
-          Promise.resolve(req.continue()).catch(() => {})
-        }
-      } catch {}
-    })
-    await page.goto(`${baseUrl}/`, { waitUntil: "networkidle0", timeout: 15000 })
+    await page.setViewportSize({ width: 1280, height: 800 })
+    await page.route("**/search-index.json", (route) => route.abort())
+    await page.goto(`${baseUrl}/`, { waitUntil: "networkidle", timeout: 15000 })
     await pressShortcut(page, "Control")
     await dialogOpen(page)
     await setSearchQuery(page, "garden")
     await page.waitForFunction(
       () => document.querySelector(".reader-search-status")?.textContent?.includes("unavailable"),
+      null,
       { timeout: 10000 },
     )
     assert.equal(
@@ -1584,12 +1328,12 @@ function deriveOfflineProbes(contentDir, metadata, journey) {
  * launches home, opens an unvisited folder and note through extensionless
  * URLs, browses the same tree, and searches to the unvisited note.
  */
-async function runOfflineSave(browser, baseUrl, server, expect) {
-  const page = await browser.newPage()
+async function runOfflineSave(context, baseUrl, server, expect) {
+  const page = await context.newPage()
 
   try {
-    await page.setViewport({ width: 1280, height: 800 })
-    await page.goto(`${baseUrl}/`, { waitUntil: "networkidle0", timeout: 15000 })
+    await page.setViewportSize({ width: 1280, height: 800 })
+    await page.goto(`${baseUrl}/`, { waitUntil: "networkidle", timeout: 15000 })
 
     const pre = await page.evaluate(async () => {
       const save = document.querySelector(".reader-offline-save")
@@ -1620,8 +1364,8 @@ async function runOfflineSave(browser, baseUrl, server, expect) {
     // so the save stays incomplete with a retry and caches no login output.
     server.accessRedirectFor = expect.failureTarget
     await page.evaluate(() => document.querySelector(".reader-offline-save")?.click())
-    await page.waitForSelector(".reader-offline-progress", { visible: true, timeout: 15000 })
-    await page.waitForSelector(".reader-offline-retry", { visible: true, timeout: 90000 })
+    await page.waitForSelector(".reader-offline-progress", { state: "visible", timeout: 15000 })
+    await page.waitForSelector(".reader-offline-retry", { state: "visible", timeout: 90000 })
 
     const incompleteText = await page.evaluate(
       () => document.querySelector(".reader-offline section, .reader-offline")?.textContent || "",
@@ -1649,7 +1393,7 @@ async function runOfflineSave(browser, baseUrl, server, expect) {
 
     assert.equal(loginCached, "miss", "sign-in response is not cached as publication")
     // No destructive behavior: the reader still works online.
-    await page.goto(`${baseUrl}/`, { waitUntil: "networkidle0", timeout: 15000 })
+    await page.goto(`${baseUrl}/`, { waitUntil: "networkidle", timeout: 15000 })
 
     const homeH1 = await page.evaluate(
       () => document.querySelector("article h1")?.textContent?.trim() || "",
@@ -1662,7 +1406,7 @@ async function runOfflineSave(browser, baseUrl, server, expect) {
     // install keeps no worker); either control starts the same save.
     server.accessRedirectFor = null
     await page.waitForSelector(".reader-offline-retry, .reader-offline-save", {
-      visible: true,
+      state: "visible",
       timeout: 15000,
     })
     await page.evaluate(() => {
@@ -1676,8 +1420,8 @@ async function runOfflineSave(browser, baseUrl, server, expect) {
 
       document.querySelector(".reader-offline-save")?.click()
     })
-    await page.waitForSelector(".reader-offline-progress", { visible: true, timeout: 15000 })
-    await page.waitForSelector(".reader-offline-ready", { visible: true, timeout: 90000 })
+    await page.waitForSelector(".reader-offline-progress", { state: "visible", timeout: 15000 })
+    await page.waitForSelector(".reader-offline-ready", { state: "visible", timeout: 90000 })
 
     const readyText = await page.evaluate(
       () => document.querySelector(".reader-offline-ready")?.textContent || "",
@@ -1690,11 +1434,11 @@ async function runOfflineSave(browser, baseUrl, server, expect) {
 
   // Restart: a fresh page with the network off proves the saved copy
   // launches and serves unvisited routes without a connection.
-  const offline = await browser.newPage()
+  const offline = await context.newPage()
 
   try {
-    await offline.setViewport({ width: 1280, height: 800 })
-    await offline.setOfflineMode(true)
+    await offline.setViewportSize({ width: 1280, height: 800 })
+    await offline.context().setOffline(true)
     await offline.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded", timeout: 15000 })
 
     const homeH1 = await offline.evaluate(
@@ -1757,7 +1501,7 @@ async function runOfflineSave(browser, baseUrl, server, expect) {
 
     assert.ok(searchReady, "offline search opens through the shortcut")
     await setSearchQuery(offline, expect.offlineLeafTitle)
-    await offline.waitForSelector(".reader-search-result", { visible: true, timeout: 15000 })
+    await offline.waitForSelector(".reader-search-result", { state: "visible", timeout: 15000 })
 
     const hrefs = await offline.evaluate(() =>
       Array.from(document.querySelectorAll(".reader-search-result")).map(
@@ -1770,7 +1514,10 @@ async function runOfflineSave(browser, baseUrl, server, expect) {
       "offline search reaches the unvisited page",
     )
     await Promise.all([
-      offline.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 15000 }),
+      offline.waitForURL((url) => url.href.includes(expect.offlineLeafRoute), {
+        waitUntil: "domcontentloaded",
+        timeout: 15000,
+      }),
       offline.keyboard.press("Enter"),
     ])
     assert.ok(
@@ -1778,7 +1525,10 @@ async function runOfflineSave(browser, baseUrl, server, expect) {
       "offline result opens the saved page",
     )
   } finally {
-    await offline.setOfflineMode(false).catch(() => {})
+    await offline
+      .context()
+      .setOffline(false)
+      .catch(() => {})
     await offline.close()
   }
 }
@@ -1794,7 +1544,7 @@ async function runOfflineSave(browser, baseUrl, server, expect) {
  * page and search come from the same new version while the removed page is
  * gone offline. Worker update checks use no-cache headers.
  */
-async function runOfflineUpdate(browser, baseUrl, outDir, expect) {
+async function runOfflineUpdate(context, baseUrl, outDir, expect) {
   const { leafRoute, leafTitle, removedRoute } = expect
   const newTitle = `${leafTitle} Updated`
   const leafRel = `${leafRoute.replace(/^\//, "")}.html`
@@ -1805,11 +1555,11 @@ async function runOfflineUpdate(browser, baseUrl, outDir, expect) {
   assert.ok(fs.existsSync(removedAbs), `removal target exists: ${removedRel}`)
   const oldVersion = JSON.parse(fs.readFileSync(path.join(outDir, "offline.json"), "utf8")).version
 
-  const page = await browser.newPage()
+  const page = await context.newPage()
 
   try {
-    await page.setViewport({ width: 1280, height: 800 })
-    await page.goto(`${baseUrl}${leafRoute}`, { waitUntil: "networkidle0", timeout: 15000 })
+    await page.setViewportSize({ width: 1280, height: 800 })
+    await page.goto(`${baseUrl}${leafRoute}`, { waitUntil: "networkidle", timeout: 15000 })
 
     const beforeH1 = await page.evaluate(
       () => document.querySelector("article h1")?.textContent?.trim() || "",
@@ -1819,7 +1569,7 @@ async function runOfflineUpdate(browser, baseUrl, outDir, expect) {
 
     // Ready settles asynchronously after load (cache inspection); wait for
     // it rather than racing first paint.
-    await page.waitForFunction(() => !!document.querySelector(".reader-offline-ready"), {
+    await page.waitForFunction(() => !!document.querySelector(".reader-offline-ready"), null, {
       timeout: 20000,
     })
     assert.ok(
@@ -1876,7 +1626,7 @@ async function runOfflineUpdate(browser, baseUrl, outDir, expect) {
     // online/visibility check must find the update without a manual call to
     // ServiceWorkerRegistration.update() from the test.
     await page.evaluate(() => window.dispatchEvent(new Event("online")))
-    await page.waitForSelector(".reader-offline-reload", { visible: true, timeout: 90000 })
+    await page.waitForSelector(".reader-offline-reload", { state: "visible", timeout: 90000 })
 
     const prompt = await page.evaluate(
       () => document.querySelector(".reader-offline-reload")?.textContent?.trim() || "",
@@ -1892,7 +1642,7 @@ async function runOfflineUpdate(browser, baseUrl, outDir, expect) {
     assert.equal(duringH1, leafTitle, "session keeps the old publication until Reload")
 
     await Promise.all([
-      page.waitForNavigation({ waitUntil: "networkidle0", timeout: 30000 }),
+      page.waitForEvent("load", { timeout: 30000 }),
       page.evaluate(() => document.querySelector(".reader-offline-reload")?.click()),
     ])
 
@@ -1901,6 +1651,11 @@ async function runOfflineUpdate(browser, baseUrl, outDir, expect) {
     )
 
     assert.equal(afterH1, newTitle, "Reload serves the updated page")
+    // Ready settles asynchronously after the reload (cache inspection);
+    // wait for it rather than racing first paint.
+    await page.waitForFunction(() => !!document.querySelector(".reader-offline-ready"), null, {
+      timeout: 20000,
+    })
     assert.ok(
       await page.evaluate(() => !!document.querySelector(".reader-offline-ready")),
       "updated copy stays Ready",
@@ -1908,7 +1663,7 @@ async function runOfflineUpdate(browser, baseUrl, outDir, expect) {
 
     // Offline after Reload: updated page and search use the new version;
     // the removed page is no longer available offline.
-    await page.setOfflineMode(true)
+    await page.context().setOffline(true)
     await page.goto(`${baseUrl}${leafRoute}`, { waitUntil: "domcontentloaded", timeout: 15000 })
     assert.equal(
       await page.evaluate(() => document.querySelector("article h1")?.textContent?.trim() || ""),
@@ -1962,11 +1717,11 @@ async function runOfflineUpdate(browser, baseUrl, outDir, expect) {
     // Observable reader behavior in an isolated probe page (keeps this
     // page's JS context intact for the search check below): offline
     // navigation to the removed page must not serve the old publication.
-    const probe = await browser.newPage()
+    const probe = await context.newPage()
 
     try {
-      await probe.setViewport({ width: 1280, height: 800 })
-      await probe.setOfflineMode(true)
+      await probe.setViewportSize({ width: 1280, height: 800 })
+      await probe.context().setOffline(true)
       let removedServed = false
 
       try {
@@ -1986,14 +1741,17 @@ async function runOfflineUpdate(browser, baseUrl, outDir, expect) {
 
       assert.equal(removedServed, false, "removed page no longer opens offline")
     } finally {
-      await probe.setOfflineMode(false).catch(() => {})
+      await probe
+        .context()
+        .setOffline(false)
+        .catch(() => {})
       await probe.close()
     }
 
     await pressShortcut(page, "Control")
     await dialogOpen(page)
     await setSearchQuery(page, leafTitle)
-    await page.waitForSelector(".reader-search-result", { visible: true, timeout: 15000 })
+    await page.waitForSelector(".reader-search-result", { state: "visible", timeout: 15000 })
 
     const updateHits = await page.evaluate(() =>
       Array.from(document.querySelectorAll(".reader-search-result")).map((a) => ({
@@ -2009,7 +1767,10 @@ async function runOfflineUpdate(browser, baseUrl, outDir, expect) {
     await page.keyboard.press("Escape")
     await dialogClosed(page)
   } finally {
-    await page.setOfflineMode(false).catch(() => {})
+    await page
+      .context()
+      .setOffline(false)
+      .catch(() => {})
     await page.close()
   }
 }
@@ -2024,16 +1785,16 @@ async function runOfflineUpdate(browser, baseUrl, outDir, expect) {
  * Save restores Ready. A simulated storage eviction (precache deleted,
  * worker left) must also clear Ready on the next visit.
  */
-async function runOfflineRemove(browser, baseUrl, expect) {
+async function runOfflineRemove(context, baseUrl, expect) {
   const { leafRoute } = expect
   const leafHtml = leafRoute === "/" ? "/index.html" : `${leafRoute}.html`
-  const page = await browser.newPage()
+  const page = await context.newPage()
 
   try {
-    await page.setViewport({ width: 1280, height: 800 })
-    await page.goto(`${baseUrl}/`, { waitUntil: "networkidle0", timeout: 15000 })
-    await page.waitForSelector(".reader-offline-ready", { visible: true, timeout: 15000 })
-    await page.waitForSelector(".reader-offline-remove", { visible: true, timeout: 15000 })
+    await page.setViewportSize({ width: 1280, height: 800 })
+    await page.goto(`${baseUrl}/`, { waitUntil: "networkidle", timeout: 15000 })
+    await page.waitForSelector(".reader-offline-ready", { state: "visible", timeout: 15000 })
+    await page.waitForSelector(".reader-offline-remove", { state: "visible", timeout: 15000 })
 
     await page.evaluate(async () => {
       try {
@@ -2078,7 +1839,7 @@ async function runOfflineRemove(browser, baseUrl, expect) {
       }
     })
     await page.evaluate(() => document.querySelector(".reader-offline-remove")?.click())
-    await page.waitForSelector(".reader-offline-remove-error", { visible: true, timeout: 15000 })
+    await page.waitForSelector(".reader-offline-remove-error", { state: "visible", timeout: 15000 })
     assert.ok(
       await page.evaluate(async () =>
         (await caches.keys()).some((name) => name.includes("-precache-")),
@@ -2097,7 +1858,7 @@ async function runOfflineRemove(browser, baseUrl, expect) {
       caches.delete = async () => false
     })
     await page.evaluate(() => document.querySelector(".reader-offline-remove")?.click())
-    await page.waitForSelector(".reader-offline-remove-error", { visible: true, timeout: 15000 })
+    await page.waitForSelector(".reader-offline-remove-error", { state: "visible", timeout: 15000 })
     assert.equal(
       await page.evaluate(() => !!document.querySelector(".reader-offline-save")),
       false,
@@ -2109,7 +1870,7 @@ async function runOfflineRemove(browser, baseUrl, expect) {
     })
 
     await page.evaluate(() => document.querySelector(".reader-offline-remove")?.click())
-    await page.waitForSelector(".reader-offline-save", { visible: true, timeout: 15000 })
+    await page.waitForSelector(".reader-offline-save", { state: "visible", timeout: 15000 })
     assert.equal(
       await page.evaluate(() => !!document.querySelector(".reader-offline-ready")),
       false,
@@ -2162,8 +1923,8 @@ async function runOfflineRemove(browser, baseUrl, expect) {
     assert.equal(stillCached, false, "removed page leaves no precache entry")
 
     // Later online visit: explicit Save stays, but no silent whole-site fetch.
-    await page.goto(`${baseUrl}/`, { waitUntil: "networkidle0", timeout: 15000 })
-    await page.waitForSelector(".reader-offline-save", { visible: true, timeout: 15000 })
+    await page.goto(`${baseUrl}/`, { waitUntil: "networkidle", timeout: 15000 })
+    await page.waitForSelector(".reader-offline-save", { state: "visible", timeout: 15000 })
     assert.equal(
       await page.evaluate(() => !!document.querySelector(".reader-offline-ready")),
       false,
@@ -2195,9 +1956,9 @@ async function runOfflineRemove(browser, baseUrl, expect) {
 
     // Explicit re-save restores the offline copy with no rebuild.
     await page.evaluate(() => document.querySelector(".reader-offline-save")?.click())
-    await page.waitForSelector(".reader-offline-progress", { visible: true, timeout: 15000 })
-    await page.waitForSelector(".reader-offline-ready", { visible: true, timeout: 90000 })
-    await page.waitForSelector(".reader-offline-remove", { visible: true, timeout: 15000 })
+    await page.waitForSelector(".reader-offline-progress", { state: "visible", timeout: 15000 })
+    await page.waitForSelector(".reader-offline-ready", { state: "visible", timeout: 90000 })
+    await page.waitForSelector(".reader-offline-remove", { state: "visible", timeout: 15000 })
 
     const resaved = await page.evaluate(async () => {
       let hasReg = false
@@ -2220,14 +1981,14 @@ async function runOfflineRemove(browser, baseUrl, expect) {
     assert.ok(resaved.hasReg, "explicit re-save registers the worker again")
     assert.ok(resaved.precacheCount > 0, "explicit re-save restores the precache")
 
-    await page.setOfflineMode(true)
+    await page.context().setOffline(true)
     await page.goto(`${baseUrl}${leafRoute}`, { waitUntil: "domcontentloaded", timeout: 15000 })
     assert.ok(
       (await page.evaluate(() => document.querySelector("article h1")?.textContent?.trim() || ""))
         .length > 0,
       "re-saved page opens offline",
     )
-    await page.setOfflineMode(false)
+    await page.context().setOffline(false)
 
     // Simulated browser storage eviction: precache gone, worker left.
     // The next online visit must not keep a stale Ready label.
@@ -2241,9 +2002,9 @@ async function runOfflineRemove(browser, baseUrl, expect) {
         )
       } catch {}
     })
-    await page.goto(`${baseUrl}/`, { waitUntil: "networkidle0", timeout: 15000 })
+    await page.goto(`${baseUrl}/`, { waitUntil: "networkidle", timeout: 15000 })
     await page.waitForSelector(".reader-offline-save, .reader-offline-retry", {
-      visible: true,
+      state: "visible",
       timeout: 15000,
     })
     assert.equal(
@@ -2258,7 +2019,10 @@ async function runOfflineRemove(browser, baseUrl, expect) {
       } catch {}
     })
   } finally {
-    await page.setOfflineMode(false).catch(() => {})
+    await page
+      .context()
+      .setOffline(false)
+      .catch(() => {})
     await page.close()
   }
 }
@@ -2273,7 +2037,7 @@ async function runOfflineRemove(browser, baseUrl, expect) {
  * save; the head bootstrap restores the explicit choice without a flash.
  */
 async function runOfflineAppearancePlacement(page, baseUrl) {
-  await page.goto(`${baseUrl}/`, { waitUntil: "networkidle0", timeout: 15000 })
+  await page.goto(`${baseUrl}/`, { waitUntil: "networkidle", timeout: 15000 })
 
   assert.equal(
     await page.evaluate(() => !!document.querySelector(".reader-footer")),
@@ -2377,7 +2141,7 @@ async function runOfflineAppearancePlacement(page, baseUrl) {
 
     buttons.find((button) => (button.textContent || "").includes("Dark"))?.click()
   })
-  await page.waitForFunction(() => document.documentElement.classList.contains("dark"), {
+  await page.waitForFunction(() => document.documentElement.classList.contains("dark"), null, {
     timeout: 5000,
   })
   assert.equal(
@@ -2404,7 +2168,7 @@ async function runOfflineAppearancePlacement(page, baseUrl) {
   assert.equal(afterAppearance.hasReg, false, "choosing appearance does not register a worker")
   assert.equal(afterAppearance.count, 0, "choosing appearance does not download")
 
-  await page.reload({ waitUntil: "networkidle0", timeout: 15000 })
+  await page.reload({ waitUntil: "networkidle", timeout: 15000 })
   assert.ok(
     await page.evaluate(() => document.documentElement.classList.contains("dark")),
     "reload restores Dark without a flash",
@@ -2431,12 +2195,14 @@ async function runOfflineAppearancePlacement(page, baseUrl) {
   await page.waitForFunction(
     () =>
       document.querySelector('[data-slot="sidebar"]')?.getAttribute("data-state") === "collapsed",
+    null,
     { timeout: 5000 },
   )
   await page.evaluate(() => document.querySelector('[data-slot="sidebar-trigger"]')?.click())
   await page.waitForFunction(
     () =>
       document.querySelector('[data-slot="sidebar"]')?.getAttribute("data-state") === "expanded",
+    null,
     { timeout: 5000 },
   )
 
@@ -2481,9 +2247,7 @@ test("synthetic browse journey covers home → folder → nested note → Back",
   await stageKb(kb, contentDir, identityFile)
   const metadata = JSON.parse(fs.readFileSync(identityFile, "utf8"))
   const journey = deriveJourney(contentDir, metadata)
-  fs.rmSync(path.join(READER_ROOT, ".source"), { recursive: true, force: true })
-  fs.rmSync(path.join(READER_ROOT, ".next"), { recursive: true, force: true })
-  fs.rmSync(path.join(READER_ROOT, "out"), { recursive: true, force: true })
+  cleanReaderArtifacts()
   await buildReader(contentDir, identityFile)
   const outDir = path.join(READER_ROOT, "out")
 
@@ -2497,11 +2261,12 @@ test("synthetic browse journey covers home → folder → nested note → Back",
 
   const { server, baseUrl } = await serveOut(outDir)
   const browser = await launchBrowser()
+  const context = await createDesktopContext(browser)
   const folderChildren = expectedFolderChildren(contentDir, journey.folderEntry.path)
 
   try {
-    const treePage = await browser.newPage()
-    await treePage.setViewport({ width: 1280, height: 800 })
+    const treePage = await context.newPage()
+    await treePage.setViewportSize({ width: 1280, height: 800 })
     await runTreeBehavior(treePage, baseUrl, {
       folderTitle: journey.folderTitle,
       folderRoute: journey.folderRoute,
@@ -2514,8 +2279,8 @@ test("synthetic browse journey covers home → folder → nested note → Back",
       longRoute: `/notes/${LONG_SLUG}`,
     })
     await treePage.close()
-    const page = await browser.newPage()
-    await page.setViewport({ width: 1280, height: 800 })
+    const page = await context.newPage()
+    await page.setViewportSize({ width: 1280, height: 800 })
     await runJourney(page, baseUrl, {
       areas: journey.areas,
       areaRoutes: metadata.navigation.map((entry) => rootRoute(entry)),
@@ -2525,7 +2290,7 @@ test("synthetic browse journey covers home → folder → nested note → Back",
       leafRoute: journey.leafRoute,
     })
     await page.goto(`${baseUrl}${journey.leafRoute}`, {
-      waitUntil: "networkidle0",
+      waitUntil: "networkidle",
       timeout: 15000,
     })
 
@@ -2536,7 +2301,7 @@ test("synthetic browse journey covers home → folder → nested note → Back",
     }))
 
     // Direct routes render; the rich guide page proves tables and externals.
-    await page.goto(`${baseUrl}/notes/guide`, { waitUntil: "networkidle0", timeout: 15000 })
+    await page.goto(`${baseUrl}/notes/guide`, { waitUntil: "networkidle", timeout: 15000 })
 
     const rich = await page.evaluate(() => ({
       table: !!document.querySelector("article table"),
@@ -2547,21 +2312,21 @@ test("synthetic browse journey covers home → folder → nested note → Back",
     assert.ok(rich.external, "direct rich note renders external links")
     assert.ok(direct.h1.length > 0, "direct note route renders a title")
     await page.close()
-    const searchPage = await browser.newPage()
-    await searchPage.setViewport({ width: 1280, height: 800 })
+    const searchPage = await context.newPage()
+    await searchPage.setViewportSize({ width: 1280, height: 800 })
     await runSearchDialog(searchPage, baseUrl, {
       leafTitle: journey.leafTitle,
       leafRoute: journey.leafRoute,
     })
     await searchPage.close()
-    await runSearchIndexLoading(browser, baseUrl)
-    await runSearchIndexFailure(browser, baseUrl)
-    const placementPage = await browser.newPage()
-    await placementPage.setViewport({ width: 1280, height: 800 })
+    await runSearchIndexLoading(context, baseUrl)
+    await runSearchIndexFailure(context, baseUrl)
+    const placementPage = await context.newPage()
+    await placementPage.setViewportSize({ width: 1280, height: 800 })
     await runOfflineAppearancePlacement(placementPage, baseUrl)
     await placementPage.close()
     const offlineProbes = deriveOfflineProbes(contentDir, metadata, journey)
-    await runOfflineSave(browser, baseUrl, server, {
+    await runOfflineSave(context, baseUrl, server, {
       offlineFolderRoute: offlineProbes.offlineFolderRoute,
       offlineFolderTitle: offlineProbes.offlineFolderTitle,
       offlineLeafRoute: offlineProbes.offlineLeafRoute,
@@ -2571,17 +2336,17 @@ test("synthetic browse journey covers home → folder → nested note → Back",
           ? "/index.html"
           : `${offlineProbes.offlineLeafRoute}.html`,
     })
-    await runOfflineUpdate(browser, baseUrl, outDir, {
+    await runOfflineUpdate(context, baseUrl, outDir, {
       leafRoute: journey.leafRoute,
       leafTitle: journey.leafTitle,
       removedRoute: "/orchard/note-12",
     })
-    await runOfflineRemove(browser, baseUrl, {
+    await runOfflineRemove(context, baseUrl, {
       leafRoute: journey.leafRoute,
     })
   } finally {
     await browser.close()
-    server.close()
+    await closeServer(server)
   }
 })
 
@@ -2604,9 +2369,7 @@ test("generic real browse journey covers home → folder → nested note", async
   await stageKb(path.resolve(kbRoot), contentDir, identityFile)
   const metadata = JSON.parse(fs.readFileSync(identityFile, "utf8"))
   const journey = deriveJourney(contentDir, metadata)
-  fs.rmSync(path.join(READER_ROOT, ".source"), { recursive: true, force: true })
-  fs.rmSync(path.join(READER_ROOT, ".next"), { recursive: true, force: true })
-  fs.rmSync(path.join(READER_ROOT, "out"), { recursive: true, force: true })
+  cleanReaderArtifacts()
   await buildReader(contentDir, identityFile)
   const outDir = path.join(READER_ROOT, "out")
 
@@ -2620,10 +2383,11 @@ test("generic real browse journey covers home → folder → nested note", async
 
   const { server, baseUrl } = await serveOut(outDir)
   const browser = await launchBrowser()
+  const context = await createDesktopContext(browser)
 
   try {
-    const page = await browser.newPage()
-    await page.setViewport({ width: 1280, height: 800 })
+    const page = await context.newPage()
+    await page.setViewportSize({ width: 1280, height: 800 })
     await runJourney(page, baseUrl, {
       areas: journey.areas,
       areaRoutes: metadata.navigation.map((entry) => rootRoute(entry)),
@@ -2635,6 +2399,6 @@ test("generic real browse journey covers home → folder → nested note", async
     await page.close()
   } finally {
     await browser.close()
-    server.close()
+    await closeServer(server)
   }
 })

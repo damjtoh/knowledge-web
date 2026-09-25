@@ -32,127 +32,28 @@
 import assert from "node:assert/strict"
 import { execFile } from "node:child_process"
 import fs from "node:fs"
-import http from "node:http"
-import os from "node:os"
 import path from "node:path"
 import { promisify } from "node:util"
-import { test, after } from "node:test"
+import { test } from "node:test"
+import {
+  PUBLISHER_ROOT,
+  READER_ROOT,
+  buildReader,
+  cleanReaderArtifacts,
+  closeServer,
+  installReaderCleanup,
+  launchBrowser,
+  serveOut,
+  stageKb,
+  tmpdir,
+  withDesktopPage,
+  withPhonePage,
+} from "./helpers/reader-env.mjs"
+import { UNSELECTED_SENTINEL, writeSyntheticKb } from "./fixtures/synthetic-kb.mjs"
 
 const execFileAsync = promisify(execFile)
 
-const PUBLISHER_ROOT = path.resolve(import.meta.dirname, "..")
-
-const READER_ROOT = path.join(PUBLISHER_ROOT, "reader")
-
-const STAGE_SCRIPT = path.join(PUBLISHER_ROOT, "scripts", "stage-content.mjs")
-
-const tmpRoots = []
-
-function tmpdir(prefix) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `knowledge-phone-${prefix}-`))
-  tmpRoots.push(dir)
-
-  return dir
-}
-
-after(() => {
-  for (const dir of [".source", ".next", "out"]) {
-    fs.rmSync(path.join(READER_ROOT, dir), { recursive: true, force: true })
-  }
-
-  for (const dir of tmpRoots) fs.rmSync(dir, { recursive: true, force: true })
-})
-
-function findChrome() {
-  const candidates =
-    process.platform === "darwin"
-      ? ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"]
-      : ["/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser"]
-
-  for (const candidate of candidates) {
-    try {
-      if (fs.existsSync(candidate)) return candidate
-    } catch {}
-  }
-
-  if (process.env.CHROME_PATH && fs.existsSync(process.env.CHROME_PATH)) {
-    return process.env.CHROME_PATH
-  }
-
-  return null
-}
-
-/** Minimal nginx-style static server: try $uri, then $uri.html. */
-function createStaticServer(dir) {
-  const mime = {
-    ".html": "text/html",
-    ".css": "text/css",
-    ".js": "text/javascript",
-    ".json": "application/json",
-    ".txt": "text/plain",
-  }
-
-  return http.createServer((req, res) => {
-    try {
-      const urlPath = decodeURIComponent((req.url || "/").split("?")[0])
-      const base = path.join(dir, urlPath === "/" ? "index.html" : urlPath)
-      const candidates = [base, `${base}.html`, path.join(base, "index.html")]
-
-      const filePath = candidates.find(
-        (candidate) => fs.existsSync(candidate) && fs.statSync(candidate).isFile(),
-      )
-
-      if (!filePath) {
-        res.writeHead(404)
-        res.end("not found")
-
-        return
-      }
-
-      res.writeHead(200, {
-        "Content-Type": mime[path.extname(filePath).toLowerCase()] || "application/octet-stream",
-      })
-      fs.createReadStream(filePath).pipe(res)
-    } catch (error) {
-      res.writeHead(500)
-      res.end(String(error))
-    }
-  })
-}
-
-async function stageKb(kbRoot, contentDir, identityFile) {
-  await execFileAsync(
-    process.execPath,
-    [
-      STAGE_SCRIPT,
-      "--kb-root",
-      kbRoot,
-      "--content-dir",
-      contentDir,
-      "--identity-file",
-      identityFile,
-    ],
-    { cwd: PUBLISHER_ROOT, timeout: 120000 },
-  )
-}
-
-async function buildReader(contentDir, identityFile) {
-  await execFileAsync("pnpm", ["run", "build"], {
-    cwd: READER_ROOT,
-    timeout: 600000,
-    env: {
-      ...process.env,
-      READER_CONTENT_DIR: contentDir,
-      READER_SITE_METADATA_FILE: identityFile,
-    },
-  })
-}
-
-function writeFile(root, rel, content) {
-  const abs = path.join(root, rel)
-  fs.mkdirSync(path.dirname(abs), { recursive: true })
-  fs.writeFileSync(abs, content)
-}
+installReaderCleanup()
 
 function humanizeSegment(seg) {
   const spaced = seg.replace(/[-_]+/g, " ").trim()
@@ -246,102 +147,16 @@ function countTopLevelH1s(absPath) {
   return count
 }
 
-const LONG_TITLE =
-  "An extremely long packing checklist title that keeps going SupercalifragilisticexpialidociousSupercalifragilisticexpialidocious"
-
-const LONG_SLUG = "long-packing-checklist-title-that-keeps-going-for-wrapping-probes"
-
-const PHONE_SENTINEL = "PHONE_FIXTURE_UNSELECTED_4K8M"
-
-/** Neutral synthetic vault with overflow probes (long titles, wide tables, code, images). */
+/**
+ * Canonical synthetic Knowledge Base for the phone journey.
+ *
+ * Written by the shared fixture; staging stays with the harness so the
+ * journey derives every expectation from staged content and metadata.
+ */
 function makePhoneKb() {
   const kb = tmpdir("kb-phone")
-  writeFile(
-    kb,
-    "index.md",
-    [
-      "---",
-      'title: "Garden Home"',
-      "---",
-      "",
-      "# Garden Home",
-      "",
-      "Welcome to the neutral phone garden.",
-      "",
-    ].join("\n"),
-  )
-  writeFile(
-    kb,
-    "garden/index.md",
-    "# Garden Plots\n\nCultivated beds with an authored introduction.\n",
-  )
-  writeFile(kb, "garden/alpha.md", "# Alpha Bed\n\nFirst bed.\n")
-  writeFile(kb, "garden/beta.md", "# Beta Bed\n\nSecond bed.\n")
-  writeFile(
-    kb,
-    "notes/guide.md",
-    [
-      "---",
-      'title: "Field Guide"',
-      "---",
-      "",
-      "# Ignored H1",
-      "",
-      "Stay in the meadow. See [[Garden Plots]] for the area and [[Missing Page]] for later.",
-      "",
-      "| Day | Morning | Midday | Afternoon | Evening | Night | Cost | Notes |",
-      "|---|---|---|---|---|---|---|---|",
-      "| One | Kayak on the lake | Lunch in town | Trek to the viewpoint | Dinner | Sleep | 85 € | Long day |",
-      "",
-      "```js",
-      "const veryLongLineForPhoneOverflowChecks = 'abcdefghijklmnopqrstuvwxyz-abcdefghijklmnopqrstuvwxyz-1234567890-1234567890';",
-      "```",
-      "",
-      "![Meadow view](https://example.com/photos/very-wide-panoramic-meadow-view.jpg)",
-      "",
-      "Book via [Example](https://example.com/field-guide).",
-      "",
-    ].join("\n"),
-  )
-  writeFile(
-    kb,
-    "notes/plain.md",
-    "# Plain Meadow\n\nJust a body.\n\n## Details\n\nSection content.\n",
-  )
-  writeFile(kb, "notes/nest/inner/leaf.md", "# Inner Leaf\n\nDeep nested note.\n")
-  writeFile(kb, `notes/${LONG_SLUG}.md`, `# ${LONG_TITLE}\n\nPack light.\n`)
 
-  for (let i = 1; i <= 12; i++) {
-    const n = String(i).padStart(2, "0")
-    writeFile(kb, `orchard/note-${n}.md`, `# Orchard Note ${n}\n\nFlat orchard note ${n}.\n`)
-  }
-
-  writeFile(kb, "standalone.md", "# Lone Pine\n\nStandalone file.\n")
-  writeFile(kb, "assets/photo.png", "not-a-real-png")
-  writeFile(kb, "unselected.md", `# Unselected\n\n${PHONE_SENTINEL} must never appear.\n`)
-  writeFile(
-    kb,
-    "publication.manifest.yaml",
-    [
-      "title: Phone Garden",
-      "canonicalHostname: phone.example.com",
-      "select:",
-      "  - index.md",
-      "  - garden",
-      "  - notes",
-      "  - orchard",
-      "  - standalone.md",
-      "  - assets",
-      "navigation:",
-      "  - standalone.md",
-      "  - orchard",
-      "  - notes",
-      "  - garden",
-      "",
-    ].join("\n"),
-  )
-
-  return kb
+  return writeSyntheticKb(kb)
 }
 
 function routeForStagedMarkdown(rel) {
@@ -464,44 +279,8 @@ function deriveJourney(contentDir, metadata) {
   return { areas, folderEntry, folderTitle, folderRoute, leafRel, leafTitle, leafRoute }
 }
 
-async function launchBrowser() {
-  const chromePath = findChrome()
-  let puppeteer
-
-  try {
-    puppeteer = await import("puppeteer-core")
-  } catch (error) {
-    assert.fail(`puppeteer-core not available: ${error.message}`)
-  }
-
-  const browser = await puppeteer
-    .launch({
-      executablePath: chromePath || undefined,
-      headless: "new",
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-gpu",
-        "--disable-dev-shm-usage",
-      ],
-    })
-    .catch((error) => {
-      assert.fail(`Failed to launch Chrome: ${error.message}`)
-    })
-
-  return browser
-}
-
-async function serveOut(outDir) {
-  const server = createStaticServer(outDir)
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve))
-  const addr = server.address()
-
-  return { server, baseUrl: `http://${addr.address}:${addr.port}` }
-}
-
 async function goto(page, url) {
-  await page.goto(url, { waitUntil: "networkidle0", timeout: 15000 })
+  await page.goto(url, { waitUntil: "networkidle", timeout: 15000 })
 }
 
 async function isVisible(page, selector) {
@@ -642,8 +421,8 @@ async function ensureTreeOpen(page, route) {
 
         return button && button.getAttribute("aria-expanded") === "true"
       },
-      { timeout: 5000 },
       route,
+      { timeout: 5000 },
     )
   }
 }
@@ -654,9 +433,10 @@ async function openBrowse(page) {
   })
   await page.waitForFunction(
     () => document.querySelector(".reader-chrome")?.getAttribute("data-browse") === "open",
+    null,
     { timeout: 5000 },
   )
-  await page.waitForSelector("#reader-browse-panel", { visible: true, timeout: 5000 })
+  await page.waitForSelector("#reader-browse-panel", { state: "visible", timeout: 5000 })
 }
 
 async function closeBrowseViaClose(page) {
@@ -665,11 +445,12 @@ async function closeBrowseViaClose(page) {
   })
   await page.waitForFunction(
     () => document.querySelector(".reader-chrome")?.getAttribute("data-browse") === "closed",
+    null,
     { timeout: 5000 },
   )
   // The Sheet exit transition keeps the panel visible briefly; wait for
   // it to hide before asserting dismissal.
-  await page.waitForSelector("#reader-browse-panel", { hidden: true, timeout: 5000 })
+  await page.waitForSelector("#reader-browse-panel", { state: "hidden", timeout: 5000 })
 }
 
 /** Phone drawer fills the usable viewport, respects safe areas, and scrolls the tree independently. */
@@ -867,7 +648,10 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
 
   assert.ok(folderHref, `${label}: home links the folder from staged content`)
   await Promise.all([
-    page.waitForNavigation({ waitUntil: "networkidle0", timeout: 15000 }),
+    page.waitForURL((url) => url.href.includes(folderHref), {
+      waitUntil: "networkidle",
+      timeout: 15000,
+    }),
     page.evaluate((href) => {
       document.querySelector(`.reader-area-list a[href="${href}"]`)?.click()
     }, folderHref),
@@ -931,7 +715,10 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
   }
 
   await Promise.all([
-    page.waitForNavigation({ waitUntil: "networkidle0", timeout: 15000 }),
+    page.waitForURL((url) => url.href.includes(expect.leafRoute), {
+      waitUntil: "networkidle",
+      timeout: 15000,
+    }),
     page.evaluate((route) => {
       const scope = document.querySelector("#reader-browse-panel .reader-sidebar-nav") || document
       scope.querySelector(`a[href="${route}"]`)?.click()
@@ -943,6 +730,7 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
   )
   await page.waitForFunction(
     () => document.querySelector(".reader-chrome")?.getAttribute("data-browse") === "closed",
+    null,
     { timeout: 5000 },
   )
   assert.equal(
@@ -984,31 +772,34 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
   const crumbHref = note.crumbs.length > 1 ? note.crumbs[1].href : null
   assert.ok(crumbHref, `${label}: breadcrumbs link a parent`)
   await Promise.all([
-    page.waitForNavigation({ waitUntil: "networkidle0", timeout: 15000 }),
+    page.waitForFunction(
+      (href) => window.location.pathname === href || window.location.pathname === `${href}/`,
+      crumbHref,
+      { timeout: 15000 },
+    ),
     page.evaluate((href) => {
       document.querySelector(`.reader-breadcrumbs a[href="${href}"]`)?.click()
     }, crumbHref),
   ])
+  await page.waitForLoadState("networkidle", { timeout: 15000 })
   // Timing-only stabilization: history traversals between static pages
   // can resolve while already idle, so each Back awaits its observable
   // route before the next traversal. Same three traversals, same expected
   // URLs, no fixed sleeps.
-  await page.goBack({ waitUntil: "networkidle0", timeout: 15000 })
-  await page.waitForFunction(
-    (route) => window.location.href.includes(route),
-    { timeout: 15000 },
-    expect.leafRoute,
-  )
+  await page.goBack({ waitUntil: "networkidle", timeout: 15000 })
+  await page.waitForFunction((route) => window.location.href.includes(route), expect.leafRoute, {
+    timeout: 15000,
+  })
   assert.ok(page.url().includes(expect.leafRoute), `${label}: Back returns to the note`)
-  await page.goBack({ waitUntil: "networkidle0", timeout: 15000 })
+  await page.goBack({ waitUntil: "networkidle", timeout: 15000 })
   await page.waitForFunction(
     (route) => window.location.pathname === route || window.location.pathname === `${route}/`,
-    { timeout: 15000 },
     expect.folderRoute,
+    { timeout: 15000 },
   )
   assert.ok(page.url().includes(expect.folderRoute), `${label}: Back returns to the folder`)
-  await page.goBack({ waitUntil: "networkidle0", timeout: 15000 })
-  await page.waitForFunction(() => window.location.href.endsWith("/"), { timeout: 15000 })
+  await page.goBack({ waitUntil: "networkidle", timeout: 15000 })
+  await page.waitForFunction(() => window.location.href.endsWith("/"), null, { timeout: 15000 })
   assert.match(page.url(), /\/$/, `${label}: Back returns home without a parallel stack`)
 }
 
@@ -1250,9 +1041,10 @@ async function runKeyboardChecks(page, baseUrl, label) {
   await page.keyboard.press("Enter")
   await page.waitForFunction(
     () => document.querySelector(".reader-chrome")?.getAttribute("data-browse") === "open",
+    null,
     { timeout: 5000 },
   )
-  await page.waitForSelector("#reader-browse-panel", { visible: true, timeout: 5000 })
+  await page.waitForSelector("#reader-browse-panel", { state: "visible", timeout: 5000 })
   assert.equal(
     await isVisible(page, "#reader-browse-panel"),
     true,
@@ -1261,6 +1053,7 @@ async function runKeyboardChecks(page, baseUrl, label) {
   await page.keyboard.press("Escape")
   await page.waitForFunction(
     () => document.querySelector(".reader-chrome")?.getAttribute("data-browse") === "closed",
+    null,
     { timeout: 5000 },
   )
   const returned = await page.evaluate(() => document.activeElement?.className || "")
@@ -1424,9 +1217,7 @@ async function buildAndServe(kbRoot) {
   await stageKb(kbRoot, contentDir, identityFile)
   const metadata = JSON.parse(fs.readFileSync(identityFile, "utf8"))
   const journey = deriveJourney(contentDir, metadata)
-  fs.rmSync(path.join(READER_ROOT, ".source"), { recursive: true, force: true })
-  fs.rmSync(path.join(READER_ROOT, ".next"), { recursive: true, force: true })
-  fs.rmSync(path.join(READER_ROOT, "out"), { recursive: true, force: true })
+  cleanReaderArtifacts()
   await buildReader(contentDir, identityFile)
   const outDir = path.join(READER_ROOT, "out")
 
@@ -1443,34 +1234,18 @@ async function buildAndServe(kbRoot) {
   return { server, baseUrl, outDir, work, contentDir, metadata, journey }
 }
 
-const NARROW_PHONE = { width: 360, height: 800, isMobile: true, hasTouch: true }
-
-const LARGER_PHONE = { width: 414, height: 896, isMobile: true, hasTouch: true }
-
-const DESKTOP = { width: 1280, height: 800 }
-
-async function withPage(browser, viewport, fn) {
-  const page = await browser.newPage()
-
-  try {
-    await page.setViewport(viewport)
-    await fn(page)
-  } finally {
-    await page.close()
-  }
-}
-
 /** Wait until the Search dialog is open with its input focused. */
 async function searchDialogOpen(page) {
-  await page.waitForSelector('[data-slot="dialog-content"]', { visible: true, timeout: 5000 })
+  await page.waitForSelector('[data-slot="dialog-content"]', { state: "visible", timeout: 5000 })
   await page.waitForFunction(
     () => document.activeElement && document.activeElement.id === "reader-search-input",
+    null,
     { timeout: 5000 },
   )
 }
 
 async function searchDialogClosed(page) {
-  await page.waitForFunction(() => !document.querySelector('[data-slot="dialog-content"]'), {
+  await page.waitForFunction(() => !document.querySelector('[data-slot="dialog-content"]'), null, {
     timeout: 5000,
   })
 }
@@ -1530,11 +1305,12 @@ async function runPhoneSearchDialog(page, baseUrl, expect, label) {
   await setPhoneSearchQuery(page, "zzz-no-such-note-qqq9")
   await page.waitForFunction(
     () => document.querySelector(".reader-search-status")?.textContent?.includes("No results"),
+    null,
     { timeout: 10000 },
   )
 
   await setPhoneSearchQuery(page, expect.leafTitle)
-  await page.waitForSelector(".reader-search-result", { visible: true, timeout: 10000 })
+  await page.waitForSelector(".reader-search-result", { state: "visible", timeout: 10000 })
 
   const results = await page.evaluate(() =>
     Array.from(document.querySelectorAll(".reader-search-result")).map((a) => ({
@@ -1585,7 +1361,10 @@ async function runPhoneSearchDialog(page, baseUrl, expect, label) {
   }
 
   await Promise.all([
-    page.waitForNavigation({ waitUntil: "networkidle0", timeout: 15000 }),
+    page.waitForURL((url) => url.href.includes(firstHref), {
+      waitUntil: "networkidle",
+      timeout: 15000,
+    }),
     page.keyboard.press("Enter"),
   ])
   assert.ok(page.url().includes(firstHref), `${label}: Enter opens the static route`)
@@ -1632,7 +1411,7 @@ async function runPhoneOfflinePlacement(page, baseUrl, label) {
     false,
     `${label}: old page footer does not duplicate shell controls`,
   )
-  await page.waitForSelector(".reader-offline-cue", { visible: true, timeout: 15000 })
+  await page.waitForSelector(".reader-offline-cue", { state: "visible", timeout: 15000 })
 
   const cue = await page.evaluate(() => {
     const el = document.querySelector(".reader-offline-cue")
@@ -1654,6 +1433,7 @@ async function runPhoneOfflinePlacement(page, baseUrl, label) {
   await page.waitForFunction(
     () =>
       document.querySelector(".reader-offline-cue")?.getAttribute("data-offline-state") === "idle",
+    null,
     { timeout: 20000 },
   )
   assert.match(
@@ -1789,7 +1569,7 @@ async function runPhoneOfflinePlacement(page, baseUrl, label) {
 
     buttons.find((button) => (button.textContent || "").includes("Dark"))?.click()
   })
-  await page.waitForFunction(() => document.documentElement.classList.contains("dark"), {
+  await page.waitForFunction(() => document.documentElement.classList.contains("dark"), null, {
     timeout: 5000,
   })
 
@@ -1846,28 +1626,28 @@ test("synthetic phone journey covers Browse, overflow, keyboard, and refresh", a
   }
 
   try {
-    await withPage(browser, NARROW_PHONE, async (page) => {
+    await withPhonePage(browser, "narrow", async (page) => {
       await runPhoneJourney(page, built.baseUrl, expect, "narrow phone")
     })
-    await withPage(browser, NARROW_PHONE, async (page) => {
+    await withPhonePage(browser, "narrow", async (page) => {
       await runDerivedOverflowProbes(page, built.baseUrl, built.contentDir, "narrow phone", {
         checkWiki: true,
         requireImage: true,
       })
     })
-    await withPage(browser, NARROW_PHONE, async (page) => {
+    await withPhonePage(browser, "narrow", async (page) => {
       await runKeyboardChecks(page, built.baseUrl, "narrow phone")
     })
-    await withPage(browser, NARROW_PHONE, async (page) => {
+    await withPhonePage(browser, "narrow", async (page) => {
       await runPhoneSearchDialog(page, built.baseUrl, expect, "narrow phone")
     })
-    await withPage(browser, NARROW_PHONE, async (page) => {
+    await withPhonePage(browser, "narrow", async (page) => {
       await runPhoneOfflinePlacement(page, built.baseUrl, "narrow phone")
     })
-    await withPage(browser, LARGER_PHONE, async (page) => {
+    await withPhonePage(browser, "large", async (page) => {
       await runPhoneJourney(page, built.baseUrl, expect, "larger phone")
     })
-    await withPage(browser, LARGER_PHONE, async (page) => {
+    await withPhonePage(browser, "large", async (page) => {
       await runDerivedOverflowProbes(page, built.baseUrl, built.contentDir, "larger phone", {
         checkWiki: true,
         requireImage: true,
@@ -1878,7 +1658,7 @@ test("synthetic phone journey covers Browse, overflow, keyboard, and refresh", a
         expect.leafTitle,
         "larger phone: direct nested URL renders",
       )
-      await page.reload({ waitUntil: "networkidle0", timeout: 15000 })
+      await page.reload({ waitUntil: "networkidle", timeout: 15000 })
       assert.equal(
         await page.evaluate(() => document.querySelector("article h1")?.textContent?.trim()),
         expect.leafTitle,
@@ -1886,13 +1666,13 @@ test("synthetic phone journey covers Browse, overflow, keyboard, and refresh", a
       )
       await assertNoPageOverflow(page, "larger phone refresh")
     })
-    await withPage(browser, DESKTOP, async (page) => {
+    await withDesktopPage(browser, async (page) => {
       await runDesktopChecks(page, built.baseUrl, expect, "desktop")
     })
-    await runOutputInspection(built.outDir, built.work, kb, PHONE_SENTINEL)
+    await runOutputInspection(built.outDir, built.work, kb, UNSELECTED_SENTINEL)
   } finally {
     await browser.close()
-    built.server.close()
+    await closeServer(built.server)
   }
 })
 
@@ -1921,27 +1701,27 @@ test("generic real phone journey covers Browse open/close and home to note", asy
   }
 
   try {
-    await withPage(browser, NARROW_PHONE, async (page) => {
+    await withPhonePage(browser, "narrow", async (page) => {
       await runPhoneJourney(page, built.baseUrl, expect, "real narrow phone")
     })
-    await withPage(browser, LARGER_PHONE, async (page) => {
+    await withPhonePage(browser, "large", async (page) => {
       await runDerivedOverflowProbes(page, built.baseUrl, built.contentDir, "real larger phone", {
         requireImage: false,
       })
       await goto(page, `${built.baseUrl}${expect.leafRoute}`)
-      await page.reload({ waitUntil: "networkidle0", timeout: 15000 })
+      await page.reload({ waitUntil: "networkidle", timeout: 15000 })
       assert.equal(
         await page.evaluate(() => document.querySelector("article h1")?.textContent?.trim()),
         expect.leafTitle,
         "real larger phone: refresh keeps the nested note",
       )
     })
-    await withPage(browser, DESKTOP, async (page) => {
+    await withDesktopPage(browser, async (page) => {
       await runDesktopChecks(page, built.baseUrl, expect, "real desktop")
     })
     await runOutputInspection(built.outDir, built.work, path.resolve(kbRoot), null)
   } finally {
     await browser.close()
-    built.server.close()
+    await closeServer(built.server)
   }
 })

@@ -35,6 +35,7 @@
     "@shadcn/lint": "0.2.0",
     "@types/node": "^25.0.10",
     "oxlint": "1.85.0",
+    "playwright": "1.63.0",
     "prettier": "^3.8.1",
     "puppeteer-core": "^25.12.0",
     "rehype-stringify": "^10.0.1",
