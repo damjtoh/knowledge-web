@@ -1,6 +1,7 @@
 "use client"
 
-import { Home, Search } from "lucide-react"
+import { usePathname } from "next/navigation"
+import { House, Search } from "lucide-react"
 import type { NavigationNode } from "../lib/navigation"
 import type { ProjectionDestination } from "../lib/site"
 import {
@@ -16,6 +17,7 @@ import {
   SidebarRail,
 } from "./ui/sidebar"
 import { ProjectionSwitcher } from "./projection-switcher"
+import { Kbd } from "./ui/kbd"
 import AppearanceControl from "./appearance-control"
 import OfflineSave from "./offline-save"
 import ReaderTree from "./sidebar"
@@ -46,30 +48,35 @@ export function AppSidebar({
   roots: NavigationNode[]
   onSearch: (origin: HTMLElement | null) => void
 }) {
+  const pathname = usePathname() ?? "/"
+  const isHome = pathname === "/"
+
   return (
     <Sidebar collapsible="offcanvas" {...props}>
-      <SidebarHeader>
+      <SidebarHeader className="gap-3 px-3 py-4">
         <ProjectionSwitcher current={title} destinations={destinations} />
-        <SidebarMenu>
+        <SidebarMenu className="gap-1">
           <SidebarMenuItem>
-            <SidebarMenuButton render={<a href="/" className="reader-sidebar-home" />}>
-              <Home aria-hidden="true" />
-              <span>Home</span>
+            <SidebarMenuButton
+              render={<a href="/" className="reader-sidebar-home" />}
+              isActive={isHome}
+              className="gap-2 rounded-md px-2.5 py-2"
+            >
+              <House aria-hidden="true" className="size-4 shrink-0 text-primary" />
+              <span className="text-sm font-medium text-primary">Home</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
-              className="reader-search-trigger reader-search-sidebar"
+              className="reader-search-trigger reader-search-sidebar gap-2 rounded-md px-2.5 py-2"
               onClick={(event) => {
                 // SAFETY: SidebarMenuButton renders a button here, so currentTarget is that button element.
                 onSearch(event.currentTarget as HTMLElement)
               }}
             >
-              <Search aria-hidden="true" />
-              <span>Search</span>
-              <kbd aria-hidden="true" className="ml-auto">
-                ⌘K
-              </kbd>
+              <Search aria-hidden="true" className="size-4 shrink-0 text-primary" />
+              <span className="text-sm font-medium text-primary">Search</span>
+              <Kbd className="ml-auto">⌘K</Kbd>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

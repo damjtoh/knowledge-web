@@ -83,7 +83,10 @@ const config: OxlintConfig = {
               // active cues must stay on the menu elements the browser
               // journeys query; wrappers would break
               // .reader-sidebar-nav > ul > li and active selectors.
-              { pattern: "^SidebarMenu$", allow: ["reader-tree", "reader-projection-switcher"] },
+              {
+                pattern: "^SidebarMenu$",
+                allow: ["reader-tree", "reader-projection-switcher", "gap-1"],
+              },
               { pattern: "^SidebarMenuSub$", allow: ["reader-tree-children"] },
               // Search and active hooks must live on the menu button itself;
               // a wrapper would break focus return and the 44px touch target.
@@ -95,8 +98,19 @@ const config: OxlintConfig = {
                   "reader-sidebar-home",
                   "reader-projection-trigger",
                   "is-active",
+                  "rounded-md",
+                  "px-2.5",
+                  "py-2",
+                  "gap-2",
                 ],
               },
+              // Desktop top chrome owns its header spacing from design.pen:
+              // the header keeps the switcher-to-menu gap and padding, and
+              // the Home/Search menu keeps its vertical gap.
+              { pattern: "^SidebarHeader$", allow: ["gap-3", "px-3", "py-4"] },
+              // Search kbd pill aligns to the row end; the Kbd primitive
+              // owns its own surface.
+              { pattern: "^Kbd$", allow: ["ml-auto"] },
               // Projection switcher trigger owns its hook through the
               // dropdown trigger render composition; the menu button has
               // no other wrapper that can own it.
