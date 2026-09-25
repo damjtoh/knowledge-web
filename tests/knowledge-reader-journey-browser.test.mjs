@@ -570,19 +570,21 @@ async function runJourney(page, baseUrl, expect) {
     }))
 
     // Top-level tree rows keep published root order (metadata order).
-    const roots = Array.from(document.querySelectorAll(".reader-sidebar-nav > ul > li")).map(
-      (li) => {
-        const row = li.querySelector(
-          ":scope > .reader-tree-collapsible > .reader-tree-row, :scope > .reader-tree-row",
-        )
+    const roots = Array.from(
+      document.querySelectorAll('[data-slot="sidebar"] .reader-sidebar-nav > ul > li'),
+    ).map((li) => {
+      const row = li.querySelector(
+        ":scope > .reader-tree-collapsible > .reader-tree-row, :scope > .reader-tree-row",
+      )
 
-        const a = row ? row.querySelector("a") : null
+      const a = row ? row.querySelector("a") : null
 
-        return a ? a.textContent?.trim() || "" : ""
-      },
+      return a ? a.textContent?.trim() || "" : ""
+    })
+
+    const leaf = document.querySelector(
+      `[data-slot="sidebar"] .reader-sidebar-nav a[href="${leafRoute}"]`,
     )
-
-    const leaf = document.querySelector(`.reader-sidebar-nav a[href="${leafRoute}"]`)
 
     return {
       title: document.title,
@@ -628,8 +630,9 @@ async function runJourney(page, baseUrl, expect) {
       h1s: Array.from(document.querySelectorAll("article h1")).map((h) => h.textContent?.trim()),
       groupHeadings: Array.from(groupNodes).map((h) => h.textContent?.trim()),
       sidebarCurrent:
-        document.querySelector('.reader-sidebar-nav a[aria-current="page"]')?.textContent?.trim() ||
-        null,
+        document
+          .querySelector('[data-slot="sidebar"] .reader-sidebar-nav a[aria-current="page"]')
+          ?.textContent?.trim() || null,
     }
   })
 
@@ -709,8 +712,9 @@ async function runJourney(page, baseUrl, expect) {
         href: li.querySelector("a")?.getAttribute("href") || null,
       })),
       sidebarCurrent:
-        document.querySelector('.reader-sidebar-nav a[aria-current="page"]')?.textContent?.trim() ||
-        null,
+        document
+          .querySelector('[data-slot="sidebar"] .reader-sidebar-nav a[aria-current="page"]')
+          ?.textContent?.trim() || null,
       folderMarked:
         !!folderLink &&
         (folderLink.getAttribute("aria-current") === "true" ||
@@ -749,7 +753,9 @@ async function runJourney(page, baseUrl, expect) {
 /** Direct children of one tree branch, in rendered order. */
 async function directTreeChildren(page, folderRoute) {
   return await page.evaluate((route) => {
-    const li = document.querySelector(`.reader-sidebar-nav li[data-tree-url="${route}"]`)
+    const li = document.querySelector(
+      `[data-slot="sidebar"] .reader-sidebar-nav li[data-tree-url="${route}"]`,
+    )
 
     if (!li) return null
     const panel = li.querySelector(":scope > .reader-tree-collapsible > .reader-tree-panel")
@@ -770,7 +776,9 @@ async function directTreeChildren(page, folderRoute) {
 
 async function disclosureState(page, folderRoute) {
   return await page.evaluate((route) => {
-    const li = document.querySelector(`.reader-sidebar-nav li[data-tree-url="${route}"]`)
+    const li = document.querySelector(
+      `[data-slot="sidebar"] .reader-sidebar-nav li[data-tree-url="${route}"]`,
+    )
 
     const button = li
       ? li.querySelector(
@@ -784,14 +792,19 @@ async function disclosureState(page, folderRoute) {
 
 async function setDisclosure(page, folderRoute, open) {
   await page.evaluate((route) => {
-    const li = document.querySelector(`.reader-sidebar-nav li[data-tree-url="${route}"]`)
+    const li = document.querySelector(
+      `[data-slot="sidebar"] .reader-sidebar-nav li[data-tree-url="${route}"]`,
+    )
+
     li?.querySelector(
       ":scope > .reader-tree-collapsible > .reader-tree-row > .reader-tree-toggle",
     )?.click()
   }, folderRoute)
   await page.waitForFunction(
     (route, want) => {
-      const li = document.querySelector(`.reader-sidebar-nav li[data-tree-url="${route}"]`)
+      const li = document.querySelector(
+        `[data-slot="sidebar"] .reader-sidebar-nav li[data-tree-url="${route}"]`,
+      )
 
       const button = li
         ? li.querySelector(
@@ -809,7 +822,9 @@ async function setDisclosure(page, folderRoute, open) {
 
 async function treeLinkVisible(page, href) {
   return await page.evaluate((target) => {
-    const a = document.querySelector(`.reader-sidebar-nav a[href="${target}"]`)
+    const a = document.querySelector(
+      `[data-slot="sidebar"] .reader-sidebar-nav a[href="${target}"]`,
+    )
 
     if (!a) return false
     const rect = a.getBoundingClientRect()
@@ -821,8 +836,9 @@ async function treeLinkVisible(page, href) {
 async function treeCurrent(page) {
   return await page.evaluate(
     () =>
-      document.querySelector('.reader-sidebar-nav a[aria-current="page"]')?.getAttribute("href") ||
-      null,
+      document
+        .querySelector('[data-slot="sidebar"] .reader-sidebar-nav a[aria-current="page"]')
+        ?.getAttribute("href") || null,
   )
 }
 
@@ -886,7 +902,9 @@ async function runTreeBehavior(page, baseUrl, expect) {
 
   // Folder link navigates; the disclosure only expands.
   const folderHref = await page.evaluate((route) => {
-    const li = document.querySelector(`.reader-sidebar-nav li[data-tree-url="${route}"]`)
+    const li = document.querySelector(
+      `[data-slot="sidebar"] .reader-sidebar-nav li[data-tree-url="${route}"]`,
+    )
 
     const row = li
       ? li.querySelector(
@@ -906,7 +924,9 @@ async function runTreeBehavior(page, baseUrl, expect) {
 
   // A second branch stays open alongside the first.
   const otherRoot = await page.evaluate((route) => {
-    const tops = Array.from(document.querySelectorAll(".reader-sidebar-nav > ul > li"))
+    const tops = Array.from(
+      document.querySelectorAll('[data-slot="sidebar"] .reader-sidebar-nav > ul > li'),
+    )
 
     for (const li of tops) {
       const url = li.getAttribute("data-tree-url") || ""
@@ -932,7 +952,9 @@ async function runTreeBehavior(page, baseUrl, expect) {
   await Promise.all([
     page.waitForNavigation({ waitUntil: "networkidle0", timeout: 15000 }),
     page.evaluate((route) => {
-      document.querySelector(`.reader-sidebar-nav a[href="${route}"]`)?.click()
+      document
+        .querySelector(`[data-slot="sidebar"] .reader-sidebar-nav a[href="${route}"]`)
+        ?.click()
     }, folderRoute),
   ])
   assert.ok(page.url().includes(folderRoute), "folder link opens its route")
@@ -967,7 +989,9 @@ async function runTreeBehavior(page, baseUrl, expect) {
   await Promise.all([
     page.waitForNavigation({ waitUntil: "networkidle0", timeout: 15000 }),
     page.evaluate((route) => {
-      document.querySelector(`.reader-sidebar-nav a[href="${route}"]`)?.click()
+      document
+        .querySelector(`[data-slot="sidebar"] .reader-sidebar-nav a[href="${route}"]`)
+        ?.click()
     }, otherRoot),
   ])
   assert.ok(page.url().includes(otherRoot), "second branch link opens its route")
@@ -1000,8 +1024,14 @@ async function runTreeBehavior(page, baseUrl, expect) {
   )
 
   const readability = await page.evaluate(() => {
-    const links = Array.from(document.querySelectorAll(".reader-sidebar-nav a"))
-    const toggles = Array.from(document.querySelectorAll(".reader-tree-toggle"))
+    const links = Array.from(
+      document.querySelectorAll('[data-slot="sidebar"] .reader-sidebar-nav a'),
+    )
+
+    const toggles = Array.from(
+      document.querySelectorAll('[data-slot="sidebar"] .reader-tree-toggle'),
+    )
+
     const widest = Math.max(0, ...links.map((a) => a.getBoundingClientRect().right))
 
     return {
@@ -1021,6 +1051,143 @@ async function runTreeBehavior(page, baseUrl, expect) {
   for (const height of readability.toggleHeights) {
     assert.ok(height >= 44, `tree disclosure is ${height}px (expected >= 44)`)
   }
+}
+
+/**
+ * Registry sidebar-11 shell: header composition, full collapse (offcanvas,
+ * not icon rail), restore with the same tree, readable article measure,
+ * keyboard operation, and long titles.
+ */
+async function runSidebarCollapse(page, baseUrl, expect) {
+  await page.goto(`${baseUrl}/`, { waitUntil: "networkidle0", timeout: 15000 })
+
+  const header = await page.evaluate(() => {
+    const sidebarHeader = document.querySelector('[data-slot="sidebar-header"]')
+    const trigger = document.querySelector('[data-slot="sidebar-trigger"]')
+    const sidebar = document.querySelector('[data-slot="sidebar"]')
+
+    const style = trigger ? getComputedStyle(trigger) : null
+    const rect = trigger ? trigger.getBoundingClientRect() : null
+
+    return {
+      brand: sidebarHeader?.textContent?.trim() || "",
+      hasHome:
+        !!sidebarHeader?.querySelector('a[href="/"]') &&
+        (sidebarHeader?.querySelector('a[href="/"]')?.textContent?.trim() || "").includes("Home"),
+      hasSearch:
+        !!sidebarHeader?.querySelector(".reader-search-sidebar") &&
+        (
+          sidebarHeader?.querySelector(".reader-search-sidebar")?.textContent?.trim() || ""
+        ).includes("Search"),
+      triggerVisible: !!trigger && style.display !== "none" && rect.width > 0 && rect.height > 0,
+      collapsible: sidebar?.getAttribute("data-collapsible") || "",
+      state: sidebar?.getAttribute("data-state") || "",
+    }
+  })
+
+  assert.ok(header.brand.includes(expect.projection), "sidebar header shows current projection")
+  assert.ok(header.hasHome, "sidebar header shows Home")
+  assert.ok(header.hasSearch, "sidebar header shows Search")
+  assert.ok(header.triggerVisible, "reading header shows the sidebar trigger")
+  assert.notEqual(header.collapsible, "icon", "sidebar never collapses to an icon rail")
+  assert.equal(header.state, "expanded", "sidebar starts expanded on desktop")
+
+  const before = await page.evaluate(() => ({
+    roots: Array.from(
+      document.querySelectorAll('[data-slot="sidebar"] .reader-sidebar-nav > ul > li'),
+    ).map(
+      (li) =>
+        li
+          .querySelector(
+            ":scope > .reader-tree-collapsible > .reader-tree-row a, :scope > .reader-tree-row a",
+          )
+          ?.textContent?.trim() || "",
+    ),
+    insetWidth:
+      document.querySelector('[data-slot="sidebar-inset"]')?.getBoundingClientRect().width || 0,
+    articleMax: getComputedStyle(document.querySelector("article") || document.body).maxWidth,
+  }))
+
+  // Collapse fully via the registry trigger; the article gains room while
+  // staying within its readable measure. The gap animates (200ms), so wait
+  // for it to settle near zero before measuring.
+  await page.evaluate(() => document.querySelector('[data-slot="sidebar-trigger"]')?.click())
+  await page.waitForFunction(
+    () =>
+      document.querySelector('[data-slot="sidebar"]')?.getAttribute("data-state") === "collapsed",
+    { timeout: 5000 },
+  )
+  await page.waitForFunction(
+    () =>
+      (document.querySelector('[data-slot="sidebar-gap"]')?.getBoundingClientRect().width || 0) <=
+      1,
+    { timeout: 5000 },
+  )
+
+  const collapsed = await page.evaluate(() => ({
+    state: document.querySelector('[data-slot="sidebar"]')?.getAttribute("data-state") || "",
+    collapsible:
+      document.querySelector('[data-slot="sidebar"]')?.getAttribute("data-collapsible") || "",
+    gapWidth:
+      document.querySelector('[data-slot="sidebar-gap"]')?.getBoundingClientRect().width || 0,
+    insetWidth:
+      document.querySelector('[data-slot="sidebar-inset"]')?.getBoundingClientRect().width || 0,
+  }))
+
+  assert.equal(collapsed.state, "collapsed", "trigger collapses the sidebar")
+  assert.equal(collapsed.collapsible, "offcanvas", "collapse is offcanvas, not an icon rail")
+  assert.ok(collapsed.gapWidth <= 1, `collapsed gap is ${collapsed.gapWidth}px (expected ~0)`)
+  assert.ok(
+    collapsed.insetWidth >= before.insetWidth - 1,
+    "collapsed inset keeps at least the same reading room",
+  )
+
+  // Keyboard: focus the trigger and toggle with Enter, then restore.
+  await page.evaluate(() => document.querySelector('[data-slot="sidebar-trigger"]')?.focus())
+  assert.equal(
+    await page.evaluate(() => document.activeElement?.getAttribute("data-slot") || ""),
+    "sidebar-trigger",
+    "keyboard reaches the sidebar trigger",
+  )
+  await page.keyboard.press("Enter")
+  await page.waitForFunction(
+    () =>
+      document.querySelector('[data-slot="sidebar"]')?.getAttribute("data-state") === "expanded",
+    { timeout: 5000 },
+  )
+
+  const after = await page.evaluate(() => ({
+    roots: Array.from(
+      document.querySelectorAll('[data-slot="sidebar"] .reader-sidebar-nav > ul > li'),
+    ).map(
+      (li) =>
+        li
+          .querySelector(
+            ":scope > .reader-tree-collapsible > .reader-tree-row a, :scope > .reader-tree-row a",
+          )
+          ?.textContent?.trim() || "",
+    ),
+    articleMax: getComputedStyle(document.querySelector("article") || document.body).maxWidth,
+  }))
+
+  assert.deepEqual(after.roots, before.roots, "restoring exposes the same tree")
+  assert.ok(after.articleMax.length > 0, "article keeps a readable measure after restore")
+
+  // Long titles stay readable in the registry tree.
+  const longReadable = await page.evaluate((route) => {
+    const a = document.querySelector(`[data-slot="sidebar"] .reader-sidebar-nav a[href="${route}"]`)
+
+    if (!a) return null
+    const rect = a.getBoundingClientRect()
+
+    return { text: a.textContent?.trim() || "", right: rect.right, inner: window.innerWidth }
+  }, expect.longRoute)
+
+  assert.ok(longReadable, "long title renders in the tree")
+  assert.ok(
+    longReadable.right <= longReadable.inner + 1,
+    "long title stays inside the desktop viewport",
+  )
 }
 
 /** Wait until the Search dialog is open with its input focused. */
@@ -1513,7 +1680,8 @@ async function runOfflineSave(browser, baseUrl, server, expect) {
     assert.equal(folderH1, expect.offlineFolderTitle, "unvisited folder opens offline")
 
     const treeHasLeaf = await offline.evaluate(
-      (route) => !!document.querySelector(`.reader-sidebar-nav a[href="${route}"]`),
+      (route) =>
+        !!document.querySelector(`[data-slot="sidebar"] .reader-sidebar-nav a[href="${route}"]`),
       expect.offlineLeafRoute,
     )
 
@@ -1534,6 +1702,9 @@ async function runOfflineSave(browser, baseUrl, server, expect) {
       "unvisited page opens offline by extensionless URL",
     )
 
+    // Focus stays in the page before the shortcut: the offline leaf loads
+    // with domcontentloaded and focus may not have settled into the page yet.
+    await offline.evaluate(() => document.querySelector(".reader-search-header")?.focus())
     await pressShortcut(offline, "Control")
     await dialogOpen(offline)
     await setSearchQuery(offline, expect.offlineLeafTitle)
@@ -1596,6 +1767,12 @@ async function runOfflineUpdate(browser, baseUrl, outDir, expect) {
     )
 
     assert.equal(beforeH1, leafTitle, "update starts from the saved publication")
+
+    // Ready settles asynchronously after load (cache inspection); wait for
+    // it rather than racing first paint.
+    await page.waitForFunction(() => !!document.querySelector(".reader-offline-ready"), {
+      timeout: 20000,
+    })
     assert.ok(
       await page.evaluate(() => !!document.querySelector(".reader-offline-ready")),
       "saved copy is Ready before the update",
@@ -2076,6 +2253,10 @@ test("synthetic browse journey covers home → folder → nested note → Back",
       leafTitle: journey.leafTitle,
       leafRoute: journey.leafRoute,
       folderChildren,
+    })
+    await runSidebarCollapse(treePage, baseUrl, {
+      projection: metadata.title,
+      longRoute: `/notes/${LONG_SLUG}`,
     })
     await treePage.close()
     const page = await browser.newPage()

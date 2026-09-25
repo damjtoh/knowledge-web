@@ -11,3 +11,4 @@
 - [ ] An authored Home introduction stays above the cards. A synthetic Home keeps its fallback introduction without duplicating a generated list.
 - [ ] A root pointing at Home does not create a self-link card. Long titles and mixed note/folder roots work at desktop and phone widths.
 - [ ] All cards link only to published routes. Static-export and browser journeys verify ordering, authored/synthetic Home, a Home root, responsive layout, and real navigation.
+- [ ] Home cards use shadcn registry components where needed and preserve bespoke article typography. Block sample data is not product data.

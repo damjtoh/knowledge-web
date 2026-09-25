@@ -5,7 +5,10 @@ import { usePathname } from "next/navigation"
 import AppearanceControl from "./appearance-control"
 import OfflineSave from "./offline-save"
 import SearchDialog, { SEARCH_INPUT_ID } from "./search-dialog"
-import Sidebar from "./sidebar"
+import ReaderTree from "./sidebar"
+import { AppSidebar } from "./app-sidebar"
+import { Separator } from "./ui/separator"
+import { SidebarInset, SidebarProvider, SidebarTrigger } from "./ui/sidebar"
 import type { NavigationNode } from "../lib/navigation"
 
 function normalize(path: string | null): string {
@@ -15,15 +18,22 @@ function normalize(path: string | null): string {
 }
 
 /**
- * Reader shell: site header with phone-only Search and Browse controls, the
- * published folder-and-note tree (persistent on desktop with its own Search
- * control, collapsible panel on phones), the reading column, and the footer.
+ * Reader shell adapted from registry sidebar-11.
  *
- * There is one navigation model: the same generic tree feeds desktop and
- * phone. The toggle keeps no URL or history state, so browser Back always
- * moves through real page history. There is one Search dialog: both trigger
- * controls and Command+K/Control+K share its open state, and closing it
- * returns focus to the control that had focus before it opened.
+ * The desktop sidebar is the registry Sidebar (offcanvas, fully hidden,
+ * no icon rail) with a SidebarHeader (current Web Projection, Home,
+ * Search) and SidebarContent (published tree). The reading inset holds a
+ * header with the registry SidebarTrigger, the reading column, and the
+ * footer. Block sample data is not used: shell structure only.
+ *
+ * There is one navigation model: the same generic tree feeds the desktop
+ * Sidebar and the transitional phone Browse panel. The Browse toggle keeps
+ * no URL or history state, so browser Back always moves through real page
+ * history. Hiding the desktop sidebar keeps the same mounted tree, so
+ * restoring exposes identical branches. There is one Search dialog: all
+ * trigger controls and Command+K/Control+K share its open state, and
+ * closing it returns focus to the control that had focus before it
+ * opened.
  */
 export default function ReaderChrome({
   title,
@@ -108,50 +118,49 @@ export default function ReaderChrome({
       className="reader-chrome min-h-screen antialiased"
       data-browse={browseOpen ? "open" : "closed"}
     >
-      <header className="reader-header">
-        <a className="reader-home" href="/">
-          {title}
-        </a>
-        <div className="reader-header-actions">
-          <AppearanceControl />
-          <button
-            type="button"
-            className="reader-search-trigger reader-search-header"
-            onClick={(event) => openSearch(event.currentTarget)}
-          >
-            Search
-          </button>
-          <button
-            ref={toggleRef}
-            type="button"
-            className="reader-browse-toggle shrink-0"
-            aria-expanded={browseOpen}
-            aria-controls="reader-browse-panel"
-            onClick={() => setBrowseOpen((open) => !open)}
-          >
-            Browse
-          </button>
-        </div>
-      </header>
-      <div className="reader-shell">
-        <aside id="reader-browse-panel" className="reader-sidebar rounded-lg">
-          <button
-            type="button"
-            className="reader-search-trigger reader-search-sidebar"
-            onClick={(event) => openSearch(event.currentTarget)}
-          >
-            <span>Search</span>
-            <kbd aria-hidden="true">⌘K</kbd>
-          </button>
-          <Sidebar roots={roots} />
-        </aside>
-        <main className="reader-main">{children}</main>
-      </div>
-      <SearchDialog open={searchOpen} onOpenChange={handleSearchOpenChange} />
-      <footer className="reader-footer">
-        <span>{title}</span>
-        <OfflineSave />
-      </footer>
+      <SidebarProvider>
+        <AppSidebar title={title} roots={roots} onSearch={openSearch} />
+        <SidebarInset>
+          <header className="reader-header">
+            <SidebarTrigger className="-ml-1 max-md:hidden" />
+            <Separator orientation="vertical" className="mr-2 hidden md:block" />
+            <a className="reader-home" href="/">
+              {title}
+            </a>
+            <div className="reader-header-actions">
+              <AppearanceControl />
+              <button
+                type="button"
+                className="reader-search-trigger reader-search-header"
+                onClick={(event) => openSearch(event.currentTarget)}
+              >
+                Search
+              </button>
+              <button
+                ref={toggleRef}
+                type="button"
+                className="reader-browse-toggle shrink-0"
+                aria-expanded={browseOpen}
+                aria-controls="reader-browse-panel"
+                onClick={() => setBrowseOpen((open) => !open)}
+              >
+                Browse
+              </button>
+            </div>
+          </header>
+          <div className="reader-shell">
+            <aside id="reader-browse-panel" className="reader-sidebar rounded-lg">
+              <ReaderTree roots={roots} />
+            </aside>
+            <div className="reader-main">{children}</div>
+          </div>
+          <SearchDialog open={searchOpen} onOpenChange={handleSearchOpenChange} />
+          <footer className="reader-footer">
+            <span>{title}</span>
+            <OfflineSave />
+          </footer>
+        </SidebarInset>
+      </SidebarProvider>
     </div>
   )
 }

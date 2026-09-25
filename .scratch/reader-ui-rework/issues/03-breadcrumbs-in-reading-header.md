@@ -11,3 +11,4 @@
 - [ ] Long titles and deep paths do not cause horizontal overflow or obscure the current page on a phone; the path remains keyboard accessible and understandable.
 - [ ] Normal links and browser Back behave as before, including for published routes outside the visible tree.
 - [ ] Synthetic static-export browser journeys verify direct loads, nested parent navigation, phone widths, and long paths without relying only on CSS class structure.
+- [ ] The reading header uses the registry-installed SidebarTrigger/Separator/Breadcrumb composition from sidebar-11 for the trigger and route trail. Block sample data is not product data.

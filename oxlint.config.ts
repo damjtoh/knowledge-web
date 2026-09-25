@@ -68,6 +68,30 @@ const config: OxlintConfig = {
               // Touch-target sizing must live on the button itself, same as
               // the tree toggle above.
               { pattern: "^Button$", allow: ["reader-appearance-option"] },
+              // Registry sidebar-11 tree hooks: published root order and
+              // active cues must stay on the menu elements the browser
+              // journeys query; wrappers would break
+              // .reader-sidebar-nav > ul > li and active selectors.
+              { pattern: "^SidebarMenu$", allow: ["reader-tree"] },
+              { pattern: "^SidebarMenuSub$", allow: ["reader-tree-children"] },
+              // Search and active hooks must live on the menu button itself;
+              // a wrapper would break focus return and the 44px touch target.
+              {
+                pattern: "^SidebarMenuButton$",
+                allow: [
+                  "reader-search-trigger",
+                  "reader-search-sidebar",
+                  "reader-sidebar-home",
+                  "is-active",
+                ],
+              },
+              // Registry shell layout: trigger offset and mobile visibility
+              // must stay on the trigger itself; the header has no wrapper
+              // that can own them without breaking the sample header row.
+              { pattern: "^SidebarTrigger$", allow: ["-ml-1", "max-md:hidden"] },
+              // Separator spacing and responsive visibility must stay on the
+              // separator; it renders no wrapper DOM.
+              { pattern: "^Separator$", allow: ["mr-2", "hidden", "md:block"] },
             ],
           },
         ],
@@ -78,7 +102,15 @@ const config: OxlintConfig = {
         // allow-listed by exact name so no other unknown class passes.
         "shadcn/no-unknown-classes": [
           "error",
-          { allow: ["reader-tree-panel", "reader-offline-remove-error"] },
+          {
+            allow: [
+              "reader-tree-panel",
+              "reader-offline-remove-error",
+              "reader-tree-label",
+              "reader-sidebar-home",
+              "reader-sidebar-brand",
+            ],
+          },
         ],
         "shadcn/require-static-classes": "error",
       },

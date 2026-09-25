@@ -579,7 +579,13 @@ async function assertLandmarks(page, label, { breadcrumb = true } = {}) {
 /** Top-level tree roots in rendered order (published root order). */
 async function browseRoots(page) {
   return await page.evaluate(() => {
-    return Array.from(document.querySelectorAll(".reader-sidebar-nav > ul > li")).map((li) => {
+    const scope =
+      document.querySelector("#reader-browse-panel .reader-sidebar-nav") ||
+      document.querySelector(".reader-sidebar-nav")
+
+    if (!scope) return []
+
+    return Array.from(scope.querySelectorAll(":scope > ul > li")).map((li) => {
       const row = li.querySelector(
         ":scope > .reader-tree-collapsible > .reader-tree-row, :scope > .reader-tree-row",
       )
@@ -596,7 +602,8 @@ async function browseRoots(page) {
 
 async function treeDisclosure(page, route) {
   return await page.evaluate((target) => {
-    const li = document.querySelector(`.reader-sidebar-nav li[data-tree-url="${target}"]`)
+    const scope = document.querySelector("#reader-browse-panel .reader-sidebar-nav") || document
+    const li = scope.querySelector(`li[data-tree-url="${target}"]`)
 
     const button = li
       ? li.querySelector(
@@ -614,14 +621,16 @@ async function ensureTreeOpen(page, route) {
   if (state !== "true") {
     assert.equal(state, "false", `tree branch ${route} has a disclosure control`)
     await page.evaluate((target) => {
-      const li = document.querySelector(`.reader-sidebar-nav li[data-tree-url="${target}"]`)
+      const scope = document.querySelector("#reader-browse-panel .reader-sidebar-nav") || document
+      const li = scope.querySelector(`li[data-tree-url="${target}"]`)
       li?.querySelector(
         ":scope > .reader-tree-collapsible > .reader-tree-row > .reader-tree-toggle",
       )?.click()
     }, route)
     await page.waitForFunction(
       (target) => {
-        const li = document.querySelector(`.reader-sidebar-nav li[data-tree-url="${target}"]`)
+        const scope = document.querySelector("#reader-browse-panel .reader-sidebar-nav") || document
+        const li = scope.querySelector(`li[data-tree-url="${target}"]`)
 
         const button = li
           ? li.querySelector(
@@ -714,7 +723,8 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
 
   // The phone tree carries the nested note with its static route.
   const leafInTree = await page.evaluate((route) => {
-    const a = document.querySelector(`.reader-sidebar-nav a[href="${route}"]`)
+    const scope = document.querySelector("#reader-browse-panel .reader-sidebar-nav") || document
+    const a = scope.querySelector(`a[href="${route}"]`)
 
     return a ? a.textContent?.trim() || "" : null
   }, expect.leafRoute)
@@ -723,8 +733,14 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
 
   // Deep branches and long titles stay readable while browsing.
   const panelReadable = await page.evaluate(() => {
-    const links = Array.from(document.querySelectorAll(".reader-sidebar-nav a"))
-    const toggles = Array.from(document.querySelectorAll(".reader-tree-toggle"))
+    const scope = document.querySelector("#reader-browse-panel .reader-sidebar-nav") || document
+    const links = Array.from(scope.querySelectorAll("a"))
+
+    const toggles = Array.from(
+      (document.querySelector("#reader-browse-panel") || document).querySelectorAll(
+        ".reader-tree-toggle",
+      ),
+    )
 
     return {
       widest: Math.max(0, ...links.map((a) => a.getBoundingClientRect().right)),
@@ -755,7 +771,8 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
   await Promise.all([
     page.waitForNavigation({ waitUntil: "networkidle0", timeout: 15000 }),
     page.evaluate((route) => {
-      document.querySelector(`.reader-sidebar-nav a[href="${route}"]`)?.click()
+      const scope = document.querySelector("#reader-browse-panel .reader-sidebar-nav") || document
+      scope.querySelector(`a[href="${route}"]`)?.click()
     }, expect.leafRoute),
   ])
   assert.ok(
@@ -1074,10 +1091,14 @@ async function runKeyboardChecks(page, baseUrl, label) {
   )
 }
 
-/** Desktop keeps the persistent sidebar and hides the Browse control. */
+/** Desktop keeps the persistent registry sidebar and hides the Browse control. */
 async function runDesktopChecks(page, baseUrl, expect, label) {
   await goto(page, `${baseUrl}/`)
-  assert.equal(await isVisible(page, ".reader-sidebar"), true, `${label}: sidebar stays visible`)
+  assert.equal(
+    await isVisible(page, '[data-slot="sidebar"]'),
+    true,
+    `${label}: registry sidebar stays visible`,
+  )
   assert.equal(
     await isVisible(page, ".reader-browse-toggle"),
     false,
@@ -1163,6 +1184,7 @@ async function runOutputInspection(outDir, workDir, kbRoot, sentinel) {
     "cn",
     "fumadocs-core",
     "fumadocs-mdx",
+    "lucide-react",
     "minisearch",
     "next",
     "react",

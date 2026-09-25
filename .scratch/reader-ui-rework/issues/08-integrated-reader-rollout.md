@@ -11,3 +11,4 @@
 - [ ] The reader remains a static read-only Web Projection with Allowlist enforcement, no runtime content API, per-origin installs/caches, and unchanged Cloudflare Access protection.
 - [ ] Pin a reviewed Publisher revision in Damian's consumer and verify authenticated live browsing, Save/offline restart, update/reload, and removal before updating another consumer.
 - [ ] When Shared's owner has opted in, pin and verify Shared independently. Do not change other Web Projections as a side effect or claim an unverified live workflow passed.
+- [ ] The integrated rollout verifies the registry-installed sidebar-11 shell with no block sample data shipped as product data.

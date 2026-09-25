@@ -12,3 +12,4 @@
 - [ ] Selecting a destination follows a normal link to its separate origin; no local content switch, shared offline state, shared install identity, or Access bypass is implied.
 - [ ] Personal and Shared are the initial consumer opt-ins; the generic Publisher does not hard-code their hostnames. A one-projection fixture stays valid.
 - [ ] Focused publication-contract checks and a synthetic static-export browser journey verify absent/valid/invalid configuration, rendered choices, target URLs, and keyboard operation. Update the publication contract documentation with the optional field.
+- [ ] The projection switcher uses shadcn registry components for shell controls where needed. Block sample data is not product data.

@@ -12,3 +12,4 @@
 - [ ] Remove offline copy is a clearly named, explicit action. No drawer or appearance interaction triggers a save or changes an unrelated origin's cache.
 - [ ] The existing explicit full-projection save, Workbox integrity, ready/update checks, reload, and scoped removal behavior remain unchanged; saving stays possible on any connection.
 - [ ] Browser journeys cover user-visible offline states and actions in both layouts, plus restored appearance without a light/dark flash. Retain the full save/offline/update/remove regression journey.
+- [ ] Offline and appearance placement uses shadcn registry components for shell controls. Preserve bespoke article typography and needed responsive styling; do not hand-write sidebar/drawer primitives. Block sample data is not product data.

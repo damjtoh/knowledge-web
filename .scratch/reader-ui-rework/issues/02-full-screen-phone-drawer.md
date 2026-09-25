@@ -12,3 +12,4 @@
 - [ ] Selecting a page closes the drawer and opens the correct static URL; browser Back and refresh preserve real page history without adding drawer state to it.
 - [ ] The drawer uses the same tree and Search dialog as desktop. Search stays accessible from the reading header while the drawer is closed, with the existing shortcut and focus behavior.
 - [ ] Phone browser journeys cover touch-size controls, keyboard dismissal, focus return, deep navigation, overflow, and a narrow viewport; desktop navigation remains unaffected.
+- [ ] The phone drawer reuses the registry-installed sidebar-11 tree composition and shadcn registry drawer primitives where needed. Preserve bespoke article typography and needed responsive styling; do not hand-write a CSS drawer. Block sample data is not product data.
