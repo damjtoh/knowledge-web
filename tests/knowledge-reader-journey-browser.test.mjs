@@ -124,14 +124,17 @@ function createStaticServer(dir) {
         return
       }
 
-      res.writeHead(200, {
+      const headers = {
         "Content-Type": mime[path.extname(filePath).toLowerCase()] || "application/octet-stream",
-        // Mirror the deployed worker cache headers so update checks see a
-        // new publication instead of a cached worker.
-        ...(filePath.endsWith("sw.js") || filePath.endsWith("offline.json")
-          ? { "Cache-Control": "no-cache" }
-          : {}),
-      })
+      }
+
+      // Mirror the deployed worker cache headers so update checks see a
+      // new publication instead of a cached worker.
+      if (filePath.endsWith("sw.js") || filePath.endsWith("offline.json")) {
+        headers["Cache-Control"] = "no-cache"
+      }
+
+      res.writeHead(200, headers)
       fs.createReadStream(filePath).pipe(res)
     } catch (error) {
       res.writeHead(500)

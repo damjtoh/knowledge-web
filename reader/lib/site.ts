@@ -9,6 +9,17 @@ export interface SiteMetadata {
   navigation: PublishedRoot[]
 }
 
+/** JSON value owned by the generated site-identity file. */
+type SiteJson = string | number | boolean | null | SiteJson[] | { [key: string]: SiteJson }
+
+function isString(value: unknown): value is string {
+  return String(value) === value
+}
+
+function isSiteRecord(value: unknown): value is Record<string, SiteJson> {
+  return value !== null && Object(value) === value && !(value instanceof Function)
+}
+
 /**
  * Generated site metadata emitted by staging (`site-identity.json`).
  *
@@ -24,19 +35,19 @@ export function getSiteMetadata(): SiteMetadata {
   // package root). import.meta.dirname is unavailable inside bundled server
   // chunks, so it must not be used here.
   const file = path.isAbsolute(configured) ? configured : path.resolve(process.cwd(), configured)
-  const parsed = JSON.parse(fs.readFileSync(file, "utf8")) as unknown
+  const parsed: unknown = JSON.parse(fs.readFileSync(file, "utf8"))
 
-  if (typeof parsed !== "object" || parsed === null) {
+  if (!isSiteRecord(parsed)) {
     throw new Error(`site metadata at ${file} must be a JSON object`)
   }
 
-  const record = parsed as Record<string, unknown>
+  const record = parsed
 
-  if (typeof record.title !== "string" || record.title.trim() === "") {
+  if (!isString(record.title) || record.title.trim() === "") {
     throw new Error(`site metadata at ${file} has no title`)
   }
 
-  if (typeof record.canonicalHostname !== "string" || record.canonicalHostname.trim() === "") {
+  if (!isString(record.canonicalHostname) || record.canonicalHostname.trim() === "") {
     throw new Error(`site metadata at ${file} has no canonicalHostname`)
   }
 
@@ -47,13 +58,13 @@ export function getSiteMetadata(): SiteMetadata {
   const navigation: PublishedRoot[] = []
 
   for (const entry of record.navigation) {
-    if (typeof entry !== "object" || entry === null) {
+    if (!isSiteRecord(entry)) {
       throw new Error(`site metadata at ${file} has an invalid navigation entry`)
     }
 
-    const { path: entryPath, kind } = entry as Record<string, unknown>
+    const { path: entryPath, kind } = entry
 
-    if (typeof entryPath !== "string" || entryPath.trim() === "") {
+    if (!isString(entryPath) || entryPath.trim() === "") {
       throw new Error(`site metadata at ${file} has a navigation entry with no path`)
     }
 
@@ -65,8 +76,8 @@ export function getSiteMetadata(): SiteMetadata {
   }
 
   return {
-    title: (record.title as string).trim(),
-    canonicalHostname: (record.canonicalHostname as string).trim(),
+    title: record.title.trim(),
+    canonicalHostname: record.canonicalHostname.trim(),
     navigation,
   }
 }

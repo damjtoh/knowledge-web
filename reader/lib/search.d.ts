@@ -7,6 +7,8 @@
  * Search dialog will consume.
  */
 
+import type MiniSearch from "minisearch"
+
 export interface StructuredSegment {
   content: string
   heading?: string
@@ -36,12 +38,16 @@ export interface SearchHit {
   excerpt: string
 }
 
+/** JSON value owned by the serialized MiniSearch payload. */
+export type SearchIndexJson =
+  string | number | boolean | null | SearchIndexJson[] | { [key: string]: SearchIndexJson }
+
 /** Serializable index data as produced by `buildSearchIndex`. */
-export type SearchIndexData = Record<string, unknown>
+export type SearchIndexData = Record<string, SearchIndexJson>
 
 /** Opaque reconstructed index; pass it back to `searchNotes`. */
-export type SearchIndex = object
+export type SearchIndex = MiniSearch
 
 export function buildSearchIndex(pages: SearchPageInput[]): SearchIndexData
-export function loadSearchIndex(data: unknown): SearchIndex
+export function loadSearchIndex(data: string | SearchIndexData): SearchIndex
 export function searchNotes(index: SearchIndex, query: string, limit?: number): SearchHit[]

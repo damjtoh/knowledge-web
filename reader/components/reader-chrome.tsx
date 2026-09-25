@@ -134,10 +134,7 @@ export default function ReaderChrome({
         </div>
       </header>
       <div className="reader-shell">
-        <aside
-          id="reader-browse-panel"
-          className="reader-sidebar rounded-lg"
-        >
+        <aside id="reader-browse-panel" className="reader-sidebar rounded-lg">
           <button
             type="button"
             className="reader-search-trigger reader-search-sidebar"

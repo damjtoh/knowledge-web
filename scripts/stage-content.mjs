@@ -111,7 +111,7 @@ function isInside(rootReal, candidateReal) {
  * directory, and any path that could escape the Knowledge Base root.
  */
 function normalizeSelection(raw) {
-  if (typeof raw !== "string" || raw.trim() === "") {
+  if (String(raw) !== raw || raw.trim() === "") {
     fail("every allowlist entry must be a non-empty string")
 
     return null
@@ -186,7 +186,12 @@ function readManifest(manifestPath, yaml) {
     return null
   }
 
-  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+  if (
+    parsed === null ||
+    Object(parsed) !== parsed ||
+    parsed instanceof Function ||
+    Array.isArray(parsed)
+  ) {
     fail(`Publication Manifest at ${manifestPath} must be a YAML mapping`)
 
     return null
@@ -198,11 +203,11 @@ function readManifest(manifestPath, yaml) {
 function validateManifest(manifest, kbRootReal) {
   const { title, canonicalHostname, select } = manifest
 
-  if (typeof title !== "string" || title.trim() === "") {
+  if (String(title) !== title || title.trim() === "") {
     fail('manifest requires a site title (top-level "title")')
   }
 
-  if (typeof canonicalHostname !== "string" || canonicalHostname.trim() === "") {
+  if (String(canonicalHostname) !== canonicalHostname || canonicalHostname.trim() === "") {
     fail('manifest requires a canonical hostname (top-level "canonicalHostname")')
   } else if (
     !HOSTNAME_RE.test(canonicalHostname) ||
@@ -281,7 +286,7 @@ function validateManifest(manifest, kbRootReal) {
  * that could escape the Knowledge Base root.
  */
 function normalizeNavigationEntry(raw) {
-  if (typeof raw !== "string" || raw.trim() === "") {
+  if (String(raw) !== raw || raw.trim() === "") {
     fail("every navigation entry must be a non-empty string")
 
     return null

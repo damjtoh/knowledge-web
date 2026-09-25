@@ -164,7 +164,7 @@ export function buildSearchIndex(pages) {
  * a string only, so objects round-trip through `JSON.stringify` first.
  */
 export function loadSearchIndex(data) {
-  const json = typeof data === "string" ? data : JSON.stringify(data)
+  const json = String(data) === data ? data : JSON.stringify(data)
 
   return MiniSearch.loadJSON(json, miniOptions())
 }

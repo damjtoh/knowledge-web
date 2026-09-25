@@ -87,25 +87,6 @@ function expectedHtmlForStagedMarkdown(rel) {
   return `${posix.replace(/\.md$/i, "")}.html`
 }
 
-function routeForStagedMarkdown(rel) {
-  const posix = rel.split(path.sep).join("/")
-
-  if (/^index\.md$/i.test(posix)) return "/"
-  let route = `/${posix.replace(/\.md$/i, "")}`
-
-  if (route.endsWith("/index")) route = route.slice(0, -"/index".length)
-
-  return route || "/"
-}
-
-function humanizeSegment(seg) {
-  const spaced = seg.replace(/[-_]+/g, " ").trim()
-
-  if (spaced === "") return seg
-
-  return spaced.charAt(0).toUpperCase() + spaced.slice(1)
-}
-
 function writeFile(root, rel, content) {
   const abs = path.join(root, rel)
   fs.mkdirSync(path.dirname(abs), { recursive: true })
@@ -431,7 +412,7 @@ function stripSearchMarks(value) {
  */
 function deriveVirtualHtmls(contentDir, navigationRoots = []) {
   const dirRoots = navigationRoots
-    .filter((entry) => entry && entry.kind === "directory" && typeof entry.path === "string")
+    .filter((entry) => entry && entry.kind === "directory" && String(entry.path) === entry.path)
     .map((entry) => entry.path.split(path.sep).join("/"))
 
   const isEligible = (dir) => dirRoots.some((root) => dir === root || dir.startsWith(`${root}/`))
@@ -731,7 +712,7 @@ test("neutral synthetic corpus builds a complete static export with authored and
 
   for (const icon of webManifest.icons) {
     assert.ok(
-      typeof icon.src === "string" && icon.src.startsWith("/"),
+      String(icon.src) === icon.src && icon.src.startsWith("/"),
       "manifest icon stays site-local",
     )
     const iconRel = icon.src.replace(/^\//, "")
@@ -845,20 +826,19 @@ test("neutral synthetic corpus builds a complete static export with authored and
   )
   const offlineManifest = JSON.parse(readOut(outDir, "offline.json"))
   assert.ok(
-    typeof offlineManifest.version === "string" && offlineManifest.version.length > 0,
+    String(offlineManifest.version) === offlineManifest.version &&
+      offlineManifest.version.length > 0,
     "offline manifest carries a version",
   )
   assert.ok(
-    typeof offlineManifest.totalBytes === "number" && offlineManifest.totalBytes > 0,
+    Object.prototype.toString.call(offlineManifest.totalBytes) === "[object Number]" &&
+      offlineManifest.totalBytes > 0,
     "offline manifest carries an estimated size",
   )
   assert.ok(Array.isArray(offlineManifest.urls), "offline manifest lists urls")
 
   for (const url of offlineManifest.urls) {
-    assert.ok(
-      typeof url === "string" && url.startsWith("/"),
-      `offline url stays site-local: ${url}`,
-    )
+    assert.ok(String(url) === url && url.startsWith("/"), `offline url stays site-local: ${url}`)
     assert.ok(!url.split("/").includes(".."), `offline url never traverses: ${url}`)
     assert.ok(!/^https?:/i.test(url), `offline url is never cross-origin: ${url}`)
   }
@@ -1015,15 +995,15 @@ test("neutral synthetic corpus builds a complete static export with authored and
 
     for (const hit of harbor) {
       assert.ok(
-        typeof hit.title === "string" && hit.title.length > 0,
+        String(hit.title) === hit.title && hit.title.length > 0,
         "each result carries a title",
       )
       assert.ok(
-        typeof hit.url === "string" && hit.url.startsWith("/"),
+        String(hit.url) === hit.url && hit.url.startsWith("/"),
         "each result carries a location",
       )
       assert.ok(
-        typeof hit.excerpt === "string" && hit.excerpt.length > 0,
+        String(hit.excerpt) === hit.excerpt && hit.excerpt.length > 0,
         "each result carries an excerpt",
       )
       assert.ok(

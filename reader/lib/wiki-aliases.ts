@@ -3,6 +3,18 @@ import path from "node:path"
 
 // Title, route, and alias map for the maintained wikilink plugin.
 // The plugin owns target, label, and heading syntax; this module maps metadata only.
+/** Frontmatter split owned by the alias adapter. */
+export interface FrontmatterSplit {
+  data: string
+  body: string
+}
+
+/** Deterministic wikilink maps owned by the alias adapter. */
+export interface WikiLinkMaps {
+  files: string[]
+  permalinks: Record<string, string>
+}
+
 export function routeForSourcePath(p: string): string {
   const posix = p.replace(/\\/g, "/")
   const base = posix.split("/").pop() ?? posix
@@ -20,7 +32,7 @@ export function normalizeAlias(v: string): string {
   return v.trim().toLowerCase().replace(/\s+/g, " ")
 }
 
-function splitFm(raw: string): { data: string; body: string } {
+function splitFm(raw: string): FrontmatterSplit {
   const text = String(raw ?? "").replace(/\r\n/g, "\n")
   const lines = text.split("\n")
 
@@ -96,10 +108,7 @@ function discover(dir: string, root: string, out: string[]): void {
   }
 }
 
-export function buildWikiLinkMaps(contentDir: string): {
-  files: string[]
-  permalinks: Record<string, string>
-} {
+export function buildWikiLinkMaps(contentDir: string): WikiLinkMaps {
   let sources: string[] = []
 
   try {

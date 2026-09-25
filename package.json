@@ -7,7 +7,7 @@
   "license": "MIT",
   "packageManager": "pnpm@12.6.0",
   "scripts": {
-    "check": "pnpm exec prettier . --check",
+    "check": "pnpm run lint && pnpm exec prettier . --check",
     "lint": "oxlint",
     "format": "pnpm exec prettier . --write",
     "test": "tsx --test --test-concurrency=1",

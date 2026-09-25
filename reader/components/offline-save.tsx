@@ -36,6 +36,20 @@ function formatBytes(value: number): string {
   return `About ${mb >= 10 ? Math.round(mb) : mb.toFixed(1)} MB`
 }
 
+function isManifestString(value: unknown): value is string {
+  return String(value) === value
+}
+
+function isManifestNumber(value: unknown): value is number {
+  return Object.prototype.toString.call(value) === "[object Number]"
+}
+
+function isManifestRecord(
+  value: Partial<OfflineManifest> | null,
+): value is Partial<OfflineManifest> {
+  return value !== null && Object(value) === value && !(value instanceof Function)
+}
+
 async function readManifest(): Promise<OfflineManifest | null> {
   try {
     // No-store so an update check never reads a cached manifest version;
@@ -43,19 +57,19 @@ async function readManifest(): Promise<OfflineManifest | null> {
     const res = await fetch(MANIFEST_URL, { credentials: "same-origin", cache: "no-store" })
 
     if (!res.ok) return null
+    // SAFETY: res.json() yields unknown JSON; record plus field checks below validate the manifest shape before use.
     const data = (await res.json()) as Partial<OfflineManifest>
 
     if (
-      typeof data !== "object" ||
-      data === null ||
-      typeof data.version !== "string" ||
-      typeof data.totalBytes !== "number" ||
+      !isManifestRecord(data) ||
+      !isManifestString(data.version) ||
+      !isManifestNumber(data.totalBytes) ||
       !Array.isArray(data.urls)
     ) {
       return null
     }
 
-    const urls = data.urls.filter((url): url is string => typeof url === "string")
+    const urls = data.urls.filter(isManifestString)
 
     return { version: data.version, totalBytes: data.totalBytes, urls }
   } catch {
@@ -436,7 +450,7 @@ export default function OfflineSave() {
 
         if (
           estimate &&
-          typeof estimate.quota === "number" &&
+          isManifestNumber(estimate.quota) &&
           estimate.quota < listed.totalBytes * 2
         ) {
           failureKind = "storage"

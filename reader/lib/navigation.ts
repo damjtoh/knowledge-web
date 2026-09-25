@@ -1,9 +1,9 @@
-import { docTitle } from "./title"
+import { docTitle, type TitleSource } from "./title"
 
 export interface PageLike {
   slugs: string[]
   url: string
-  data: unknown
+  data: TitleSource
   /** Virtualized source path (e.g. `mix/folder/index.md`); folder identity needs it. */
   path?: string
 }
@@ -115,8 +115,8 @@ function urlFor(slugs: string[], page: PageLike | undefined): string {
   return `/${slugs.join("/")}`
 }
 
-function isIndexPath(path: unknown): boolean {
-  if (typeof path !== "string") return false
+function isIndexPath(path: string | undefined): boolean {
+  if (path === undefined) return false
   const base = path.replace(/\\/g, "/").split("/").pop() ?? ""
 
   return /^index\.mdx?$/i.test(base)
@@ -150,7 +150,7 @@ export function buildReaderNavigation(
   }
 
   const pagePath = (page: PageLike): string =>
-    typeof page.path === "string" ? page.path.replace(/\\/g, "/") : ""
+    page.path === undefined ? "" : page.path.replace(/\\/g, "/")
 
   const pageTitle = (page: PageLike): string => docTitle(page.data, page.slugs)
 
@@ -243,7 +243,7 @@ export function buildReaderNavigation(
     })
   }
 
-  for (const [key, node] of nodes) {
+  for (const node of nodes.values()) {
     if (node.slugs.length === 0) continue
 
     for (let len = node.slugs.length - 1; len >= 1; len--) {

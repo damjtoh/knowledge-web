@@ -2,6 +2,16 @@ import { source } from "../lib/source"
 import { buildReaderNavigation } from "../lib/navigation"
 import { getSiteMetadata } from "../lib/site"
 
+/** Staged root fields owned by the MDX pipeline. */
+interface RootPageFields {
+  synthetic?: unknown
+  body?: React.ComponentType
+}
+
+function isRootFields(value: unknown): value is RootPageFields {
+  return value !== null && Object(value) === value && !(value instanceof Function)
+}
+
 /**
  * Generic home: ordered published roots from generated metadata.
  *
@@ -22,17 +32,13 @@ export default async function HomePage() {
 
   const navigation = buildReaderNavigation(pages, site.navigation)
   const rootPage = source.getPage([])
+  const rootData: unknown = rootPage?.data
 
-  const isSynthetic =
-    rootPage !== undefined &&
-    typeof rootPage.data === "object" &&
-    rootPage.data !== null &&
-    (rootPage.data as unknown as { synthetic?: unknown }).synthetic === true
+  const rootFields = rootData !== undefined && isRootFields(rootData) ? rootData : undefined
 
-  const AuthoredBody =
-    rootPage && !isSynthetic
-      ? (rootPage.data as unknown as { body?: React.ComponentType }).body
-      : undefined
+  const isSynthetic = rootFields?.synthetic === true
+
+  const AuthoredBody = rootPage && !isSynthetic ? rootFields?.body : undefined
 
   return (
     <article className="reader-article">

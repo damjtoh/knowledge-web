@@ -20,12 +20,15 @@ import {
 import * as navigationModule from "../reader/lib/navigation.ts"
 
 function makePage(slugs, title, url, path) {
-  return {
+  const page = {
     slugs: [...slugs],
     url: url ?? (slugs.length === 0 ? "/" : `/${slugs.join("/")}`),
     data: title === undefined ? {} : { title },
-    ...(path === undefined ? {} : { path }),
   }
+
+  if (path !== undefined) page.path = path
+
+  return page
 }
 
 function dirRoot(path) {
@@ -74,14 +77,14 @@ test("roots follow navigation metadata order and expose the small interface", ()
     nav.roots.map((r) => r.slugs),
     [["gamma"], ["alpha"], ["beta"]],
   )
-  assert.equal(typeof nav.find, "function")
-  assert.equal(typeof nav.breadcrumbs, "function")
+  assert.ok(nav.find instanceof Function)
+  assert.ok(nav.breadcrumbs instanceof Function)
   assert.ok(Array.isArray(nav.roots))
 
   for (const root of nav.roots) {
     assert.ok(Array.isArray(root.slugs))
-    assert.equal(typeof root.url, "string")
-    assert.equal(typeof root.title, "string")
+    assert.ok(String(root.url) === root.url)
+    assert.ok(String(root.title) === root.title)
     assert.ok(Array.isArray(root.children))
   }
 })

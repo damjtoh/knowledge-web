@@ -54,6 +54,10 @@ function folderUrls(roots: NavigationNode[]): Set<string> {
   return urls
 }
 
+function isStoredString(entry: unknown): entry is string {
+  return String(entry) === entry
+}
+
 function readStored(): string[] {
   try {
     const raw = window.sessionStorage.getItem(STORAGE_KEY)
@@ -63,7 +67,7 @@ function readStored(): string[] {
 
     if (!Array.isArray(parsed)) return []
 
-    return parsed.filter((entry): entry is string => typeof entry === "string")
+    return parsed.filter(isStoredString)
   } catch {
     return []
   }

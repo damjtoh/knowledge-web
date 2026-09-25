@@ -3,11 +3,18 @@
  * non-empty frontmatter title, else first-H1 auto-title), with a filename
  * fallback for pages where the pipeline supplies no title.
  */
-export function docTitle(data: unknown, slug: string[]): string {
-  const title =
-    typeof data === "object" && data !== null ? (data as { title?: unknown }).title : undefined
 
-  if (typeof title === "string" && title.trim() !== "") return title.trim()
+/** Frontmatter-derived title source owned by the MDX pipeline. */
+export interface TitleSource {
+  title?: string
+  body?: React.ComponentType
+  synthetic?: boolean
+}
+
+export function docTitle(data: TitleSource | undefined, slug: string[]): string {
+  const title = data?.title
+
+  if (title !== undefined && title.trim() !== "") return title.trim()
 
   if (slug.length === 0) return "index"
 

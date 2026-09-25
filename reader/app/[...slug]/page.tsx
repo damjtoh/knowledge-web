@@ -60,8 +60,9 @@ function GroupSection({ title, nodes }: { title: string; nodes: NavigationNode[]
 export async function generateStaticParams(): Promise<NoteParams[]> {
   const authored = source
     .generateParams()
-    .filter((params) => Array.isArray(params.slug) && params.slug.length > 0)
-    .map((params) => ({ slug: params.slug as string[] }))
+    .flatMap((params) =>
+      Array.isArray(params.slug) && params.slug.length > 0 ? [{ slug: params.slug }] : [],
+    )
 
   const seen = new Set(authored.map((entry) => entry.slug.join("/")))
   const navigation = readerNavigation()
@@ -125,7 +126,8 @@ export default async function FolderOrNotePage({ params }: { params: Promise<Not
   const crumbs = navigation.breadcrumbs(slug)
 
   if (node?.page) {
-    const Body = (node.page.data as unknown as { body: React.ComponentType }).body
+    // SAFETY: authored index pages own a compiled body component; node.page exists only for authored routes.
+    const Body = node.page.data.body as React.ComponentType
     const directNotes = getDirectNotes(node)
     const childFolders = getChildFolders(node)
 
@@ -160,7 +162,8 @@ export default async function FolderOrNotePage({ params }: { params: Promise<Not
   const page = source.getPage(slug)
 
   if (!page) notFound()
-  const Body = (page.data as unknown as { body: React.ComponentType }).body
+  // SAFETY: staged Markdown pages own a compiled body component; getPage returned a page for an existing slug.
+  const Body = (page.data as { body: React.ComponentType }).body
 
   return (
     <>

@@ -21,7 +21,6 @@ import remarkRehype from "remark-rehype"
 import rehypeStringify from "rehype-stringify"
 import {
   routeForSourcePath,
-  normalizeAlias,
   titleForContent,
   buildWikiLinkMaps,
 } from "../reader/lib/wiki-aliases.ts"
