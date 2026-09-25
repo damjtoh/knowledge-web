@@ -49,11 +49,15 @@ function snapshot(roots) {
 
 function collectSlugs(roots) {
   const out = []
+
   const walk = (node) => {
     out.push(node.slugs.join("/"))
+
     for (const child of node.children) walk(child)
   }
+
   for (const root of roots) walk(root)
+
   return out.sort()
 }
 
@@ -63,6 +67,7 @@ test("roots follow navigation metadata order and expose the small interface", ()
     makePage(["beta"], "Beta"),
     makePage(["gamma"], "Gamma"),
   ]
+
   const roots = [dirRoot("gamma"), dirRoot("alpha"), dirRoot("beta")]
   const nav = buildReaderNavigation(pages, roots)
   assert.deepEqual(
@@ -72,6 +77,7 @@ test("roots follow navigation metadata order and expose the small interface", ()
   assert.equal(typeof nav.find, "function")
   assert.equal(typeof nav.breadcrumbs, "function")
   assert.ok(Array.isArray(nav.roots))
+
   for (const root of nav.roots) {
     assert.ok(Array.isArray(root.slugs))
     assert.equal(typeof root.url, "string")
@@ -86,6 +92,7 @@ test("authored files and directory indexes provide titles", () => {
     makePage(["projects"], "My Projects"),
     makePage(["projects", "alpha"], "Alpha Project"),
   ]
+
   const nav = buildReaderNavigation(pages, [fileRoot("about.md"), dirRoot("projects")])
   const about = nav.find(["about"])
   assert.ok(about)
@@ -116,10 +123,12 @@ test("virtual folders use humanized titles and have no page", () => {
 test("every folder with Markdown descendants exists, including nested virtual folders", () => {
   const pages = [makePage(["a", "b", "c", "leaf"], "Leaf")]
   const nav = buildReaderNavigation(pages, [dirRoot("a")])
+
   for (const slugs of [["a"], ["a", "b"], ["a", "b", "c"], ["a", "b", "c", "leaf"]]) {
     const node = nav.find(slugs)
     assert.ok(node, `missing ${slugs.join("/")}`)
   }
+
   assert.equal(nav.find(["a"]).page, undefined)
   assert.equal(nav.find(["a", "b"]).title, "B")
   assert.equal(nav.find(["a", "b", "c", "leaf"]).title, "Leaf")
@@ -134,6 +143,7 @@ test("flat directories list every note as direct notes", () => {
     makePage(["garden", "b"], "Bravo"),
     makePage(["garden", "d"], "Delta"),
   ]
+
   const nav = buildReaderNavigation(pages, [dirRoot("garden")])
   const root = nav.find(["garden"])
   assert.ok(root)
@@ -155,6 +165,7 @@ test("nested folders mix authored indexes and virtual folders", () => {
     makePage(["work", "project", "alpha"], "Alpha"),
     makePage(["work", "notes", "plain"], "Plain"),
   ]
+
   const nav = buildReaderNavigation(pages, [dirRoot("work")])
   const work = nav.find(["work"])
   assert.ok(work?.page)
@@ -176,6 +187,7 @@ test("a file route and same-route folder merge into one node", () => {
     makePage(["inbox", "todo"], "Todo"),
     makePage(["inbox", "done"], "Done"),
   ]
+
   const nav = buildReaderNavigation(pages, [dirRoot("inbox")])
   const inbox = nav.find(["inbox"])
   assert.ok(inbox)
@@ -198,6 +210,7 @@ test("children sort by authored title then stable route", () => {
     makePage(["x", "m"], "Mango"),
     makePage(["x", "a"], "Apple"),
   ]
+
   const nav = buildReaderNavigation(pages, [dirRoot("x")])
   assert.deepEqual(
     nav.find(["x"]).children.map((c) => c.title),
@@ -220,6 +233,7 @@ test("direct notes and child folders are generically identifiable without travel
     makePage(["mix", "note"], "A Note"),
     makePage(["mix", "folder", "leaf"], "Leaf"),
   ]
+
   const nav = buildReaderNavigation(pages, [dirRoot("mix")])
   const root = nav.find(["mix"])
   assert.ok(root)
@@ -245,6 +259,7 @@ test("output is stable independent of page input order and deterministic", () =>
     makePage(["s"], "S Index"),
     makePage(["t"], "Tee"),
   ]
+
   const shuffled = [ordered[1], ordered[3], ordered[0], ordered[2]]
   const roots = [dirRoot("s"), fileRoot("t.md")]
   const first = buildReaderNavigation(ordered, roots)
@@ -263,6 +278,7 @@ test("pages outside configured roots are excluded", () => {
     makePage(["secret", "hidden"], "Hidden"),
     makePage(["notes"], "Notes Index"),
   ]
+
   const nav = buildReaderNavigation(pages, [dirRoot("notes")])
   assert.equal(nav.roots.length, 1)
   assert.ok(nav.find(["notes", "keep"]))
@@ -277,6 +293,7 @@ test("lookup and breadcrumbs cover pages, virtual folders, nested routes, and mi
     makePage(["notes", "guide"], "Guide Title"),
     makePage(["projects", "deep", "leaf"], "Leaf Title"),
   ]
+
   const nav = buildReaderNavigation(pages, [dirRoot("notes"), dirRoot("projects")])
   assert.ok(nav.find(["notes"]))
   assert.ok(nav.find(["notes", "guide"]))
@@ -345,6 +362,7 @@ test("an index-only child folder stays a child folder, not a direct note", () =>
     makePage(["mix", "note"], "A Note", undefined, "mix/note.md"),
     makePage(["mix", "folder"], "Folder Index", undefined, "mix/folder/index.md"),
   ]
+
   const nav = buildReaderNavigation(pages, [dirRoot("mix")])
   const root = nav.find(["mix"])
   assert.ok(root)
@@ -370,6 +388,7 @@ test("a collapsed file/index route keeps index ownership regardless of input ord
   const roots = [dirRoot("projects")]
   const forward = buildReaderNavigation([leaf, index, child], roots)
   const reversed = buildReaderNavigation([child, index, leaf], roots)
+
   for (const nav of [forward, reversed]) {
     const node = nav.find(["projects"])
     assert.ok(node?.page)
@@ -381,6 +400,7 @@ test("a collapsed file/index route keeps index ownership regardless of input ord
       [["projects", "alpha"]],
     )
   }
+
   assert.deepEqual(snapshot(forward.roots), snapshot(reversed.roots))
   assert.deepEqual(forward.breadcrumbs(["projects"]), reversed.breadcrumbs(["projects"]))
 })
@@ -405,6 +425,7 @@ test("nested roots select the exact root, otherwise the longest prefix, keeping 
     makePage(["notes", "projects", "alpha"], "Alpha"),
     makePage(["notes", "plain"], "Plain"),
   ]
+
   const nav = buildReaderNavigation(pages, [dirRoot("notes"), dirRoot("notes/projects")])
   assert.deepEqual(
     nav.roots.map((r) => r.slugs),

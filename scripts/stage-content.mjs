@@ -35,7 +35,9 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 
 const PUBLISHER_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
+
 const DEFAULT_MANIFEST_NAME = "publication.manifest.yaml"
+
 const TRACKED_RUNTIME_CONFIG = path.join(PUBLISHER_ROOT, "nginx.conf")
 
 // A canonical hostname: DNS labels separated by dots, no scheme, port, path,
@@ -53,16 +55,20 @@ function fail(message) {
 function die() {
   if (errors.length > 0) {
     console.error("✗ Publication Manifest validation failed:")
+
     for (const error of errors) console.error(`  - ${error}`)
   }
+
   process.exit(1)
 }
 
 function parseArgs(argv) {
   const args = { kbRoot: null, manifest: null, contentDir: null, identityFile: null }
+
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
     const value = argv[i + 1]
+
     switch (arg) {
       case "--kb-root":
         args.kbRoot = value
@@ -91,6 +97,7 @@ function parseArgs(argv) {
         fail(`unknown argument: ${arg}`)
     }
   }
+
   return args
 }
 
@@ -106,22 +113,29 @@ function isInside(rootReal, candidateReal) {
 function normalizeSelection(raw) {
   if (typeof raw !== "string" || raw.trim() === "") {
     fail("every allowlist entry must be a non-empty string")
+
     return null
   }
+
   let rel = raw.trim()
 
   if (rel.split("/").includes("..")) {
     fail(`selection "${raw}" traverses above the Knowledge Base root (".." is not allowed)`)
+
     return null
   }
+
   if (path.posix.isAbsolute(rel) || /^[A-Za-z]:[\\/]/.test(rel)) {
     fail(
       `selection "${raw}" is an absolute path; selections must be relative to the Knowledge Base root`,
     )
+
     return null
   }
+
   if (rel.includes("\\")) {
     fail(`selection "${raw}" contains a backslash; use "/" separators`)
+
     return null
   }
 
@@ -130,12 +144,16 @@ function normalizeSelection(raw) {
 
   if (rel === "" || rel === "." || rel.split("/").includes(".")) {
     fail(`selection "${raw}" selects the root or an empty path; list explicit roots or files`)
+
     return null
   }
+
   if (rel === ".git" || rel.startsWith(".git/")) {
     fail(`selection "${raw}" targets the Git directory; Git history is never published`)
+
     return null
   }
+
   return rel
 }
 
@@ -146,6 +164,7 @@ async function loadYaml() {
     fail(
       'the "yaml" package is required; run `pnpm install --frozen-lockfile` in the Publisher before staging',
     )
+
     return null
   }
 }
@@ -153,19 +172,26 @@ async function loadYaml() {
 function readManifest(manifestPath, yaml) {
   if (!fs.existsSync(manifestPath)) {
     fail(`Publication Manifest not found at ${manifestPath}`)
+
     return null
   }
+
   let parsed
+
   try {
     parsed = yaml.parse(fs.readFileSync(manifestPath, "utf8"))
   } catch (error) {
     fail(`Publication Manifest at ${manifestPath} is not valid YAML: ${error.message}`)
+
     return null
   }
+
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
     fail(`Publication Manifest at ${manifestPath} must be a YAML mapping`)
+
     return null
   }
+
   return parsed
 }
 
@@ -175,6 +201,7 @@ function validateManifest(manifest, kbRootReal) {
   if (typeof title !== "string" || title.trim() === "") {
     fail('manifest requires a site title (top-level "title")')
   }
+
   if (typeof canonicalHostname !== "string" || canonicalHostname.trim() === "") {
     fail('manifest requires a canonical hostname (top-level "canonicalHostname")')
   } else if (
@@ -187,33 +214,41 @@ function validateManifest(manifest, kbRootReal) {
         `(use a DNS name without scheme, port, or path)`,
     )
   }
+
   if (!Array.isArray(select) || select.length === 0) {
     fail(
       'manifest requires an explicit content allowlist (top-level "select" with at least one entry)',
     )
+
     return []
   }
 
   const selections = []
+
   for (const raw of select) {
     const rel = normalizeSelection(raw)
+
     if (rel === null) continue
 
     const abs = path.join(kbRootReal, rel)
     let stat
+
     try {
       stat = fs.lstatSync(abs)
     } catch {
       fail(`selection "${raw}" does not exist in the Knowledge Base root`)
       continue
     }
+
     let real
+
     try {
       real = fs.realpathSync(abs)
     } catch {
       fail(`selection "${raw}" is a broken symlink and cannot be staged`)
       continue
     }
+
     if (!isInside(kbRootReal, real)) {
       fail(
         `selection "${raw}" resolves outside the Knowledge Base root ` +
@@ -221,6 +256,7 @@ function validateManifest(manifest, kbRootReal) {
       )
       continue
     }
+
     // Classify by the *resolved* path so a symlink to a directory stages as a directory.
     const resolvedStat = fs.statSync(real)
     selections.push({
@@ -234,6 +270,7 @@ function validateManifest(manifest, kbRootReal) {
   if (selections.length === 0) {
     fail("no valid selections remain; nothing can be staged")
   }
+
   return selections
 }
 
@@ -246,22 +283,29 @@ function validateManifest(manifest, kbRootReal) {
 function normalizeNavigationEntry(raw) {
   if (typeof raw !== "string" || raw.trim() === "") {
     fail("every navigation entry must be a non-empty string")
+
     return null
   }
+
   let rel = raw.trim()
 
   if (rel.split("/").includes("..")) {
     fail(`navigation entry "${raw}" traverses above the Knowledge Base root (".." is not allowed)`)
+
     return null
   }
+
   if (path.posix.isAbsolute(rel) || /^[A-Za-z]:[\\/]/.test(rel)) {
     fail(
       `navigation entry "${raw}" is an absolute path; navigation entries must be relative to the Knowledge Base root`,
     )
+
     return null
   }
+
   if (rel.includes("\\")) {
     fail(`navigation entry "${raw}" contains a backslash; use "/" separators`)
+
     return null
   }
 
@@ -272,12 +316,16 @@ function normalizeNavigationEntry(raw) {
     fail(
       `navigation entry "${raw}" selects the root or an empty path; list explicit roots or files`,
     )
+
     return null
   }
+
   if (rel === ".git" || rel.startsWith(".git/")) {
     fail(`navigation entry "${raw}" targets the Git directory; Git history is never published`)
+
     return null
   }
+
   return rel
 }
 
@@ -291,34 +339,46 @@ function normalizeNavigationEntry(raw) {
  */
 function parseNavigation(manifest, selections) {
   const rawNav = manifest.navigation
+
   if (rawNav === undefined) return { explicit: false }
+
   if (!Array.isArray(rawNav) || rawNav.length === 0) {
     fail('manifest "navigation", when present, must be a non-empty list of non-empty strings')
+
     return null
   }
+
   const entries = []
   const seen = new Map()
+
   for (const raw of rawNav) {
     const rel = normalizeNavigationEntry(raw)
+
     if (rel === null) continue
+
     if (seen.has(rel)) {
       fail(
         `navigation entry "${raw}" duplicates "${seen.get(rel)}" after normalization (both resolve to "${rel}")`,
       )
       continue
     }
+
     seen.set(rel, raw)
+
     const covered = selections.some(
       (sel) => rel === sel.rel || (sel.isDir && rel.startsWith(`${sel.rel}/`)),
     )
+
     if (!covered) {
       fail(
         `navigation entry "${raw}" is not covered by the allowlist ("select"); navigation cannot broaden publication`,
       )
       continue
     }
+
     entries.push({ raw, rel })
   }
+
   return { explicit: true, entries }
 }
 
@@ -331,26 +391,32 @@ function stagedDirHasMarkdown(dirAbs) {
   for (const entry of fs.readdirSync(dirAbs, { withFileTypes: true })) {
     if (entry.name === ".git") continue
     const full = path.join(dirAbs, entry.name)
+
     if (entry.isSymbolicLink()) {
       let stat
+
       try {
         stat = fs.statSync(full)
       } catch {
         continue
       }
+
       if (stat.isDirectory()) {
         if (stagedDirHasMarkdown(full)) return true
       } else if (stat.isFile() && isMarkdownPath(entry.name)) {
         return true
       }
+
       continue
     }
+
     if (entry.isDirectory()) {
       if (stagedDirHasMarkdown(full)) return true
     } else if (entry.isFile() && isMarkdownPath(entry.name)) {
       return true
     }
   }
+
   return false
 }
 
@@ -362,28 +428,34 @@ function stagedDirHasMarkdown(dirAbs) {
  */
 function resolveExplicitNavigation(stagingDir, entries) {
   const roots = []
+
   for (const { raw, rel } of entries) {
     const stagedAbs = path.join(stagingDir, rel)
     let stat
+
     try {
       stat = fs.statSync(stagedAbs)
     } catch {
       fail(`navigation entry "${raw}" does not exist in the staged tree (resolved to "${rel}")`)
       continue
     }
+
     if (stat.isDirectory()) {
       let hasMarkdown = false
+
       try {
         hasMarkdown = stagedDirHasMarkdown(stagedAbs)
       } catch {
         hasMarkdown = false
       }
+
       if (!hasMarkdown) {
         fail(
           `navigation directory "${raw}" contains no staged Markdown pages (resolved to "${rel}")`,
         )
         continue
       }
+
       roots.push({ path: rel, kind: "directory" })
     } else if (stat.isFile()) {
       if (!isMarkdownPath(rel)) {
@@ -392,11 +464,13 @@ function resolveExplicitNavigation(stagingDir, entries) {
         )
         continue
       }
+
       roots.push({ path: rel, kind: "markdown" })
     } else {
       fail(`navigation entry "${raw}" is not a file or directory in the staged tree`)
     }
   }
+
   return roots
 }
 
@@ -408,22 +482,27 @@ function resolveExplicitNavigation(stagingDir, entries) {
 function deriveNavigation(stagingDir, selections) {
   const roots = []
   const seen = new Set()
+
   for (const sel of selections) {
     if (seen.has(sel.rel)) continue
     const stagedAbs = path.join(stagingDir, sel.rel)
     let stat
+
     try {
       stat = fs.statSync(stagedAbs)
     } catch {
       continue
     }
+
     if (stat.isDirectory()) {
       let hasMarkdown = false
+
       try {
         hasMarkdown = stagedDirHasMarkdown(stagedAbs)
       } catch {
         hasMarkdown = false
       }
+
       if (!hasMarkdown) continue
       seen.add(sel.rel)
       roots.push({ path: sel.rel, kind: "directory" })
@@ -433,6 +512,7 @@ function deriveNavigation(stagingDir, selections) {
       roots.push({ path: sel.rel, kind: "markdown" })
     }
   }
+
   return roots
 }
 
@@ -444,10 +524,12 @@ function deriveNavigation(stagingDir, selections) {
 function buildSelectedSet(selections) {
   const files = []
   const dirs = []
+
   for (const sel of selections) {
     if (sel.isDir) dirs.push(sel.real)
     else files.push(sel.real)
   }
+
   return {
     contains(real) {
       return files.includes(real) || dirs.some((dir) => isInside(dir, real))
@@ -463,20 +545,26 @@ function stageSelection(sel, contentRoot, selectedSet, staged) {
 
     if (stat.isSymbolicLink()) {
       let targetReal
+
       try {
         targetReal = fs.realpathSync(srcReal)
       } catch {
         fail(`symlink at "${destRel}" is broken and cannot be staged`)
+
         return
       }
+
       if (!selectedSet.contains(targetReal)) {
         fail(
           `symlink at "${sel.rel}" resolves to "${targetReal}", which is outside the ` +
             `allowlisted content; rejecting as a symlink escape`,
         )
+
         return
       }
+
       walk(targetReal, destRel)
+
       return
     }
 
@@ -487,9 +575,11 @@ function stageSelection(sel, contentRoot, selectedSet, staged) {
       if (path.basename(destRel) === ".git") return
       staged.add(destRel)
       fs.mkdirSync(destAbs, { recursive: true })
+
       for (const entry of fs.readdirSync(srcReal)) {
         walk(path.join(srcReal, entry), path.posix.join(destRel, entry))
       }
+
       return
     }
 
@@ -498,6 +588,7 @@ function stageSelection(sel, contentRoot, selectedSet, staged) {
       fs.copyFileSync(srcReal, destAbs)
       fs.chmodSync(destAbs, stat.mode & 0o777)
       staged.add(destRel)
+
       return
     }
 
@@ -513,8 +604,10 @@ function stageSelection(sel, contentRoot, selectedSet, staged) {
 function maybeGenerateLandingPage(contentDir, selections, title, yaml) {
   if (fs.existsSync(path.join(contentDir, "index.md"))) {
     console.log("  ✓ selected content provides a root index.md; no landing page generated")
+
     return
   }
+
   const lines = [
     "---",
     yaml.stringify({ title, synthetic: true }).trimEnd(),
@@ -525,10 +618,12 @@ function maybeGenerateLandingPage(contentDir, selections, title, yaml) {
     `Browse the published content of this Knowledge Base.`,
     ``,
   ]
+
   for (const sel of selections) {
     const slug = sel.isDir ? sel.rel : sel.rel.replace(/\.md$/, "")
     lines.push(`- [[${slug}]]`)
   }
+
   lines.push(``)
   fs.writeFileSync(path.join(contentDir, "index.md"), lines.join("\n"))
   console.log("  ✓ generated synthetic landing page content/index.md (no selected root index)")
@@ -546,6 +641,7 @@ function writeSiteIdentity(identityFile, title, canonicalHostname, navigationRoo
     canonicalHostname: canonicalHostname.trim(),
     navigation: navigationRoots.map((root) => ({ path: root.path, kind: root.kind })),
   }
+
   const body = `${JSON.stringify(payload, null, 2)}\n`
   const tmpFile = `${identityFile}.staging-${process.pid}`
   fs.mkdirSync(path.dirname(identityFile), { recursive: true })
@@ -559,27 +655,33 @@ function writeSiteIdentity(identityFile, title, canonicalHostname, navigationRoo
 
 function countFiles(dir) {
   let count = 0
+
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     count += entry.isDirectory() ? countFiles(path.join(dir, entry.name)) : 1
   }
+
   return count
 }
 
 async function main() {
   const args = parseArgs(process.argv.slice(2))
+
   if (!args.kbRoot) {
     fail("--kb-root is required (absolute path to the Knowledge Base root)")
   }
 
   const kbRoot = args.kbRoot ? path.resolve(args.kbRoot) : null
+
   const manifestPath = args.manifest
     ? path.resolve(args.manifest)
     : kbRoot
       ? path.join(kbRoot, DEFAULT_MANIFEST_NAME)
       : null
+
   const contentDir = args.contentDir
     ? path.resolve(args.contentDir)
     : path.join(PUBLISHER_ROOT, "content")
+
   const identityFile = args.identityFile
     ? path.resolve(args.identityFile)
     : path.join(PUBLISHER_ROOT, "site-identity.json")
@@ -599,6 +701,7 @@ async function main() {
   if (kbRoot && contentDir && kbRootReal) {
     const parentReal = fs.realpathSync(path.dirname(contentDir))
     const contentReal = path.join(parentReal, path.basename(contentDir))
+
     if (isInside(kbRootReal, contentReal)) {
       fail(`content directory ${contentDir} must not be inside the Knowledge Base root ${kbRoot}`)
     }
@@ -609,21 +712,26 @@ async function main() {
   if (kbRootReal) {
     const identityParent = path.dirname(identityFile)
     let identityParentReal
+
     try {
       identityParentReal = fs.realpathSync(identityParent)
     } catch {
       identityParentReal = path.resolve(identityParent)
     }
+
     const identityReal = path.join(identityParentReal, path.basename(identityFile))
+
     if (isInside(kbRootReal, identityReal)) {
       fail(
         `site identity file ${identityFile} must not be inside the Knowledge Base root ${kbRoot}`,
       )
     }
+
     if (identityReal === TRACKED_RUNTIME_CONFIG) {
       fail(`site identity file must not overwrite the tracked runtime configuration`)
     }
   }
+
   if (identityFile === contentDir || identityFile.startsWith(contentDir + path.sep)) {
     fail(`site identity file ${identityFile} must be outside the staged content tree ${contentDir}`)
   }
@@ -634,6 +742,7 @@ async function main() {
   console.log(`    title:             ${manifest.title}`)
   console.log(`    canonicalHostname: ${manifest.canonicalHostname}`)
   console.log(`    selections:        ${selections.map((s) => s.rel).join(", ")}`)
+
   if (navigationRequest?.explicit) {
     console.log(`    navigation:        ${navigationRequest.entries.map((e) => e.rel).join(", ")}`)
   }
@@ -647,6 +756,7 @@ async function main() {
   try {
     const selectedSet = buildSelectedSet(selections)
     const staged = new Set()
+
     for (const sel of selections) stageSelection(sel, stagingDir, selectedSet, staged)
   } catch (error) {
     fs.rmSync(stagingDir, { recursive: true, force: true })
@@ -661,6 +771,7 @@ async function main() {
   // Validate navigation against the temporary staged tree before the atomic
   // swap so a failure never leaves a partial replacement behind.
   let navigationRoots = []
+
   if (navigationRequest) {
     if (navigationRequest.explicit) {
       navigationRoots = resolveExplicitNavigation(stagingDir, navigationRequest.entries)

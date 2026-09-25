@@ -37,14 +37,19 @@ import { promisify } from "node:util"
 import { test, after } from "node:test"
 
 const execFileAsync = promisify(execFile)
+
 const PUBLISHER_ROOT = path.resolve(import.meta.dirname, "..")
+
 const READER_ROOT = path.join(PUBLISHER_ROOT, "reader")
+
 const STAGE_SCRIPT = path.join(PUBLISHER_ROOT, "scripts", "stage-content.mjs")
 
 const tmpRoots = []
+
 function tmpdir(prefix) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), `knowledge-reader-default-${prefix}-`))
   tmpRoots.push(dir)
+
   return dir
 }
 
@@ -65,8 +70,10 @@ function repoWorkspaceRoot(prefix) {
     PUBLISHER_ROOT,
     `.tmp-${prefix}-${process.pid}-${Math.random().toString(36).slice(2, 8)}`,
   )
+
   fs.mkdirSync(dir, { recursive: true })
   tmpRoots.push(dir)
+
   return dir
 }
 
@@ -83,28 +90,36 @@ function writeFile(root, rel, content) {
 function listFilesRecursive(dir, relative = "") {
   const entries = fs.readdirSync(dir, { withFileTypes: true })
   const files = []
+
   for (const entry of entries) {
     const rel = relative ? `${relative}/${entry.name}` : entry.name
+
     if (entry.isDirectory()) files.push(...listFilesRecursive(path.join(dir, entry.name), rel))
     else if (entry.isFile()) files.push(rel)
   }
+
   return files.sort()
 }
 
 /** Staged Markdown path -> expected static-export HTML path (posix). */
 function expectedHtmlForStagedMarkdown(rel) {
   const posix = rel.split(path.sep).join("/")
+
   if (/^index\.md$/i.test(path.posix.basename(posix))) {
     const dir = path.posix.dirname(posix)
+
     return dir === "." ? "index.html" : `${dir}.html`
   }
+
   return `${posix.replace(/\.md$/i, "")}.html`
 }
 
 /** Search URL -> expected static-export HTML path. */
 function expectedHtmlForSearchUrl(url) {
   const clean = String(url ?? "").split("#")[0]
+
   if (clean === "/") return "index.html"
+
   return `${clean.replace(/^\//, "")}.html`
 }
 
@@ -141,6 +156,7 @@ function makeVaultLikeKb() {
       "",
     ].join("\n"),
   )
+
   return kb
 }
 
@@ -161,10 +177,12 @@ function materializeIsolatedWorkspace() {
   const fakeReader = path.join(fakePublisher, "reader")
   fs.mkdirSync(fakeReader, { recursive: true })
   const skip = new Set(["node_modules", ".next", "out", ".source", "tsconfig.tsbuildinfo"])
+
   for (const entry of fs.readdirSync(READER_ROOT)) {
     if (skip.has(entry)) continue
     fs.cpSync(path.join(READER_ROOT, entry), path.join(fakeReader, entry), { recursive: true })
   }
+
   return {
     fakePublisher,
     fakeReader,
@@ -203,6 +221,7 @@ test("default-input build exports nested pages and keeps search on emitted route
   const env = { ...process.env }
   delete env.READER_CONTENT_DIR
   delete env.READER_SITE_METADATA_FILE
+
   try {
     await execFileAsync("pnpm", ["install", "--frozen-lockfile", "--prefer-offline"], {
       cwd: fakeReader,
@@ -223,6 +242,7 @@ test("default-input build exports nested pages and keeps search on emitted route
       `stdout: ${(error.stdout ?? "").slice(-4000)}`,
       `stderr: ${(error.stderr ?? "").slice(-4000)}`,
     ].join("\n")
+
     throw new Error(`${detail}\ncause: ${error.message}`)
   }
 
@@ -238,14 +258,18 @@ test("default-input build exports nested pages and keeps search on emitted route
   ]) {
     assert.ok(fs.existsSync(path.join(fakeOut, rel)), `default build emits ${rel}`)
   }
+
   const stagedHtmls = stagedMarkdown.map(expectedHtmlForStagedMarkdown).sort()
+
   for (const rel of stagedHtmls) {
     assert.ok(fs.existsSync(path.join(fakeOut, rel)), `staged page emitted: ${rel}`)
   }
+
   const emittedContentPages = listFilesRecursive(fakeOut)
     .filter((rel) => rel.endsWith(".html") && !rel.startsWith("_next"))
     .filter((rel) => rel !== "404.html" && rel !== "_not-found.html")
     .sort()
+
   assert.ok(
     emittedContentPages.length >= stagedHtmls.length,
     `export holds every staged page (staged ${stagedHtmls.length}, emitted ${emittedContentPages.length})`,
@@ -256,9 +280,11 @@ test("default-input build exports nested pages and keeps search on emitted route
   const home = fs.readFileSync(path.join(fakeOut, "index.html"), "utf8")
   const treeUrls = [...home.matchAll(/data-tree-url="([^"]+)"/g)].map((m) => m[1])
   assert.ok(treeUrls.length > 5, `sidebar exposes nested nodes (got ${treeUrls.length})`)
+
   for (const url of ["/notes", "/notes/learning-cluster", "/notes/nest/inner"]) {
     assert.ok(treeUrls.includes(url), `sidebar exposes nested node ${url}`)
   }
+
   const notes = fs.readFileSync(path.join(fakeOut, "notes.html"), "utf8")
   assert.ok(
     notes.includes('data-tree-url="/notes/learning-cluster"'),
@@ -276,13 +302,16 @@ test("default-input build exports nested pages and keeps search on emitted route
     "search finds the nested leaf",
   )
   const indexedUrls = new Set()
+
   for (const query of ["learning", "recovery", "journal", "project", "health", "inner"]) {
     for (const hit of searchModule.searchNotes(index, query)) {
       indexedUrls.add(hit.url.split("#")[0])
     }
   }
+
   indexedUrls.add("/notes/learning-cluster")
   assert.ok(indexedUrls.size >= 4, `search covers staged pages (got ${indexedUrls.size})`)
+
   for (const url of indexedUrls) {
     const rel = expectedHtmlForSearchUrl(url)
     assert.ok(

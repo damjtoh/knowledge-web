@@ -28,11 +28,13 @@ function pageLikes() {
 
 function readerNavigation() {
   const site = getSiteMetadata()
+
   return buildReaderNavigation(pageLikes(), site.navigation)
 }
 
 function GroupSection({ title, nodes }: { title: string; nodes: NavigationNode[] }) {
   if (nodes.length === 0) return null
+
   return (
     <section aria-label={title} className="reader-group">
       <h2>{title}</h2>
@@ -60,20 +62,26 @@ export async function generateStaticParams(): Promise<NoteParams[]> {
     .generateParams()
     .filter((params) => Array.isArray(params.slug) && params.slug.length > 0)
     .map((params) => ({ slug: params.slug as string[] }))
+
   const seen = new Set(authored.map((entry) => entry.slug.join("/")))
   const navigation = readerNavigation()
   const virtual: NoteParams[] = []
+
   const collect = (node: NavigationNode): void => {
     if (node.slugs.length > 0) {
       const key = node.slugs.join("/")
+
       if (!seen.has(key)) {
         seen.add(key)
         virtual.push({ slug: [...node.slugs] })
       }
     }
+
     for (const child of node.children) collect(child)
   }
+
   for (const root of navigation.roots) collect(root)
+
   return [...authored, ...virtual]
 }
 
@@ -86,6 +94,7 @@ export async function generateMetadata({
   const navigation = readerNavigation()
   const node = navigation.find(slug)
   const site = getSiteMetadata()
+
   if (node) {
     return {
       title: node.title,
@@ -95,8 +104,11 @@ export async function generateMetadata({
       },
     }
   }
+
   const page = source.getPage(slug)
+
   if (!page) notFound()
+
   return {
     title: docTitle(page.data, slug),
     metadataBase: new URL(`https://${site.canonicalHostname}`),
@@ -116,6 +128,7 @@ export default async function FolderOrNotePage({ params }: { params: Promise<Not
     const Body = (node.page.data as unknown as { body: React.ComponentType }).body
     const directNotes = getDirectNotes(node)
     const childFolders = getChildFolders(node)
+
     return (
       <>
         <Breadcrumbs items={crumbs} />
@@ -131,6 +144,7 @@ export default async function FolderOrNotePage({ params }: { params: Promise<Not
   if (node && node.isFolder) {
     const directNotes = getDirectNotes(node)
     const childFolders = getChildFolders(node)
+
     return (
       <>
         <Breadcrumbs items={crumbs} />
@@ -144,8 +158,10 @@ export default async function FolderOrNotePage({ params }: { params: Promise<Not
   }
 
   const page = source.getPage(slug)
+
   if (!page) notFound()
   const Body = (page.data as unknown as { body: React.ComponentType }).body
+
   return (
     <>
       <Breadcrumbs items={crumbs} />

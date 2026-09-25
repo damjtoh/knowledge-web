@@ -39,30 +39,39 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url))
+
 const READER_ROOT = path.resolve(scriptDir, "..")
+
 const MAX_PRECACHE_FILE_BYTES = 5 * 1024 * 1024
 
 function argDir() {
   const flag = process.argv.indexOf("--dir")
+
   if (flag !== -1 && process.argv[flag + 1]) return path.resolve(process.argv[flag + 1])
+
   if (process.env.OFFLINE_EXPORT_DIR) return path.resolve(process.env.OFFLINE_EXPORT_DIR)
+
   return path.join(READER_ROOT, "out")
 }
 
 function listFilesRecursive(dir, relative = "") {
   const entries = fs.readdirSync(dir, { withFileTypes: true })
   const files = []
+
   for (const entry of entries) {
     const rel = relative ? `${relative}/${entry.name}` : entry.name
+
     if (entry.isDirectory()) files.push(...listFilesRecursive(path.join(dir, entry.name), rel))
     else if (entry.isFile()) files.push(rel)
   }
+
   return files.sort()
 }
 
 function hashFile(abs) {
   const digest = crypto.createHash("sha256")
   digest.update(fs.readFileSync(abs))
+
   return digest.digest("hex").slice(0, 16)
 }
 
@@ -75,11 +84,13 @@ function hashFile(abs) {
 function integrityOf(abs) {
   const digest = crypto.createHash("sha384")
   digest.update(fs.readFileSync(abs))
+
   return `sha384-${digest.digest("base64")}`
 }
 
 function credentialManifestLinks(outDir) {
   if (!fs.existsSync(path.join(outDir, "manifest.webmanifest"))) return
+
   // Next.js generates the manifest route and its head link, but does not
   // expose crossorigin for that link. Protected Web Projections need the
   // Access cookie even when the manifest is on the same origin. Change the
@@ -88,11 +99,15 @@ function credentialManifestLinks(outDir) {
     const abs = path.join(outDir, rel)
     const html = fs.readFileSync(abs, "utf8")
     const links = html.match(/<link\b[^>]*\brel="manifest"[^>]*>/g) ?? []
+
     if (links.length !== 1 || !links[0].includes('href="/manifest.webmanifest"')) {
       throw new Error(`expected one generated manifest link in ${rel}`)
     }
+
     const link = links[0]
+
     if (link.includes('crossorigin="use-credentials"')) continue
+
     if (/\bcrossorigin=/.test(link)) throw new Error(`unexpected manifest credentials in ${rel}`)
     fs.writeFileSync(
       abs,
@@ -145,13 +160,16 @@ self.addEventListener("fetch", (event) => {
 
 async function main() {
   const outDir = argDir()
+
   if (!fs.existsSync(outDir) || !fs.statSync(outDir).isDirectory()) {
     throw new Error(`export directory not found: ${outDir}`)
   }
+
   // A rerun must not precache its own previous output.
   for (const generated of ["sw.js", "sw.js.map", "offline.json"]) {
     fs.rmSync(path.join(outDir, generated), { force: true })
   }
+
   for (const rel of listFilesRecursive(outDir)) {
     if (/^workbox-[\w-]+\.js(\.map)?$/.test(rel)) fs.rmSync(path.join(outDir, rel), { force: true })
   }
@@ -161,25 +179,31 @@ async function main() {
   // Publication files only: everything the static export emitted, minus
   // source maps (never needed to read or navigate offline).
   const all = listFilesRecursive(outDir).filter((rel) => !rel.endsWith(".map"))
+
   if (!all.includes("search-index.json")) {
     throw new Error("export has no search-index.json; run the search-index build first")
   }
+
   const urls = all.map((rel) => `/${rel.split(path.sep).join("/")}`)
   let totalBytes = 0
   const fingerprints = []
   const integrityByUrl = new Map()
+
   for (const rel of all) {
     const abs = path.join(outDir, rel)
     const size = fs.statSync(abs).size
+
     if (size > MAX_PRECACHE_FILE_BYTES) {
       throw new Error(
         `offline export file exceeds the Workbox precache limit: ${rel} (${size} bytes)`,
       )
     }
+
     totalBytes += size
     fingerprints.push(`${rel}:${hashFile(abs)}`)
     integrityByUrl.set(rel.split(path.sep).join("/"), integrityOf(abs))
   }
+
   const version = crypto
     .createHash("sha256")
     .update(fingerprints.join("\n"))
@@ -196,6 +220,7 @@ async function main() {
       `workbox-build is required for offline generation (run npm install in reader/): ${error.message}`,
     )
   })
+
   const result = await generateSW({
     globDirectory: outDir,
     globPatterns: ["**/*"],

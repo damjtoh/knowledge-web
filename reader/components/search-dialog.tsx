@@ -9,26 +9,33 @@ import { loadSearchIndex, searchNotes } from "../lib/search.mjs"
 import type { SearchHit, SearchIndex } from "../lib/search"
 
 export const SEARCH_INPUT_ID = "reader-search-input"
+
 const SEARCH_INDEX_URL = "/search-index.json"
+
 const RESULT_LIMIT = 20
 
 let cachedIndex: SearchIndex | null = null
+
 let cachedFetch: Promise<SearchIndex | null> | null = null
 
 function fetchSearchIndex(): Promise<SearchIndex | null> {
   if (cachedIndex) return Promise.resolve(cachedIndex)
+
   if (!cachedFetch) {
     cachedFetch = fetch(SEARCH_INDEX_URL)
       .then((res) => {
         if (!res.ok) throw new Error(`search index ${res.status}`)
+
         return res.json()
       })
       .then((data) => {
         cachedIndex = loadSearchIndex(data)
+
         return cachedIndex
       })
       .catch(() => null)
   }
+
   return cachedFetch
 }
 
@@ -57,16 +64,21 @@ export default function SearchDialog({
   useEffect(() => {
     if (!open) return
     setActive(0)
+
     if (cachedIndex) {
       setIndex(cachedIndex)
+
       return
     }
+
     let cancelled = false
     fetchSearchIndex().then((loaded) => {
       if (cancelled) return
+
       if (loaded) setIndex(loaded)
       else setIndexFailed(true)
     })
+
     return () => {
       cancelled = true
     }
@@ -74,8 +86,10 @@ export default function SearchDialog({
 
   const trimmed = query.trim()
   const loading = open && trimmed !== "" && !index && !indexFailed
+
   const results: SearchHit[] = useMemo(() => {
     if (!index || trimmed === "") return []
+
     return searchNotes(index, trimmed, RESULT_LIMIT)
   }, [index, trimmed])
 
@@ -85,6 +99,7 @@ export default function SearchDialog({
 
   const clamped = results.length === 0 ? 0 : Math.min(active, results.length - 1)
   const activeId = results.length === 0 ? undefined : `${listId}-option-${clamped}`
+
   const statusText = !open
     ? ""
     : loading
@@ -98,18 +113,22 @@ export default function SearchDialog({
   function onInputKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
     if (event.key === "ArrowDown") {
       event.preventDefault()
+
       if (results.length > 0) setActive((i) => (i + 1) % results.length)
     } else if (event.key === "ArrowUp") {
       event.preventDefault()
+
       if (results.length > 0) setActive((i) => (i - 1 + results.length) % results.length)
     } else if (event.key === "Home") {
       event.preventDefault()
       setActive(0)
     } else if (event.key === "End") {
       event.preventDefault()
+
       if (results.length > 0) setActive(results.length - 1)
     } else if (event.key === "Enter") {
       const hit = results[clamped]
+
       if (trimmed !== "" && hit) {
         event.preventDefault()
         window.location.assign(hit.url)

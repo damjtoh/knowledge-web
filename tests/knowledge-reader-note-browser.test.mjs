@@ -27,14 +27,19 @@ import { promisify } from "node:util"
 import { test, after } from "node:test"
 
 const execFileAsync = promisify(execFile)
+
 const PUBLISHER_ROOT = path.resolve(import.meta.dirname, "..")
+
 const READER_ROOT = path.join(PUBLISHER_ROOT, "reader")
+
 const STAGE_SCRIPT = path.join(PUBLISHER_ROOT, "scripts", "stage-content.mjs")
 
 const tmpRoots = []
+
 function tmpdir(prefix) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), `knowledge-note-browser-${prefix}-`))
   tmpRoots.push(dir)
+
   return dir
 }
 
@@ -42,6 +47,7 @@ after(() => {
   for (const dir of [".source", ".next", "out"]) {
     fs.rmSync(path.join(READER_ROOT, dir), { recursive: true, force: true })
   }
+
   for (const dir of tmpRoots) fs.rmSync(dir, { recursive: true, force: true })
 })
 
@@ -50,14 +56,17 @@ function findChrome() {
     process.platform === "darwin"
       ? ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"]
       : ["/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser"]
+
   for (const candidate of candidates) {
     try {
       if (fs.existsSync(candidate)) return candidate
     } catch {}
   }
+
   if (process.env.CHROME_PATH && fs.existsSync(process.env.CHROME_PATH)) {
     return process.env.CHROME_PATH
   }
+
   return null
 }
 
@@ -70,19 +79,24 @@ function createStaticServer(dir) {
     ".json": "application/json",
     ".txt": "text/plain",
   }
+
   return http.createServer((req, res) => {
     try {
       const urlPath = decodeURIComponent((req.url || "/").split("?")[0])
       const base = path.join(dir, urlPath === "/" ? "index.html" : urlPath)
       const candidates = [base, `${base}.html`, path.join(base, "index.html")]
+
       const filePath = candidates.find(
         (candidate) => fs.existsSync(candidate) && fs.statSync(candidate).isFile(),
       )
+
       if (!filePath) {
         res.writeHead(404)
         res.end("not found")
+
         return
       }
+
       res.writeHead(200, {
         "Content-Type": mime[path.extname(filePath).toLowerCase()] || "application/octet-stream",
       })
@@ -102,35 +116,47 @@ function writeFile(root, rel, content) {
 
 function humanizeSegment(seg) {
   const spaced = seg.replace(/[-_]+/g, " ").trim()
+
   if (spaced === "") return seg
+
   return spaced.charAt(0).toUpperCase() + spaced.slice(1)
 }
 
 function stagedFileTitle(absPath, fallback) {
   let text = ""
+
   try {
     text = fs.readFileSync(absPath, "utf8")
   } catch {
     return fallback
   }
+
   const lines = text.split("\n")
+
   if (lines[0]?.trim() === "---") {
     const close = lines.findIndex((l, i) => i > 0 && l.trim() === "---")
+
     if (close !== -1) {
       const fm = lines.slice(1, close).join("\n")
       const m = fm.match(/^title:\s*(.+?)\s*$/m)
+
       if (m) {
         let v = m[1].trim()
+
         if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'")))
           v = v.slice(1, -1)
+
         if (v.trim() !== "") return v.trim()
       }
     }
   }
+
   for (const line of text.split("\n")) {
     const m = line.match(/^#\s+(.+?)\s*$/)
+
     if (m) return m[1].trim()
   }
+
   return fallback
 }
 
@@ -191,54 +217,71 @@ function makeNoteKb() {
       "",
     ].join("\n"),
   )
+
   return kb
 }
 
 function routeForStagedMarkdown(rel) {
   const posix = rel.split(path.sep).join("/")
+
   if (/^index\.md$/i.test(posix)) return "/"
   let route = `/${posix.replace(/\.md$/i, "")}`
+
   if (route.endsWith("/index")) route = route.slice(0, -"/index".length)
+
   return route || "/"
 }
 
 function listStagedMarkdown(contentDir) {
   const out = []
+
   const walk = (dir, rel) => {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const relPath = rel ? `${rel}/${entry.name}` : entry.name
+
       if (entry.isDirectory()) walk(path.join(dir, entry.name), relPath)
       else if (entry.isFile() && /\.md$/i.test(entry.name)) out.push(relPath)
     }
   }
+
   walk(contentDir, "")
+
   return out.sort()
 }
 
 /** Rich note: first staged file with a table; virtual folder: first dir with Markdown but no index. */
 function deriveNoteTargets(contentDir) {
   let richRel = null
+
   for (const rel of listStagedMarkdown(contentDir)) {
     const text = fs.readFileSync(path.join(contentDir, rel), "utf8")
+
     if (/^\s*\|.*\|\s*$/m.test(text)) {
       richRel = rel
       break
     }
   }
+
   if (!richRel) richRel = listStagedMarkdown(contentDir).find((rel) => rel !== "index.md")
   const richRoute = routeForStagedMarkdown(richRel)
+
   const richTitle = stagedFileTitle(
     path.join(contentDir, richRel),
     path.posix.basename(richRel).replace(/\.md$/i, ""),
   )
+
   let virtualDir = null
   const dirs = new Set()
+
   for (const rel of listStagedMarkdown(contentDir)) {
     const parts = rel.split(path.sep).join("/").split("/").slice(0, -1)
+
     for (let i = 1; i <= parts.length; i++) dirs.add(parts.slice(0, i).join("/"))
   }
+
   for (const dir of [...dirs].sort()) {
     let hasIndex = false
+
     try {
       for (const entry of fs.readdirSync(path.join(contentDir, ...dir.split("/")))) {
         if (/^index\.md$/i.test(entry)) {
@@ -249,13 +292,16 @@ function deriveNoteTargets(contentDir) {
     } catch {
       continue
     }
+
     if (!hasIndex) {
       virtualDir = dir
       break
     }
   }
+
   const virtualRoute = virtualDir ? `/${virtualDir}` : "/"
   const virtualTitle = virtualDir ? humanizeSegment(virtualDir.split("/").pop()) : "Home"
+
   return { richRel, richRoute, richTitle, virtualDir, virtualRoute, virtualTitle }
 }
 
@@ -287,22 +333,26 @@ async function stageAndBuild(kbRoot) {
   })
   const metadata = JSON.parse(fs.readFileSync(identityFile, "utf8"))
   const targets = deriveNoteTargets(contentDir)
+
   return { work, contentDir, metadata, targets, outDir: path.join(READER_ROOT, "out") }
 }
 
 async function withBrowser(outDir, fn) {
   const chromePath = findChrome()
   let puppeteer
+
   try {
     puppeteer = await import("puppeteer-core")
   } catch (error) {
     assert.fail(`puppeteer-core not available: ${error.message}`)
   }
+
   const server = createStaticServer(outDir)
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve))
   const addr = server.address()
   const baseUrl = `http://${addr.address}:${addr.port}`
   let browser
+
   try {
     browser = await puppeteer.launch({
       executablePath: chromePath || undefined,
@@ -318,6 +368,7 @@ async function withBrowser(outDir, fn) {
     server.close()
     assert.fail(`Failed to launch Chrome: ${error.message}`)
   }
+
   try {
     await fn(baseUrl, browser)
   } finally {
@@ -332,13 +383,16 @@ async function checkDirectNote(
   { route, title, siteTitle, hostname, bodyMin = 200 },
 ) {
   const page = await browser.newPage()
+
   try {
     await page.setViewport({ width: 1280, height: 800 })
     await page.goto(`${baseUrl}${route}`, { waitUntil: "networkidle0", timeout: 15000 })
+
     const note = await page.evaluate(() => {
       const article = document.querySelector("article.reader-article")
       const h1s = Array.from(document.querySelectorAll("article.reader-article h1"))
       const canonical = document.querySelector('link[rel="canonical"]')
+
       return {
         title: document.title,
         mainCount: document.querySelectorAll("main").length,
@@ -350,6 +404,7 @@ async function checkDirectNote(
         canonicalHref: canonical?.getAttribute("href") || null,
       }
     })
+
     assert.ok(note.title.includes(title), `document title carries the note title ${title}`)
     assert.ok(note.title.includes(siteTitle), "document title carries the generated site title")
     assert.equal(note.mainCount, 1, "one main landmark")
@@ -363,9 +418,11 @@ async function checkDirectNote(
     assert.ok(note.hasExternalLink, "external links rendered")
     assert.equal(note.canonicalHref, `https://${hostname}${route}`, "canonical hostname metadata")
     await page.reload({ waitUntil: "networkidle0", timeout: 15000 })
+
     const afterReload = await page.evaluate(
       () => document.querySelector("article h1")?.textContent?.trim() || "",
     )
+
     assert.equal(afterReload, title, "refresh keeps the direct note")
   } finally {
     await page.close()
@@ -375,13 +432,16 @@ async function checkDirectNote(
 async function checkVirtualFolder(baseUrl, browser, { route, title }) {
   if (route === "/") return
   const page = await browser.newPage()
+
   try {
     await page.setViewport({ width: 1280, height: 800 })
     await page.goto(`${baseUrl}${route}`, { waitUntil: "networkidle0", timeout: 15000 })
+
     const folder = await page.evaluate(() => ({
       h1: document.querySelector("article h1")?.textContent?.trim() || "",
       groups: Array.from(document.querySelectorAll("article h2")).map((h) => h.textContent?.trim()),
     }))
+
     assert.equal(folder.h1, title, `virtual folder title ${title}`)
     assert.ok(
       folder.groups.includes("Notes") || folder.groups.includes("Folders"),
@@ -418,10 +478,13 @@ test("synthetic direct note and virtual folder are readable in a production brow
 
 test("generic real direct note is readable in a production browser", async (t) => {
   const kbRoot = process.env.KNOWLEDGE_BASE_ROOT
+
   if (!kbRoot || !fs.existsSync(path.resolve(kbRoot))) {
     t.skip("KNOWLEDGE_BASE_ROOT is not set to a vault checkout; skipping browser check")
+
     return
   }
+
   assert.ok(
     fs.existsSync(path.join(READER_ROOT, "node_modules", "next")),
     "reader dependencies must be installed (run `npm ci` in reader/)",

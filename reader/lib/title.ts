@@ -6,7 +6,10 @@
 export function docTitle(data: unknown, slug: string[]): string {
   const title =
     typeof data === "object" && data !== null ? (data as { title?: unknown }).title : undefined
+
   if (typeof title === "string" && title.trim() !== "") return title.trim()
+
   if (slug.length === 0) return "index"
+
   return slug[slug.length - 1]
 }

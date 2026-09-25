@@ -38,14 +38,17 @@ function toClientNode(node: NavigationNode): NavigationNode {
  */
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const metadata = getSiteMetadata()
+
   const pages = source.getPages().map((page) => ({
     slugs: page.slugs,
     url: page.url,
     data: page.data,
     path: page.path,
   }))
+
   const navigation = buildReaderNavigation(pages, metadata.navigation)
   const roots = navigation.roots.map(toClientNode)
+
   return (
     <html lang="en" suppressHydrationWarning>
       <head>

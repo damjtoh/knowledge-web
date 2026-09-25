@@ -19,8 +19,11 @@ import { promisify } from "node:util"
 import { test, after } from "node:test"
 
 const execFileAsync = promisify(execFile)
+
 const PUBLISHER_ROOT = path.resolve(import.meta.dirname, "..")
+
 const STAGE_SCRIPT = path.join(PUBLISHER_ROOT, "scripts", "stage-content.mjs")
+
 const TRACKED_CONFIG = path.join(PUBLISHER_ROOT, "nginx.conf")
 
 // Captured before any test runs: staging must never modify the tracked
@@ -32,6 +35,7 @@ const tmpRoots = []
 function tmpdir(prefix) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), `kw-test-${prefix}-`))
   tmpRoots.push(dir)
+
   return dir
 }
 
@@ -56,6 +60,7 @@ function makeKb({ withIndex = false, symlinkEscape = false, dirSymlinkEscape = f
     "A synthetic note for Publisher tests. See [[about]] for context.",
     "",
   ].join("\n")
+
   fs.writeFileSync(path.join(kb, "notes", "project-alpha.md"), note)
 
   const beta = "# Project Beta\n\nSecond synthetic note.\n"
@@ -64,6 +69,7 @@ function makeKb({ withIndex = false, symlinkEscape = false, dirSymlinkEscape = f
   const about = ["---", "type: Note", "---", "", "# About", "", "Synthetic about page.\n"].join(
     "\n",
   )
+
   fs.writeFileSync(path.join(kb, "about.md"), about)
 
   fs.writeFileSync(path.join(kb, "unselected.md"), "# Unselected\n\nMust never appear.\n")
@@ -76,16 +82,19 @@ function makeKb({ withIndex = false, symlinkEscape = false, dirSymlinkEscape = f
       ["---", "title: Authored Index", "---", "", "# Authored Index", ""].join("\n"),
     )
   }
+
   if (symlinkEscape) {
     const outside = path.join(tmpdir("outside"), "outside.md")
     fs.writeFileSync(outside, "# Outside\n\nOutside the Knowledge Base.\n")
     fs.symlinkSync(outside, path.join(kb, "escape.md"))
   }
+
   if (dirSymlinkEscape) {
     const outside = path.join(tmpdir("outside2"), "outside.md")
     fs.writeFileSync(outside, "# Outside\n\nOutside the Knowledge Base.\n")
     fs.symlinkSync(outside, path.join(kb, "notes", "leak.md"))
   }
+
   return kb
 }
 
@@ -116,6 +125,7 @@ async function stageValid(kb, { contentDir, identityFile } = {}) {
   const tempRoot = tmpdir("stage")
   const resolvedContent = contentDir ?? path.join(tempRoot, "content")
   const resolvedIdentity = identityFile ?? path.join(tempRoot, "site-identity.json")
+
   const args = [
     "--kb-root",
     kb,
@@ -124,7 +134,9 @@ async function stageValid(kb, { contentDir, identityFile } = {}) {
     "--identity-file",
     resolvedIdentity,
   ]
+
   const result = await runStage(args)
+
   return { result, contentDir: resolvedContent, identityFile: resolvedIdentity }
 }
 
@@ -132,6 +144,7 @@ after(() => {
   // Staging must never mutate the Publisher's tracked config: every test
   // uses an isolated temporary copy, so the tracked file must be unchanged.
   assert.equal(sha256(TRACKED_CONFIG), trackedConfigHashBefore)
+
   for (const dir of tmpRoots) fs.rmSync(dir, { recursive: true, force: true })
 })
 
@@ -201,12 +214,14 @@ test("emits deterministic generated site identity outside the staged content tre
     { path: "notes", kind: "directory" },
     { path: "about.md", kind: "markdown" },
   ])
+
   for (const entry of parsed.navigation) {
     assert.deepEqual(Object.keys(entry), ["path", "kind"])
     assert.ok(!path.isAbsolute(entry.path), "navigation paths stay relative")
     assert.ok(!entry.path.includes(".."), "navigation paths never traverse")
     assert.ok(!entry.path.includes("\\"), "navigation paths use forward slashes")
   }
+
   // Deterministic formatting: stable key order, 2-space indent, trailing newline.
   assert.equal(raw, `${JSON.stringify(parsed, null, 2)}\n`)
 
@@ -259,12 +274,14 @@ test("rejects legacy --config-file without mutating tracked configuration", asyn
 
   const before = sha256(TRACKED_CONFIG)
   let failed = false
+
   try {
     await runStage(["--kb-root", kb, "--content-dir", contentDir, "--config-file", legacyConfig])
   } catch (error) {
     failed = true
     assert.match(error.stderr, /--config-file is no longer supported/)
   }
+
   assert.ok(failed, "legacy --config-file must be rejected")
   assert.equal(sha256(TRACKED_CONFIG), before, "tracked config unchanged on legacy rejection")
   assert.ok(!fs.existsSync(contentDir), "no partial content on legacy rejection")
@@ -277,16 +294,19 @@ test("rejects a site identity file inside the staged content tree or Knowledge B
 
   const insideContent = path.join(contentDir, "site-identity.json")
   let failedContent = false
+
   try {
     await runStage(["--kb-root", kb, "--content-dir", contentDir, "--identity-file", insideContent])
   } catch (error) {
     failedContent = true
     assert.match(error.stderr, /outside the staged content tree/)
   }
+
   assert.ok(failedContent, "identity inside content tree must be rejected")
 
   const insideKb = path.join(kb, "site-identity.json")
   let failedKb = false
+
   try {
     await runStage([
       "--kb-root",
@@ -300,17 +320,20 @@ test("rejects a site identity file inside the staged content tree or Knowledge B
     failedKb = true
     assert.match(error.stderr, /must not be inside the Knowledge Base root/)
   }
+
   assert.ok(failedKb, "identity inside KB root must be rejected")
 })
 
 async function expectRejection(kb, contentDir, label, messagePattern) {
   let failed = false
+
   try {
     await stageValid(kb, { contentDir })
   } catch (error) {
     failed = true
     assert.match(error.stderr, messagePattern)
   }
+
   assert.ok(failed, `expected rejection: ${label}`)
   assert.ok(!fs.existsSync(contentDir), `no partial output for: ${label}`)
 }
@@ -462,18 +485,21 @@ test("rejects a content directory inside the Knowledge Base root", async () => {
   writeManifest(kb, validManifest)
   const inside = path.join(kb, "site-output")
   let failed = false
+
   try {
     await stageValid(kb, { contentDir: inside })
   } catch (error) {
     failed = true
     assert.match(error.stderr, /must not be inside the Knowledge Base root/)
   }
+
   assert.ok(failed, "expected rejection: content dir inside KB root")
 })
 
 /** Read generated navigation roots from an identity file. */
 function readNavigation(identityFile) {
   const parsed = JSON.parse(fs.readFileSync(identityFile, "utf8"))
+
   return parsed.navigation
 }
 
@@ -482,6 +508,7 @@ function addAssetDir(kb, name = "assets") {
   const dir = path.join(kb, name)
   fs.mkdirSync(dir, { recursive: true })
   fs.writeFileSync(path.join(dir, "logo.png"), "fake-png-bytes")
+
   return name
 }
 
@@ -491,12 +518,14 @@ async function expectNavigationRejection(kb, manifestText, label, messagePattern
   const identityFile = path.join(outRoot, "site-identity.json")
   writeManifest(kb, manifestText)
   let failed = false
+
   try {
     await stageValid(kb, { contentDir, identityFile })
   } catch (error) {
     failed = true
     assert.match(error.stderr, messagePattern)
   }
+
   assert.ok(failed, `expected navigation rejection: ${label}`)
   assert.ok(!fs.existsSync(contentDir), `no partial content for: ${label}`)
   assert.ok(!fs.existsSync(identityFile), `no partial identity for: ${label}`)
@@ -523,6 +552,7 @@ test("emits explicit navigation in manifest order with normalized paths and kind
   ])
   const parsed = JSON.parse(fs.readFileSync(identityFile, "utf8"))
   assert.deepEqual(Object.keys(parsed), ["title", "canonicalHostname", "navigation"])
+
   for (const entry of parsed.navigation) assert.deepEqual(Object.keys(entry), ["path", "kind"])
 })
 
@@ -577,12 +607,14 @@ test("emits deterministic navigation with relative public paths only", async () 
   const parsed = JSON.parse(raw)
   assert.deepEqual(Object.keys(parsed), ["title", "canonicalHostname", "navigation"])
   assert.equal(raw, `${JSON.stringify(parsed, null, 2)}\n`)
+
   for (const entry of parsed.navigation) {
     assert.deepEqual(Object.keys(entry), ["path", "kind"])
     assert.ok(!path.isAbsolute(entry.path))
     assert.ok(!entry.path.includes(kb))
     assert.ok(!entry.path.includes(".."))
   }
+
   assert.ok(!raw.includes(kb), "identity must not leak the Knowledge Base root")
   const secondRoot = tmpdir("out2")
   const secondContent = path.join(secondRoot, "content")
@@ -705,12 +737,14 @@ test("navigation failure leaves no partial replacement over prior output", async
     `title: Example Garden\ncanonicalHostname: garden.example.com\nselect:\n  - notes\nnavigation:\n  - about.md\n`,
   )
   let failed = false
+
   try {
     await stageValid(kb, { contentDir, identityFile })
   } catch (error) {
     failed = true
     assert.match(error.stderr, /not covered by the allowlist/)
   }
+
   assert.ok(failed, "expected navigation rejection over prior output")
   assert.equal(sha256(path.join(contentDir, "about.md")), contentHashBefore)
   assert.equal(fs.readFileSync(identityFile, "utf8"), identityBefore)

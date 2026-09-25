@@ -12,19 +12,23 @@ import { getSiteMetadata } from "../lib/site"
  */
 export default async function HomePage() {
   const site = getSiteMetadata()
+
   const pages = source.getPages().map((page) => ({
     slugs: page.slugs,
     url: page.url,
     data: page.data,
     path: page.path,
   }))
+
   const navigation = buildReaderNavigation(pages, site.navigation)
   const rootPage = source.getPage([])
+
   const isSynthetic =
     rootPage !== undefined &&
     typeof rootPage.data === "object" &&
     rootPage.data !== null &&
     (rootPage.data as unknown as { synthetic?: unknown }).synthetic === true
+
   const AuthoredBody =
     rootPage && !isSynthetic
       ? (rootPage.data as unknown as { body?: React.ComponentType }).body

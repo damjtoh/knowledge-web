@@ -25,33 +25,45 @@ export function getSiteMetadata(): SiteMetadata {
   // chunks, so it must not be used here.
   const file = path.isAbsolute(configured) ? configured : path.resolve(process.cwd(), configured)
   const parsed = JSON.parse(fs.readFileSync(file, "utf8")) as unknown
+
   if (typeof parsed !== "object" || parsed === null) {
     throw new Error(`site metadata at ${file} must be a JSON object`)
   }
+
   const record = parsed as Record<string, unknown>
+
   if (typeof record.title !== "string" || record.title.trim() === "") {
     throw new Error(`site metadata at ${file} has no title`)
   }
+
   if (typeof record.canonicalHostname !== "string" || record.canonicalHostname.trim() === "") {
     throw new Error(`site metadata at ${file} has no canonicalHostname`)
   }
+
   if (!Array.isArray(record.navigation)) {
     throw new Error(`site metadata at ${file} has no navigation`)
   }
+
   const navigation: PublishedRoot[] = []
+
   for (const entry of record.navigation) {
     if (typeof entry !== "object" || entry === null) {
       throw new Error(`site metadata at ${file} has an invalid navigation entry`)
     }
+
     const { path: entryPath, kind } = entry as Record<string, unknown>
+
     if (typeof entryPath !== "string" || entryPath.trim() === "") {
       throw new Error(`site metadata at ${file} has a navigation entry with no path`)
     }
+
     if (kind !== "directory" && kind !== "markdown") {
       throw new Error(`site metadata at ${file} has a navigation entry with invalid kind`)
     }
+
     navigation.push({ path: entryPath, kind })
   }
+
   return {
     title: (record.title as string).trim(),
     canonicalHostname: (record.canonicalHostname as string).trim(),

@@ -16,6 +16,7 @@ import remarkRelativeLinks from "./lib/relative-links.js"
  */
 function resolveContentDir(): string {
   const configured = process.env.READER_CONTENT_DIR ?? "../content"
+
   // Relative defaults resolve from the build working directory (the reader
   // package root). import.meta.dirname is unavailable here: the config is
   // bundled by fumadocs-mdx into reader/.source, so it would resolve to

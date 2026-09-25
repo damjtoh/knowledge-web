@@ -23,13 +23,17 @@ import {
 } from "../scripts/wikilink-spike.mjs"
 
 const execFileAsync = promisify(execFile)
+
 const PUBLISHER_ROOT = path.resolve(import.meta.dirname, "..")
+
 const SPIKE_SCRIPT = path.join(PUBLISHER_ROOT, "scripts", "wikilink-spike.mjs")
 
 const tmpRoots = []
+
 function tmpdir(prefix) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), `wl-spike-${prefix}-`))
   tmpRoots.push(dir)
+
   return dir
 }
 
@@ -44,6 +48,7 @@ function writeStaged(contentDir, files) {
 async function renderHtml(files, permalinks, markdown) {
   const processor = buildProcessor(files, permalinks)
   const hast = await processor.run(processor.parse(markdown))
+
   return { hast }
 }
 
@@ -54,12 +59,14 @@ after(() => {
 test("all four required body forms become internal routes", async () => {
   const files = ["beta.md"]
   const permalinks = { "beta.md": routeForSourcePath("beta.md") }
+
   const cases = [
     ["[[beta]]", 'href="/beta"', ">beta</a>"],
     ["[[beta|Shown Alias]]", 'href="/beta"', ">Shown Alias</a>"],
     ["[[beta#my-heading]]", 'href="/beta#my-heading"', null],
     ["[[beta#my-heading|Shown]]", 'href="/beta#my-heading"', ">Shown</a>"],
   ]
+
   for (const [markdown, href, text] of cases) {
     const { hast } = await renderHtml(files, permalinks, markdown)
     const counts = countWikilinks(hast)
@@ -70,6 +77,7 @@ test("all four required body forms become internal routes", async () => {
     const html = String(unified().use(rehypeStringify).stringify(hast))
     assert.ok(html.includes(href), `${markdown} links to the internal route`)
     assert.ok(html.includes('class="internal'), `${markdown} carries the plugin class`)
+
     if (text) assert.ok(html.includes(text), `${markdown} renders its label`)
   }
 })
@@ -105,11 +113,13 @@ test("missing targets use the plugin new class and never fail", async () => {
 test("code spans and fenced code stay literal", async () => {
   const files = ["beta.md"]
   const permalinks = { "beta.md": "/beta" }
+
   const { hast } = await renderHtml(
     files,
     permalinks,
     "Inline `[[beta]]` and:\n\n```md\n[[beta]]\n```\n",
   )
+
   const counts = countWikilinks(hast)
   assert.equal(counts.resolved, 0, "code never produces links")
   assert.equal(counts.unresolved, 0)
@@ -125,6 +135,7 @@ test("the command rejects vault inputs and staged symlinks", async () => {
   const contentDir = path.join(root, "content")
   writeStaged(contentDir, { "a.md": "# A\n" })
   let vaultRejected = false
+
   try {
     await execFileAsync(process.execPath, [
       SPIKE_SCRIPT,
@@ -138,9 +149,11 @@ test("the command rejects vault inputs and staged symlinks", async () => {
     assert.match(error.stderr, /reads only staged content/)
     assert.equal(error.code, 2)
   }
+
   assert.ok(vaultRejected, "vault input must be rejected")
   fs.symlinkSync(path.join(contentDir, "a.md"), path.join(contentDir, "link.md"))
   let symlinkRejected = false
+
   try {
     await execFileAsync(process.execPath, [SPIKE_SCRIPT, "--content-dir", contentDir])
   } catch (error) {
@@ -148,6 +161,7 @@ test("the command rejects vault inputs and staged symlinks", async () => {
     assert.match(error.stderr, /symlink rejected/)
     assert.equal(error.code, 2)
   }
+
   assert.ok(symlinkRejected, "staged symlinks must be rejected")
 })
 
@@ -159,10 +173,12 @@ test("the command processes every staged Markdown file", async () => {
     "notes/a.md": "# A\n",
     "notes/b.md": "# B\n\nSee [[a]].\n",
   })
+
   const { stdout } = await execFileAsync(process.execPath, [
     SPIKE_SCRIPT,
     "--content-dir",
     contentDir,
   ])
+
   assert.match(stdout, /3 staged Markdown files processed/)
 })

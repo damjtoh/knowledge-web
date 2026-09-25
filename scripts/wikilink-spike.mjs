@@ -39,21 +39,27 @@ const VAULT_FLAGS = new Set([
 
 export function parseArgs(argv) {
   const args = { contentDir: null, errors: [] }
+
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
+
     if (VAULT_FLAGS.has(arg)) {
       args.errors.push(`${arg} is not accepted: the spike reads only staged content`)
       i++
       continue
     }
+
     if (arg === "--content-dir") {
       args.contentDir = argv[i + 1] ?? null
       i++
       continue
     }
+
     args.errors.push(`unknown argument: ${arg}`)
   }
+
   if (!args.contentDir) args.errors.push("--content-dir is required (staged content directory)")
+
   return args
 }
 
@@ -63,7 +69,9 @@ export function routeForSourcePath(sourcePath) {
   const posix = sourcePath.replace(/\\/g, "/")
   const dir = path.posix.dirname(posix)
   const base = path.posix.basename(posix)
+
   if (/^index\.md$/i.test(base)) return dir === "." || dir === "" ? "/" : `/${dir}`
+
   return `/${posix.replace(/\.md$/i, "")}`
 }
 
@@ -71,21 +79,27 @@ export function routeForSourcePath(sourcePath) {
 // staged content must be real files so publication stays auditable.
 export function discoverStagedMarkdown(contentDir) {
   const found = []
+
   const walk = (dir) => {
     const entries = fs
       .readdirSync(dir, { withFileTypes: true })
       .sort((a, b) => a.name.localeCompare(b.name))
+
     for (const entry of entries) {
       const abs = path.join(dir, entry.name)
+
       if (entry.isSymbolicLink())
         throw new Error(`symlink rejected inside staged content: ${path.relative(contentDir, abs)}`)
+
       if (entry.isDirectory()) walk(abs)
       else if (entry.isFile() && /\.md$/i.test(entry.name)) {
         found.push(path.relative(contentDir, abs).split(path.sep).join("/"))
       }
     }
   }
+
   walk(contentDir)
+
   return found.sort()
 }
 
@@ -94,8 +108,10 @@ export function discoverStagedMarkdown(contentDir) {
 export function stripFrontmatter(raw) {
   const text = String(raw ?? "").replace(/\r\n/g, "\n")
   const lines = text.split("\n")
+
   if (lines[0]?.trim() !== "---") return text
   const close = lines.findIndex((line, index) => index > 0 && line.trim() === "---")
+
   return close === -1 ? text : lines.slice(close + 1).join("\n")
 }
 
@@ -117,10 +133,13 @@ export function countWikilinks(hast) {
   visit(hast, "element", (node) => {
     if (node.tagName !== "a") return
     const classes = node.properties?.className ?? []
+
     if (!classes.includes("internal")) return
+
     if (classes.includes("new")) counts.unresolved += 1
     else counts.resolved += 1
   })
+
   return counts
 }
 
@@ -130,6 +149,7 @@ export async function processStagedContent(contentDir) {
   const processor = buildProcessor(sources, permalinks)
   const stringifier = unified().use(rehypeStringify)
   const pages = []
+
   for (const sourcePath of sources) {
     const body = stripFrontmatter(fs.readFileSync(path.join(contentDir, sourcePath), "utf8"))
     const hast = await processor.run(processor.parse(body))
@@ -141,6 +161,7 @@ export async function processStagedContent(contentDir) {
       ...counts,
     })
   }
+
   return {
     pages,
     files: pages.length,
@@ -152,13 +173,16 @@ export async function processStagedContent(contentDir) {
 async function main() {
   const args = parseArgs(process.argv.slice(2))
   const contentDir = args.contentDir ? path.resolve(args.contentDir) : null
+
   if (contentDir && (!fs.existsSync(contentDir) || !fs.statSync(contentDir).isDirectory())) {
     args.errors.push(`staged content directory is not a directory: ${args.contentDir}`)
   }
+
   if (args.errors.length > 0) {
     for (const error of args.errors) console.error(`✗ ${error}`)
     process.exit(2)
   }
+
   try {
     const result = await processStagedContent(contentDir)
     console.log(`✓ Wikilink spike: ${result.files} staged Markdown files processed`)

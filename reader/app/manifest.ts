@@ -18,6 +18,7 @@ export const dynamic = "force-static"
 
 export default function manifest(): MetadataRoute.Manifest {
   const site = getSiteMetadata()
+
   return {
     name: site.title,
     short_name: site.title,

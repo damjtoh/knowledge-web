@@ -25,6 +25,7 @@ const config = {
     // (Turbopack resolves it, webpack does not). Alias it explicitly or a
     // clean build fails on `@/.source/server`.
     config.resolve.alias["@/.source"] = path.join(readerDir, ".source")
+
     return config
   },
 }

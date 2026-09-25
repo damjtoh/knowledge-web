@@ -9,6 +9,7 @@ const STORAGE_KEY = "knowledge-reader-tree"
 
 function normalize(path: string | null): string {
   if (!path || path === "/") return "/"
+
   return path.endsWith("/") && path.length > 1 ? path.slice(0, -1) : path
 }
 
@@ -20,36 +21,48 @@ function normalize(path: string | null): string {
  */
 function ancestorBranches(roots: NavigationNode[], pathname: string): string[] {
   const open: string[] = []
+
   const walk = (node: NavigationNode): void => {
     if (node.isFolder) {
       const url = normalize(node.url)
+
       if (url !== "/" && (pathname === url || pathname.startsWith(`${url}/`))) {
         open.push(node.url)
       }
     }
+
     for (const child of node.children) walk(child)
   }
+
   for (const root of roots) walk(root)
+
   return open
 }
 
 /** Every folder route in the tree, used to drop stale session entries. */
 function folderUrls(roots: NavigationNode[]): Set<string> {
   const urls = new Set<string>()
+
   const walk = (node: NavigationNode): void => {
     if (node.isFolder) urls.add(node.url)
+
     for (const child of node.children) walk(child)
   }
+
   for (const root of roots) walk(root)
+
   return urls
 }
 
 function readStored(): string[] {
   try {
     const raw = window.sessionStorage.getItem(STORAGE_KEY)
+
     if (!raw) return []
     const parsed: unknown = JSON.parse(raw)
+
     if (!Array.isArray(parsed)) return []
+
     return parsed.filter((entry): entry is string => typeof entry === "string")
   } catch {
     return []
@@ -85,6 +98,7 @@ function TreeNode({ node, state }: { node: NavigationNode; state: TreeState }) {
   const isExact = state.pathname === url
   const isAncestor = url !== "/" && !isExact && state.pathname.startsWith(`${url}/`)
   const isActive = isExact || isAncestor
+
   const link = (
     <a
       href={node.url}
@@ -106,6 +120,7 @@ function TreeNode({ node, state }: { node: NavigationNode; state: TreeState }) {
   }
 
   const open = state.isOpen(node.url)
+
   return (
     <li data-tree-url={node.url}>
       <Collapsible
@@ -156,11 +171,13 @@ export default function Sidebar({ roots }: { roots: NavigationNode[] }) {
   // Branches the reader opened by hand. Merged with session storage
   // after first paint and written back on change.
   const [userOpened, setUserOpened] = useState<string[]>([])
+
   // Deliberate closes, scoped to the page where they happened.
   const [closed, setClosed] = useState<{ page: string; urls: string[] }>({
     page: pathname,
     urls: [],
   })
+
   const [hydrated, setHydrated] = useState(false)
 
   // Any navigation releases deliberate closes: the close belonged to
@@ -184,6 +201,7 @@ export default function Sidebar({ roots }: { roots: NavigationNode[] }) {
 
   useEffect(() => {
     if (!hydrated) return
+
     try {
       const known = folderUrls(roots)
       window.sessionStorage.setItem(
@@ -205,11 +223,13 @@ export default function Sidebar({ roots }: { roots: NavigationNode[] }) {
   useEffect(() => {
     const onPageShow = () => setClosed({ page: pathname, urls: [] })
     window.addEventListener("pageshow", onPageShow)
+
     return () => window.removeEventListener("pageshow", onPageShow)
   }, [pathname])
 
   const ancestors = ancestorBranches(roots, pathname)
   const suppressed = closed.page === pathname ? closed.urls : []
+
   const state: TreeState = {
     pathname,
     isOpen: (url) =>

@@ -32,14 +32,19 @@ import { promisify } from "node:util"
 import { test, after } from "node:test"
 
 const execFileAsync = promisify(execFile)
+
 const PUBLISHER_ROOT = path.resolve(import.meta.dirname, "..")
+
 const READER_ROOT = path.join(PUBLISHER_ROOT, "reader")
+
 const STAGE_SCRIPT = path.join(PUBLISHER_ROOT, "scripts", "stage-content.mjs")
 
 const tmpRoots = []
+
 function tmpdir(prefix) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), `knowledge-reader-${prefix}-`))
   tmpRoots.push(dir)
+
   return dir
 }
 
@@ -51,41 +56,53 @@ function cleanReaderArtifacts() {
 
 after(() => {
   cleanReaderArtifacts()
+
   for (const dir of tmpRoots) fs.rmSync(dir, { recursive: true, force: true })
 })
 
 function listFilesRecursive(dir, relative = "") {
   const entries = fs.readdirSync(dir, { withFileTypes: true })
   const files = []
+
   for (const entry of entries) {
     const rel = relative ? `${relative}/${entry.name}` : entry.name
+
     if (entry.isDirectory()) files.push(...listFilesRecursive(path.join(dir, entry.name), rel))
     else if (entry.isFile()) files.push(rel)
   }
+
   return files.sort()
 }
 
 /** Staged Markdown path -> expected static-export HTML path (posix). */
 function expectedHtmlForStagedMarkdown(rel) {
   const posix = rel.split(path.sep).join("/")
+
   if (/^index\.md$/i.test(path.posix.basename(posix))) {
     const dir = path.posix.dirname(posix)
+
     return dir === "." ? "index.html" : `${dir}.html`
   }
+
   return `${posix.replace(/\.md$/i, "")}.html`
 }
 
 function routeForStagedMarkdown(rel) {
   const posix = rel.split(path.sep).join("/")
+
   if (/^index\.md$/i.test(posix)) return "/"
   let route = `/${posix.replace(/\.md$/i, "")}`
+
   if (route.endsWith("/index")) route = route.slice(0, -"/index".length)
+
   return route || "/"
 }
 
 function humanizeSegment(seg) {
   const spaced = seg.replace(/[-_]+/g, " ").trim()
+
   if (spaced === "") return seg
+
   return spaced.charAt(0).toUpperCase() + spaced.slice(1)
 }
 
@@ -115,10 +132,14 @@ function writeFile(root, rel, content) {
  */
 const LONG_TITLE =
   "An extremely long packing checklist title that keeps going SupercalifragilisticexpialidociousSupercalifragilisticexpialidocious"
+
 const LONG_SLUG = "long-packing-checklist-title-that-keeps-going-for-wrapping-probes"
+
 const UNSELECTED_SENTINEL = "FIXTURE_UNSELECTED_SENTINEL_7Q2X"
+
 /** Appears only inside a fenced code block; must never become searchable. */
 const CODE_ONLY_TOKEN = "CODE_ONLY_SENTINEL_K7Q2"
+
 /** Appears only as a frontmatter value; must never become searchable. */
 const FRONTMATTER_ONLY_TOKEN = "FRONTMATTER_ONLY_SENTINEL_M3P8"
 
@@ -219,10 +240,12 @@ function makeNeutralKb() {
     "# Inner Leaf\n\nDeep nested note in a virtual folder chain.\n",
   )
   writeFile(kb, `notes/${LONG_SLUG}.md`, `# ${LONG_TITLE}\n\nPack light.\n`)
+
   for (let i = 1; i <= 12; i++) {
     const n = String(i).padStart(2, "0")
     writeFile(kb, `orchard/note-${n}.md`, `# Orchard Note ${n}\n\nFlat orchard note ${n}.\n`)
   }
+
   writeFile(kb, "standalone.md", "# Lone Pine\n\nStandalone selected file at the root.\n")
   writeFile(
     kb,
@@ -292,6 +315,7 @@ function makeNeutralKb() {
       "",
     ].join("\n"),
   )
+
   return kb
 }
 
@@ -330,11 +354,14 @@ function readOut(outDir, rel) {
 /** Assert a private path or sentinel appears in no emitted file. */
 function assertAbsentEverywhere(outDir, needle, label) {
   const hits = []
+
   for (const rel of listFilesRecursive(outDir)) {
     const abs = path.join(outDir, rel)
     const buffer = fs.readFileSync(abs)
+
     if (buffer.includes(needle)) hits.push(rel)
   }
+
   assert.deepEqual(
     hits,
     [],
@@ -355,19 +382,24 @@ function createStaticServer(dir) {
     ".json": "application/json",
     ".txt": "text/plain",
   }
+
   return http.createServer((req, res) => {
     try {
       const urlPath = decodeURIComponent((req.url || "/").split("?")[0])
       const base = path.join(dir, urlPath === "/" ? "index.html" : urlPath)
       const candidates = [base, `${base}.html`, path.join(base, "index.html")]
+
       const filePath = candidates.find(
         (candidate) => fs.existsSync(candidate) && fs.statSync(candidate).isFile(),
       )
+
       if (!filePath) {
         res.writeHead(404)
         res.end("not found")
+
         return
       }
+
       res.writeHead(200, {
         "Content-Type": mime[path.extname(filePath).toLowerCase()] || "application/octet-stream",
       })
@@ -383,6 +415,7 @@ async function serveOut(dir) {
   const server = createStaticServer(dir)
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve))
   const addr = server.address()
+
   return { server, baseUrl: `http://${addr.address}:${addr.port}` }
 }
 
@@ -400,22 +433,29 @@ function deriveVirtualHtmls(contentDir, navigationRoots = []) {
   const dirRoots = navigationRoots
     .filter((entry) => entry && entry.kind === "directory" && typeof entry.path === "string")
     .map((entry) => entry.path.split(path.sep).join("/"))
+
   const isEligible = (dir) => dirRoots.some((root) => dir === root || dir.startsWith(`${root}/`))
   const staged = listFilesRecursive(contentDir)
   const markdown = staged.filter((rel) => /\.md$/i.test(rel))
   const dirs = new Set()
+
   for (const rel of markdown) {
     const posix = rel.split(path.sep).join("/")
     const parts = posix.split("/").slice(0, -1)
+
     for (let i = 1; i <= parts.length; i++) {
       const dir = parts.slice(0, i).join("/")
+
       if (isEligible(dir)) dirs.add(dir)
     }
   }
+
   const virtual = []
+
   for (const dir of dirs) {
     const abs = path.join(contentDir, ...dir.split("/"))
     let hasIndex = false
+
     try {
       for (const entry of fs.readdirSync(abs)) {
         if (/^index\.md$/i.test(entry)) {
@@ -426,16 +466,21 @@ function deriveVirtualHtmls(contentDir, navigationRoots = []) {
     } catch {
       continue
     }
+
     if (!hasIndex) virtual.push(`${dir}.html`)
   }
+
   return virtual.sort()
 }
 
 function resolveKnowledgeBaseRoot() {
   const configured = process.env.KNOWLEDGE_BASE_ROOT
+
   if (!configured) return null
   const resolved = path.resolve(configured)
+
   if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) return null
+
   return resolved
 }
 
@@ -495,16 +540,19 @@ test("neutral synthetic corpus builds a complete static export with authored and
   assert.ok(virtualHtmls.includes("notes/nest.html"), "nested virtual folder is derived")
   assert.ok(virtualHtmls.includes("notes/nest/inner.html"), "deep nested virtual folder is derived")
   const expectedPages = [...new Set([...stagedHtmls, ...virtualHtmls])].sort()
+
   for (const rel of expectedPages) {
     assert.ok(
       fs.existsSync(path.join(outDir, rel)),
       `staged or virtual page must be emitted: ${rel}`,
     )
   }
+
   const emittedContentPages = listFilesRecursive(outDir)
     .filter((rel) => rel.endsWith(".html") && !rel.startsWith("_next"))
     .filter((rel) => rel !== "404.html" && rel !== "_not-found.html")
     .sort()
+
   assert.deepEqual(
     emittedContentPages,
     expectedPages,
@@ -542,10 +590,12 @@ test("neutral synthetic corpus builds a complete static export with authored and
   )
   const orchard = readOut(outDir, "orchard.html")
   assert.match(orchard, /<h1[^>]*>Orchard<\/h1>/, "virtual flat folder supplies a humanized title")
+
   for (let i = 1; i <= 12; i++) {
     const n = String(i).padStart(2, "0")
     assert.ok(orchard.includes(`Orchard Note ${n}`), `flat directory lists note ${n}`)
   }
+
   const nested = readOut(outDir, "notes/nest/inner.html")
   assert.match(nested, /<h1[^>]*>Inner<\/h1>/, "nested virtual folder supplies a humanized title")
   assert.match(nested, /Inner Leaf/, "nested virtual folder links its leaf")
@@ -638,6 +688,7 @@ test("neutral synthetic corpus builds a complete static export with authored and
   for (const missing of ["assets/photo.html", "assets/doc.html", "assets/doc.pdf.html"]) {
     assert.ok(!fs.existsSync(path.join(outDir, missing)), `${missing} must not be emitted`)
   }
+
   const strayBinaries = listFilesRecursive(outDir).filter((rel) => /\.(png|pdf)$/i.test(rel))
   assert.deepEqual(strayBinaries, [], "no staged binary is emitted as a page asset")
 
@@ -648,12 +699,14 @@ test("neutral synthetic corpus builds a complete static export with authored and
     /<title>Garden Home \| Fixture Garden<\/title>|<title>Fixture Garden<\/title>/,
     "landing document title",
   )
+
   for (const [label, html] of [
     ["landing", landing],
     ["guide", guide],
   ]) {
     assert.match(html, /fixture\.example\.com/, `${label} metadata carries the canonical hostname`)
   }
+
   assert.match(
     guide,
     /rel="canonical" href="https:\/\/fixture\.example\.com\/notes\/guide"/,
@@ -675,6 +728,7 @@ test("neutral synthetic corpus builds a complete static export with authored and
     Array.isArray(webManifest.icons) && webManifest.icons.length > 0,
     "manifest lists generic Publisher-owned icons",
   )
+
   for (const icon of webManifest.icons) {
     assert.ok(
       typeof icon.src === "string" && icon.src.startsWith("/"),
@@ -683,6 +737,7 @@ test("neutral synthetic corpus builds a complete static export with authored and
     const iconRel = icon.src.replace(/^\//, "")
     assert.ok(fs.existsSync(path.join(outDir, iconRel)), `manifest icon is emitted: ${iconRel}`)
   }
+
   const manifestLinks = [...landing.matchAll(/<link\b[^>]*\brel="manifest"[^>]*>/g)]
   assert.equal(manifestLinks.length, 1, "landing links one per-projection app manifest")
   assert.match(
@@ -690,6 +745,7 @@ test("neutral synthetic corpus builds a complete static export with authored and
     /\bcrossorigin="use-credentials"/,
     "protected manifest fetch sends the Access session cookie",
   )
+
   for (const rel of expectedPages) {
     assert.match(
       readOut(outDir, rel),
@@ -710,16 +766,19 @@ test("neutral synthetic corpus builds a complete static export with authored and
   ).stdout
     .split("\n")
     .filter(Boolean)
+
   const generated = porcelain.filter((line) =>
     /^(?:\?\?|..) (content\/|site-identity\.json|reader\/\.source\/|reader\/\.next\/|reader\/out\/)/.test(
       line,
     ),
   )
+
   assert.deepEqual(
     generated,
     [],
     `generated content must stay untracked (got: ${generated.join("; ")})`,
   )
+
   for (const ignored of ["reader/.source", "reader/.next", "reader/out"]) {
     const check = await execFileAsync("git", ["check-ignore", ignored], { cwd: PUBLISHER_ROOT })
     assert.match(
@@ -731,6 +790,7 @@ test("neutral synthetic corpus builds a complete static export with authored and
 
   // Static and read-only runtime: fixed deps, static export, no API routes.
   const pkg = JSON.parse(fs.readFileSync(path.join(READER_ROOT, "package.json"), "utf8"))
+
   const allowedDeps = new Set([
     "@base-ui/react",
     "@flowershow/remark-wiki-link",
@@ -744,14 +804,18 @@ test("neutral synthetic corpus builds a complete static export with authored and
     "react-dom",
     "tw-animate-css",
   ])
+
   for (const name of Object.keys(pkg.dependencies || {})) {
     assert.ok(allowedDeps.has(name), `reader runtime dependency ${name} is expected`)
   }
+
   const config = fs.readFileSync(path.join(READER_ROOT, "next.config.mjs"), "utf8")
   assert.match(config, /output:\s*["']export["']/, "reader emits a serverless static export")
+
   const routeFiles = listFilesRecursive(path.join(READER_ROOT, "app")).filter((rel) =>
     /(^|\/)route\.ts$/.test(rel),
   )
+
   assert.deepEqual(routeFiles, [], "reader has no content API routes")
   const emitted = listFilesRecursive(outDir)
   assert.ok(
@@ -789,6 +853,7 @@ test("neutral synthetic corpus builds a complete static export with authored and
     "offline manifest carries an estimated size",
   )
   assert.ok(Array.isArray(offlineManifest.urls), "offline manifest lists urls")
+
   for (const url of offlineManifest.urls) {
     assert.ok(
       typeof url === "string" && url.startsWith("/"),
@@ -797,6 +862,7 @@ test("neutral synthetic corpus builds a complete static export with authored and
     assert.ok(!url.split("/").includes(".."), `offline url never traverses: ${url}`)
     assert.ok(!/^https?:/i.test(url), `offline url is never cross-origin: ${url}`)
   }
+
   // Every published page (authored plus virtual) is listed for the offline
   // save; the search index and the install manifest travel with them.
   for (const rel of expectedPages) {
@@ -805,22 +871,27 @@ test("neutral synthetic corpus builds a complete static export with authored and
       `offline manifest covers published page: ${rel}`,
     )
   }
+
   for (const rel of ["search-index.json", "manifest.webmanifest"]) {
     assert.ok(
       offlineManifest.urls.includes(`/${rel}`),
       `offline manifest covers required file: ${rel}`,
     )
   }
+
   let manifestBytes = 0
+
   for (const url of offlineManifest.urls) {
     const rel = url.replace(/^\//, "")
     manifestBytes += fs.statSync(path.join(outDir, rel)).size
   }
+
   assert.equal(
     offlineManifest.totalBytes,
     manifestBytes,
     "offline estimated size matches the listed export files",
   )
+
   // Workbox precache entries revision every listed file by content hash,
   // reuse hashed `_next/static` URLs without a revision query, and guard
   // every fetch with the exact export bytes: a redirected sign-in page
@@ -828,7 +899,9 @@ test("neutral synthetic corpus builds a complete static export with authored and
   const precacheEntries = [
     ...swText.matchAll(/\{url:"([^"]+)",revision:("[^"]+"|null)(?:,integrity:"([^"]+)")?\}/g),
   ].map(([, url, revision, integrity]) => ({ url, revision, integrity }))
+
   assert.ok(precacheEntries.length > 0, "offline worker inlines precache entries")
+
   for (const url of offlineManifest.urls) {
     const entryUrl = url.replace(/^\//, "")
     assert.ok(
@@ -836,12 +909,14 @@ test("neutral synthetic corpus builds a complete static export with authored and
       `precache covers offline url: ${url}`,
     )
   }
+
   for (const entry of precacheEntries) {
     assert.match(
       entry.integrity ?? "",
       /^sha384-[A-Za-z0-9+/]+={0,2}$/,
       `precache entry guards exact bytes: ${entry.url}`,
     )
+
     if (entry.url.startsWith("_next/static/")) {
       assert.equal(entry.revision, "null", `hashed asset reuses its URL: ${entry.url}`)
     } else if (entry.url.endsWith(".html") || entry.url === "search-index.json") {
@@ -852,14 +927,17 @@ test("neutral synthetic corpus builds a complete static export with authored and
       )
     }
   }
+
   // The integrity guard matches the real file: recompute it for the search
   // index and one published page.
   for (const rel of ["search-index.json", "standalone.html"]) {
     const entry = precacheEntries.find((candidate) => candidate.url === rel)
     assert.ok(entry, `precache lists ${rel}`)
+
     const digest = createHash("sha384")
       .update(fs.readFileSync(path.join(outDir, rel)))
       .digest("base64")
+
     assert.equal(entry.integrity, `sha384-${digest}`, `integrity matches ${rel} bytes`)
   }
 
@@ -893,6 +971,7 @@ test("neutral synthetic corpus builds a complete static export with authored and
   ]) {
     assert.ok(searchIndexRaw.includes(title), `search index covers staged title: ${title}`)
   }
+
   for (const token of ["Details", "Cultivated beds", "Flat orchard note", "stone basin"]) {
     assert.ok(searchIndexRaw.includes(token), `search index covers heading/body text: ${token}`)
   }
@@ -918,6 +997,7 @@ test("neutral synthetic corpus builds a complete static export with authored and
   // served export: the same load+search path the Search dialog will use.
   const searchModule = await import(path.join(READER_ROOT, "lib", "search.mjs"))
   const { server, baseUrl } = await serveOut(outDir)
+
   try {
     const served = await fetch(`${baseUrl}/${searchIndexRel}`)
     assert.ok(served.ok, "search index is served as static JSON")
@@ -932,6 +1012,7 @@ test("neutral synthetic corpus builds a complete static export with authored and
       harbor.some((hit) => hit.url.startsWith("/notes/inland-journal")),
       "weaker body match is returned",
     )
+
     for (const hit of harbor) {
       assert.ok(
         typeof hit.title === "string" && hit.title.length > 0,
@@ -950,6 +1031,7 @@ test("neutral synthetic corpus builds a complete static export with authored and
         "each result excerpt ties to the matching text",
       )
     }
+
     assert.ok(
       stripSearchMarks(harbor[0].excerpt).includes("Harbor Ledger"),
       "top result carries the page title",
@@ -1004,6 +1086,7 @@ test("neutral synthetic corpus builds a complete static export with authored and
   const machineryTouched = porcelain.filter((line) =>
     /(^| )(nginx\.conf|package\.json|pnpm-lock\.yaml|scripts\/|tools\/)/.test(line.trim()),
   )
+
   assert.deepEqual(
     machineryTouched,
     [],
@@ -1014,31 +1097,38 @@ test("neutral synthetic corpus builds a complete static export with authored and
 test("offline precache revisions follow exported files without a reader build", async () => {
   const offlineScript = path.join(READER_ROOT, "scripts", "build-offline.mjs")
   const dir = tmpdir("offline-revisions")
+
   const write = (rel, content) => {
     const abs = path.join(dir, rel)
     fs.mkdirSync(path.dirname(abs), { recursive: true })
     fs.writeFileSync(abs, content)
   }
+
   write("index.html", '<link rel="manifest" href="/manifest.webmanifest"/><h1>Home</h1>')
   write("note.html", '<link rel="manifest" href="/manifest.webmanifest"/><h1>Note</h1>')
   write("manifest.webmanifest", "{}")
   write("search-index.json", JSON.stringify({ ok: true }))
   write("_next/static/chunks/app-abc123.js", "console.log(1)")
+
   const runOffline = () =>
     execFileAsync(process.execPath, [offlineScript, "--dir", dir], {
       cwd: PUBLISHER_ROOT,
       timeout: 120000,
     })
+
   const revisionsOf = () => {
     const sw = fs.readFileSync(path.join(dir, "sw.js"), "utf8")
     const entries = new Map()
+
     for (const [, url, revision] of sw.matchAll(
       /\{url:"([^"]+)",revision:("[^"]+"|null)(?:,integrity:"[^"]+")?\}/g,
     )) {
       entries.set(url, revision)
     }
+
     return entries
   }
+
   await runOffline()
   const before = revisionsOf()
   assert.ok(before.has("note.html"), "precache lists the page")
@@ -1126,10 +1216,13 @@ test("offline generation rejects an export file omitted from the precache", asyn
 
 test("generic real corpus builds a complete static export from staged content only", async (t) => {
   const kbRoot = resolveKnowledgeBaseRoot()
+
   if (!kbRoot) {
     t.skip("KNOWLEDGE_BASE_ROOT is not set to a vault checkout; skipping real-corpus build")
+
     return
   }
+
   assert.ok(
     fs.existsSync(path.join(READER_ROOT, "node_modules", "next")),
     "reader dependencies must be installed (run `npm ci` in reader/)",
@@ -1150,6 +1243,7 @@ test("generic real corpus builds a complete static export from staged content on
     Array.isArray(metadata.navigation) && metadata.navigation.length > 0,
     "generated navigation is non-empty",
   )
+
   for (const entry of metadata.navigation) {
     assert.ok(!path.isAbsolute(entry.path), "navigation paths stay relative")
     assert.ok(!entry.path.includes(".."), "navigation paths never traverse")
@@ -1164,16 +1258,19 @@ test("generic real corpus builds a complete static export from staged content on
   const stagedHtmls = stagedMarkdown.map(expectedHtmlForStagedMarkdown).sort()
   const virtualHtmls = deriveVirtualHtmls(contentDir, metadata.navigation)
   const expectedPages = [...new Set([...stagedHtmls, ...virtualHtmls])].sort()
+
   for (const rel of expectedPages) {
     assert.ok(
       fs.existsSync(path.join(outDir, rel)),
       `staged or virtual page must be emitted: ${rel}`,
     )
   }
+
   const emittedContentPages = listFilesRecursive(outDir)
     .filter((rel) => rel.endsWith(".html") && !rel.startsWith("_next"))
     .filter((rel) => rel !== "404.html" && rel !== "_not-found.html")
     .sort()
+
   assert.deepEqual(
     emittedContentPages,
     expectedPages,

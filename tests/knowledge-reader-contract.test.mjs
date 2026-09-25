@@ -18,13 +18,17 @@ import { test } from "node:test"
 import { docTitle } from "../reader/lib/title.ts"
 
 const PUBLISHER_ROOT = path.resolve(import.meta.dirname, "..")
+
 const READER_ROOT = path.join(PUBLISHER_ROOT, "reader")
+
 const READER_SOURCES = ["source.config.ts", "next.config.mjs"]
   .map((file) => path.join(READER_ROOT, file))
   .concat(
     ["app", "lib", "components"].flatMap((dir) => {
       const abs = path.join(READER_ROOT, dir)
+
       if (!fs.existsSync(abs)) return []
+
       return fs
         .readdirSync(abs, { recursive: true })
         .filter((entry) => /\.(ts|tsx|mjs|css)$/.test(entry))
@@ -51,6 +55,7 @@ test("the reader declares no Knowledge Base, vault, or manifest input (C1)", () 
     "original-vault",
     "source-vault",
   ]
+
   for (const { file, text } of readSources()) {
     for (const token of forbidden) {
       assert.ok(
@@ -63,6 +68,7 @@ test("the reader declares no Knowledge Base, vault, or manifest input (C1)", () 
 
 test("the reader reads environment only for staged content and site metadata (C1)", () => {
   const allowed = new Set(["READER_CONTENT_DIR", "READER_SITE_METADATA_FILE"])
+
   for (const { file, text } of readSources()) {
     for (const match of text.matchAll(/process\.env\.([A-Z_][A-Z0-9_]*)/g)) {
       assert.ok(allowed.has(match[1]), `${file} reads unexpected env var ${match[1]}`)
@@ -78,10 +84,13 @@ test("Fumadocs MDX/Core is the content source and no Fumadocs UI is used (C2)", 
   assert.ok(!deps["fumadocs-ui"], "reader must not depend on fumadocs-ui")
 
   const texts = readSources()
+
   const usesHeadlessSource =
     texts.some(({ text }) => text.includes("fumadocs-core/source")) &&
     texts.some(({ text }) => text.includes("fumadocs-mdx"))
+
   assert.ok(usesHeadlessSource, "reader sources use the headless Fumadocs content source")
+
   for (const { file, text } of texts) {
     assert.ok(!text.includes("fumadocs-ui"), `${file} must not use Fumadocs UI`)
   }

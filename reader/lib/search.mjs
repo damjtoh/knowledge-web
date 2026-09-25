@@ -17,7 +17,9 @@
 import MiniSearch from "minisearch"
 
 const EXCERPT_RADIUS = 60
+
 const EXCERPT_FALLBACK_LENGTH = 140
+
 const DEFAULT_LIMIT = 50
 
 function miniOptions() {
@@ -68,7 +70,9 @@ function pageDocuments(page) {
       url: page.url,
     },
   ]
+
   let n = 0
+
   for (const heading of page.structuredData.headings ?? []) {
     if (!heading.content) continue
     n += 1
@@ -80,6 +84,7 @@ function pageDocuments(page) {
       url: `${page.url}#${heading.id}`,
     })
   }
+
   for (const segment of page.structuredData.contents ?? []) {
     if (!segment.content) continue
     n += 1
@@ -91,6 +96,7 @@ function pageDocuments(page) {
       url: segment.heading ? `${page.url}#${segment.heading}` : page.url,
     })
   }
+
   return docs
 }
 
@@ -101,29 +107,39 @@ function escapeRegExp(value) {
 /** Short window around the first matched term; leading text on fallback. */
 function excerptFor(content, query) {
   const text = String(content ?? "")
+
   const terms = String(query ?? "")
     .split(/\s+/)
     .map((term) => term.trim())
     .filter(Boolean)
+
   let first = -1
   let firstLength = 0
+
   for (const term of terms) {
     const at = text.toLowerCase().indexOf(term.toLowerCase())
+
     if (at !== -1 && (first === -1 || at < first)) {
       first = at
       firstLength = term.length
     }
   }
+
   if (first === -1) {
     const head = text.slice(0, EXCERPT_FALLBACK_LENGTH)
+
     return text.length > EXCERPT_FALLBACK_LENGTH ? `${head}…` : head
   }
+
   const start = Math.max(0, first - EXCERPT_RADIUS)
   const end = Math.min(text.length, first + firstLength + EXCERPT_RADIUS)
   const pattern = new RegExp(`(${terms.map(escapeRegExp).join("|")})`, "gi")
   let snippet = text.slice(start, end).replace(pattern, "<mark>$1</mark>")
+
   if (start > 0) snippet = `…${snippet}`
+
   if (end < text.length) snippet = `${snippet}…`
+
   return snippet
 }
 
@@ -134,7 +150,9 @@ function excerptFor(content, query) {
  */
 export function buildSearchIndex(pages) {
   const mini = new MiniSearch(miniOptions())
+
   for (const page of pages) mini.addAll(pageDocuments(page))
+
   return mini.toJSON()
 }
 
@@ -147,13 +165,16 @@ export function buildSearchIndex(pages) {
  */
 export function loadSearchIndex(data) {
   const json = typeof data === "string" ? data : JSON.stringify(data)
+
   return MiniSearch.loadJSON(json, miniOptions())
 }
 
 /** Ranked `{ title, url, excerpt }` hits for a query; `[]` when blank. */
 export function searchNotes(index, query, limit = DEFAULT_LIMIT) {
   const q = String(query ?? "").trim()
+
   if (q === "") return []
+
   return index
     .search(q, queryOptions())
     .slice(0, limit)

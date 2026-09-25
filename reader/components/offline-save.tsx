@@ -3,14 +3,20 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 
 const MANIFEST_URL = "/offline.json"
+
 const SW_URL = "/sw.js"
+
 const SEARCH_INDEX_URL = "/search-index.json"
+
 const POLL_MS = 300
+
 const SAVE_TIMEOUT_MS = 60000
+
 const UPDATE_CHECK_MS = 60_000
 
 type Status =
   "checking" | "unsupported" | "idle" | "saving" | "ready" | "incomplete" | "remove-failed"
+
 type Failure = "access" | "storage" | "interrupted" | "cleared" | null
 
 interface OfflineManifest {
@@ -21,9 +27,12 @@ interface OfflineManifest {
 
 function formatBytes(value: number): string {
   if (!Number.isFinite(value) || value < 0) return "About 0 KB"
+
   if (value < 1024) return `About ${value} B`
+
   if (value < 1024 * 1024) return `About ${Math.max(1, Math.round(value / 1024))} KB`
   const mb = value / (1024 * 1024)
+
   return `About ${mb >= 10 ? Math.round(mb) : mb.toFixed(1)} MB`
 }
 
@@ -32,8 +41,10 @@ async function readManifest(): Promise<OfflineManifest | null> {
     // No-store so an update check never reads a cached manifest version;
     // the deployed worker also serves this file with no-cache headers.
     const res = await fetch(MANIFEST_URL, { credentials: "same-origin", cache: "no-store" })
+
     if (!res.ok) return null
     const data = (await res.json()) as Partial<OfflineManifest>
+
     if (
       typeof data !== "object" ||
       data === null ||
@@ -43,7 +54,9 @@ async function readManifest(): Promise<OfflineManifest | null> {
     ) {
       return null
     }
+
     const urls = data.urls.filter((url): url is string => typeof url === "string")
+
     return { version: data.version, totalBytes: data.totalBytes, urls }
   } catch {
     return null
@@ -52,17 +65,20 @@ async function readManifest(): Promise<OfflineManifest | null> {
 
 async function countCached(urls: string[]): Promise<number> {
   let done = 0
+
   for (const url of urls) {
     try {
       // Workbox stores revisioned entries under a versioned cache key; match
       // ignoring the query so the count reflects real precache entries.
       const hit = await caches.match(url, { ignoreSearch: true })
+
       if (hit && hit.ok) done += 1
     } catch {
       // A single lookup failure leaves the entry uncounted; the save
       // stays incomplete rather than claiming readiness.
     }
   }
+
   return done
 }
 
@@ -112,6 +128,7 @@ export default function OfflineSave() {
     // never offers an update. A redundant worker means the update failed
     // and the previous complete copy stays in use.
     if (!worker) return
+
     if (worker.state === "installed" && navigator.serviceWorker.controller) {
       waitingRef.current = worker
       setUpdateAvailable(true)
@@ -122,19 +139,25 @@ export default function OfflineSave() {
     try {
       if (!("serviceWorker" in navigator)) return
       const registration = await navigator.serviceWorker.getRegistration()
+
       if (!registration) return
+
       const track = (worker: ServiceWorker | null) => {
         if (!worker) return
         markWaiting(worker)
         worker.addEventListener("statechange", () => markWaiting(worker))
       }
+
       if (registration.waiting) {
         waitingRef.current = registration.waiting
+
         // Waiting at load already means a complete replacement is ready.
         if (navigator.serviceWorker.controller) setUpdateAvailable(true)
       }
+
       if (registration.installing) track(registration.installing)
       registration.addEventListener("updatefound", () => track(registration.installing))
+
       // Explicit update check; the deployed worker serves sw.js with
       // no-cache headers so this always sees a new publication.
       try {
@@ -142,11 +165,14 @@ export default function OfflineSave() {
       } catch {
         // An interrupted check leaves the previous copy usable.
       }
+
       const fresh = await navigator.serviceWorker.getRegistration()
+
       if (fresh?.waiting && navigator.serviceWorker.controller) {
         waitingRef.current = fresh.waiting
         setUpdateAvailable(true)
       }
+
       if (fresh?.installing) track(fresh.installing)
     } catch {
       // Update checks never disturb the current reading session.
@@ -156,11 +182,15 @@ export default function OfflineSave() {
   const checkStored = useCallback(async (listed: OfflineManifest) => {
     try {
       const registration = await navigator.serviceWorker.getRegistration()
+
       if (!registration) {
         setStatus("idle")
+
         return
       }
+
       const cached = await countCached(listed.urls)
+
       if (cached === listed.urls.length && listed.urls.length > 0) {
         setStatus("ready")
       } else if (cached > 0) {
@@ -176,22 +206,31 @@ export default function OfflineSave() {
 
   useEffect(() => {
     let cancelled = false
+
     async function init() {
       if (!("serviceWorker" in navigator) || typeof window.caches === "undefined") {
         if (!cancelled) setStatus("unsupported")
+
         return
       }
+
       const listed = await readManifest()
+
       if (cancelled) return
+
       if (!listed || listed.urls.length === 0) {
         setStatus("unsupported")
+
         return
       }
+
       setManifest(listed)
       setDone(0)
       await checkStored(listed)
     }
+
     init()
+
     return () => {
       cancelled = true
     }
@@ -210,8 +249,10 @@ export default function OfflineSave() {
   // downloading a new publication on a device that was never saved.
   useEffect(() => {
     if (status !== "ready") return
+
     const check = async () => {
       if (!navigator.onLine || document.visibilityState !== "visible") return
+
       try {
         const registration = await navigator.serviceWorker.getRegistration()
         await registration?.update()
@@ -219,12 +260,15 @@ export default function OfflineSave() {
         // The current complete offline copy stays available.
       }
     }
+
     const onVisible = () => {
       if (document.visibilityState === "visible") void check()
     }
+
     const timer = window.setInterval(() => void check(), UPDATE_CHECK_MS)
     window.addEventListener("online", check)
     document.addEventListener("visibilitychange", onVisible)
+
     return () => {
       window.clearInterval(timer)
       window.removeEventListener("online", check)
@@ -234,42 +278,54 @@ export default function OfflineSave() {
 
   const reloadUpdate = useCallback(async () => {
     const waiting = waitingRef.current
+
     if (!waiting) {
       window.location.reload()
+
       return
     }
+
     if (reloading) return
     setReloading(true)
+
     try {
       await new Promise<void>((resolve) => {
         let settled = false
+
         const finish = () => {
           if (settled) return
           settled = true
           resolve()
         }
+
         const onControllerChange = () => {
           navigator.serviceWorker.removeEventListener("controllerchange", onControllerChange)
           finish()
         }
+
         navigator.serviceWorker.addEventListener("controllerchange", onControllerChange)
+
         try {
           waiting.postMessage({ type: "SKIP_WAITING" })
         } catch {
           finish()
+
           return
         }
+
         setTimeout(finish, 3000)
       })
     } catch {
       // Reloading still moves to the new worker when it has activated.
     }
+
     window.location.reload()
   }, [reloading])
 
   const removeCopy = useCallback(async () => {
     if (removing) return
     setRemoving(true)
+
     try {
       // Capture this scope before unregistering, so only this Web
       // Projection's precache goes. Other origins are per-origin and
@@ -277,13 +333,16 @@ export default function OfflineSave() {
       // the precache marker and are kept.
       const current = await navigator.serviceWorker.getRegistration()
       const scope = current?.scope ?? removalScopeRef.current
+
       if (!scope) throw new Error("offline worker scope unavailable")
       removalScopeRef.current = scope
+
       if (current && !(await current.unregister()))
         throw new Error("offline worker still registered")
       const keys = await caches.keys()
       const targets = keys.filter((name) => name === `workbox-precache-v2-${scope}`)
       const deleted = await Promise.all(targets.map((name) => caches.delete(name)))
+
       if (deleted.some((success) => !success)) throw new Error("offline cache not removed")
       removalScopeRef.current = null
       waitingRef.current = null
@@ -304,11 +363,13 @@ export default function OfflineSave() {
   const save = useCallback(async () => {
     if (savingRef.current) return
     const listed = manifest
+
     if (!listed) return
     savingRef.current = true
     setFailure(null)
     setDone(0)
     setStatus("saving")
+
     try {
       // Online-access gate before any whole-site fetch: a denied session
       // (Cloudflare Access redirect or sign-in page) fails here, so the
@@ -318,15 +379,18 @@ export default function OfflineSave() {
           credentials: "same-origin",
           cache: "no-store",
         })
+
         if (!probe.ok) throw new Error(`search index ${probe.status}`)
         await probe.json()
       } catch {
         setFailure("access")
         setStatus("incomplete")
+
         return
       }
 
       let registration: ServiceWorkerRegistration
+
       try {
         registration = await navigator.serviceWorker.register(SW_URL)
       } catch (error) {
@@ -336,13 +400,16 @@ export default function OfflineSave() {
             : "interrupted",
         )
         setStatus("incomplete")
+
         return
       }
 
       const started = Date.now()
+
       for (;;) {
         const cached = await countCached(listed.urls)
         setDone(cached)
+
         if (cached === listed.urls.length) {
           // Let the activated worker take control so a restart serves offline.
           try {
@@ -350,17 +417,23 @@ export default function OfflineSave() {
           } catch {
             // Readiness already reflects the persisted cache above.
           }
+
           setStatus("ready")
+
           return
         }
+
         if (registration.installing?.state === "redundant") break
+
         if (Date.now() - started > SAVE_TIMEOUT_MS) break
         await new Promise((resolve) => setTimeout(resolve, POLL_MS))
       }
 
       let failureKind: Failure = "interrupted"
+
       try {
         const estimate = await navigator.storage?.estimate()
+
         if (
           estimate &&
           typeof estimate.quota === "number" &&
@@ -371,6 +444,7 @@ export default function OfflineSave() {
       } catch {
         // Storage details are a hint only; the incomplete state stands.
       }
+
       setFailure(failureKind)
       setStatus("incomplete")
     } finally {
@@ -387,6 +461,7 @@ export default function OfflineSave() {
       </section>
     )
   }
+
   if (status === "unsupported" || !manifest) return null
 
   const total = manifest.urls.length

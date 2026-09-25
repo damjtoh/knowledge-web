@@ -10,8 +10,10 @@ const STORAGE_KEY = "knowledge-reader-appearance"
 function readSaved(): Appearance {
   try {
     const saved = window.localStorage.getItem(STORAGE_KEY)
+
     if (saved === "light" || saved === "dark" || saved === "system") return saved
   } catch {}
+
   return "system"
 }
 
@@ -114,23 +116,29 @@ export default function AppearanceControl() {
     setAppearance(initial)
     applyAppearance(initial)
     const media = window.matchMedia("(prefers-color-scheme: dark)")
+
     const onChange = () => {
       try {
         const current = window.localStorage.getItem(STORAGE_KEY)
+
         if (current !== "light" && current !== "dark") applyAppearance("system")
       } catch {
         applyAppearance("system")
       }
     }
+
     media.addEventListener("change", onChange)
+
     return () => media.removeEventListener("change", onChange)
   }, [])
 
   const choose = useCallback((choice: Appearance) => {
     setAppearance(choice)
+
     try {
       window.localStorage.setItem(STORAGE_KEY, choice)
     } catch {}
+
     applyAppearance(choice)
   }, [])
 
@@ -149,6 +157,7 @@ export default function AppearanceControl() {
     >
       {options.map(({ value, label, Icon }) => {
         const selected = appearance === value
+
         return (
           <Button
             key={value}

@@ -10,6 +10,7 @@ import type { NavigationNode } from "../lib/navigation"
 
 function normalize(path: string | null): string {
   if (!path || path === "/") return "/"
+
   return path.endsWith("/") && path.length > 1 ? path.slice(0, -1) : path
 }
 
@@ -51,13 +52,16 @@ export default function ReaderChrome({
   // Escape closes the phone panel and returns focus to the toggle.
   useEffect(() => {
     if (!browseOpen) return
+
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setBrowseOpen(false)
         toggleRef.current?.focus()
       }
     }
+
     document.addEventListener("keydown", onKeyDown)
+
     return () => document.removeEventListener("keydown", onKeyDown)
   }, [browseOpen])
 
@@ -68,6 +72,7 @@ export default function ReaderChrome({
 
   const handleSearchOpenChange = useCallback((open: boolean) => {
     setSearchOpen(open)
+
     if (!open) {
       const opener = searchOpenerRef.current
       searchOpenerRef.current = null
@@ -82,6 +87,7 @@ export default function ReaderChrome({
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault()
+
         if (searchOpenRef.current) {
           document.getElementById(SEARCH_INPUT_ID)?.focus()
         } else {
@@ -91,7 +97,9 @@ export default function ReaderChrome({
         }
       }
     }
+
     document.addEventListener("keydown", onKeyDown)
+
     return () => document.removeEventListener("keydown", onKeyDown)
   }, [])
 
