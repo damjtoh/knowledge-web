@@ -9,6 +9,8 @@ export interface TitleSource {
   title?: string
   body?: React.ComponentType
   synthetic?: boolean
+  /** Valid timezone-aware `updated_at` when the staged note supplies one. */
+  updated_at?: string | Date | null
 }
 
 export function docTitle(data: TitleSource | undefined, slug: string[]): string {

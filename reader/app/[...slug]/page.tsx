@@ -3,6 +3,8 @@ import { notFound } from "next/navigation"
 import { source } from "../../lib/source"
 import { getSiteMetadata, canonicalUrl } from "../../lib/site"
 import { docTitle } from "../../lib/title"
+import LastEdited from "../../components/last-edited"
+import type { UpdatedAtSource } from "../../lib/last-edited"
 import {
   buildReaderNavigation,
   getDirectNotes,
@@ -132,6 +134,7 @@ export default async function FolderOrNotePage({ params }: { params: Promise<Not
     return (
       <article className="reader-article">
         <Body />
+        <LastEdited data={node.page.data} />
         <GroupSection title="Notes" nodes={directNotes} />
         <GroupSection title="Folders" nodes={childFolders} />
       </article>
@@ -156,10 +159,13 @@ export default async function FolderOrNotePage({ params }: { params: Promise<Not
   if (!page) notFound()
   // SAFETY: staged Markdown pages own a compiled body component; getPage returned a page for an existing slug.
   const Body = (page.data as { body: React.ComponentType }).body
+  // SAFETY: loader page data carries frontmatter fields; LastEdited reads only the named updated_at field.
+  const editedSource = page.data as UpdatedAtSource
 
   return (
     <article className="reader-article">
       <Body />
+      <LastEdited data={editedSource} />
     </article>
   )
 }

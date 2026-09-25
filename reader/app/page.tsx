@@ -2,12 +2,15 @@ import { File, Folder } from "lucide-react"
 import { source } from "../lib/source"
 import { buildReaderNavigation, type NavigationNode } from "../lib/navigation"
 import { getSiteMetadata } from "../lib/site"
+import LastEdited from "../components/last-edited"
 import { Card, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 
 /** Staged root fields owned by the MDX pipeline. */
 interface RootPageFields {
   synthetic?: unknown
   body?: React.ComponentType
+  title?: string
+  updated_at?: string | Date | null
 }
 
 function isRootFields(value: unknown): value is RootPageFields {
@@ -73,7 +76,10 @@ export default async function HomePage() {
   return (
     <article className="reader-article">
       {AuthoredBody ? (
-        <AuthoredBody />
+        <>
+          <AuthoredBody />
+          <LastEdited data={rootFields} />
+        </>
       ) : (
         <>
           <h1>{site.title}</h1>

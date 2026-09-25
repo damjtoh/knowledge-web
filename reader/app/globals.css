@@ -650,6 +650,26 @@ body {
 }
 
 /**
+ * Trustworthy Last edited line.
+ *
+ * Bespoke article typography only: a subdued muted note directly under
+ * the article content. Display-only semantic HTML (paragraph plus time);
+ * no UI control or shadcn primitive is involved. The text names an edit
+ * time only, never synchronization or drift.
+ */
+.reader-last-edited {
+  margin: 1.25rem 0 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: #737373;
+  overflow-wrap: anywhere;
+}
+
+.dark .reader-last-edited {
+  color: #a3a3a3;
+}
+
+/**
  * Home root cards: one responsive registry Card per published root.
  *
  * The grid fits desktop and phone widths: cards share a row when room
