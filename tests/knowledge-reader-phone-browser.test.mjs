@@ -24,6 +24,11 @@
  * KNOWLEDGE_BASE_ROOT points at a vault checkout, the same generic journey
  * runs against the real corpus.
  *
+ * The narrow-phone run also folds the phone halves of the retired
+ * home-card, breadcrumb, and projection suites: card order and kind cues
+ * with real navigation, breadcrumb current-page containment with keyboard
+ * reach, and the drawer projection switcher.
+ *
  * Run with:
  *   npm test -- tests/knowledge-reader-phone-browser.test.mjs
  *   KNOWLEDGE_BASE_ROOT=/path/to/vault npm test -- tests/knowledge-reader-phone-browser.test.mjs
@@ -1608,6 +1613,196 @@ async function runPhoneOfflinePlacement(page, baseUrl, label) {
   )
 }
 
+/**
+ * Home card slice at phone width, folded from the retired home-cards
+ * suite: ordered links, distinct folder/note cues, kind-only meta with
+ * accurate counts, hidden-route exclusion, no Home self-link,
+ * containment, touch targets, and real card navigation with Back.
+ */
+async function runPhoneCardsDetail(page, baseUrl, expect, label) {
+  await goto(page, `${baseUrl}/`)
+
+  const cards = await page.evaluate(() =>
+    Array.from(document.querySelectorAll(".reader-area-list a")).map((a) => ({
+      text: a.textContent?.trim() || "",
+      href: a.getAttribute("href") || "",
+      kind: a.getAttribute("data-kind") || "",
+      card: !!a.querySelector('[data-slot="card"]'),
+    })),
+  )
+
+  assert.deepEqual(
+    cards.map((c) => c.href),
+    expect.areaRoutes,
+    `${label}: cards link published routes in order`,
+  )
+  assert.deepEqual(
+    cards.map((c) => c.kind),
+    expect.kinds,
+    `${label}: cards keep distinct folder/note cues`,
+  )
+
+  for (const [index, title] of expect.areas.entries()) {
+    assert.ok(
+      cards[index].text.includes(title),
+      `${label}: card keeps its published title: ${title}`,
+    )
+  }
+
+  for (const card of cards) {
+    assert.ok(card.card, `${label}: card uses the registry Card surface`)
+    assert.ok(card.kind === "folder" || card.kind === "note", `${label}: distinct folder/note cue`)
+  }
+
+  assert.ok(!cards.some((c) => c.href === "/"), `${label}: no Home self-link card`)
+  assert.ok(
+    !cards.some((c) => c.text.includes("Hidden Draft")),
+    `${label}: routes outside navigation never become cards`,
+  )
+
+  const metas = await page.evaluate(() =>
+    Array.from(document.querySelectorAll(".reader-area-list .reader-home-card-meta")).map(
+      (el) => el.textContent?.trim() || "",
+    ),
+  )
+
+  assert.ok(metas.length > 0, `${label}: cards carry a kind meta line`)
+
+  for (const meta of metas) {
+    assert.match(
+      meta,
+      /^(Folder|Note)( · \d+ items?)?$/,
+      `${label}: card meta stays kind plus count`,
+    )
+  }
+
+  const cardText = cards.map((c) => c.text).join("\n")
+  assert.match(cardText, /Folder · 12 items/, `${label}: flat folder count is accurate`)
+  assert.match(cardText, /Folder · 2 items/, `${label}: authored folder count is accurate`)
+
+  const titlesFit = await page.evaluate(() =>
+    Array.from(document.querySelectorAll(".reader-area-list .reader-home-card-title")).map(
+      (el) => ({
+        right: el.getBoundingClientRect().right,
+        inner: window.innerWidth,
+      }),
+    ),
+  )
+
+  for (const title of titlesFit) {
+    assert.ok(title.right <= title.inner + 1, `${label}: long card title stays inside the viewport`)
+  }
+
+  for (const height of await visibleHeights(page, ".reader-area-list a")) {
+    assert.ok(height >= 44, `${label}: card link touch target is ${height}px (expected >= 44)`)
+  }
+
+  await assertNoPageOverflow(page, `${label} home cards`)
+
+  // Real navigation at phone width: a card opens its published route, and
+  // Back returns home without a parallel stack.
+  await Promise.all([
+    page.waitForURL((url) => url.href.includes(expect.folderRoute), {
+      waitUntil: "networkidle",
+      timeout: 15000,
+    }),
+    page.evaluate((href) => {
+      document.querySelector(`.reader-area-list a[href="${href}"]`)?.click()
+    }, expect.folderRoute),
+  ])
+  assert.ok(page.url().includes(expect.folderRoute), `${label}: card opens its published route`)
+  await page.goBack({ waitUntil: "networkidle", timeout: 15000 })
+  await page.waitForFunction(() => window.location.href.endsWith("/"), null, { timeout: 15000 })
+  assert.match(page.url(), /\/$/, `${label}: Back returns home`)
+}
+
+/**
+ * Phone breadcrumb variants, folded from the retired breadcrumbs suite:
+ * the current page stays readable inside the viewport on deep and long
+ * routes, and the trail stays keyboard reachable.
+ */
+async function runPhoneBreadcrumbsDetail(page, baseUrl, contentDir, label) {
+  const probes = deriveProbes(contentDir, { requireImage: true })
+  await goto(page, `${baseUrl}${probes.deep.route}`)
+
+  const deep = await page.evaluate(() => ({
+    current: document.querySelector('[data-slot="breadcrumb-page"]')?.textContent?.trim() || "",
+    rect:
+      document.querySelector('[data-slot="breadcrumb-page"]')?.getBoundingClientRect().toJSON() ||
+      null,
+    inner: window.innerWidth,
+  }))
+
+  assert.ok(deep.current.length > 0, `${label}: deep trail shows the current page`)
+  assert.ok(
+    deep.rect && deep.rect.width <= deep.inner + 1,
+    `${label}: deep current page stays inside the viewport`,
+  )
+  await assertNoPageOverflow(page, `${label} deep breadcrumbs`)
+
+  await goto(page, `${baseUrl}${probes.longTitle.route}`)
+
+  const long = await page.evaluate(() => ({
+    current: document.querySelector('[data-slot="breadcrumb-page"]')?.textContent?.trim() || "",
+    rect:
+      document.querySelector('[data-slot="breadcrumb-page"]')?.getBoundingClientRect().toJSON() ||
+      null,
+    inner: window.innerWidth,
+  }))
+
+  assert.ok(long.current.length > 0, `${label}: long trail keeps its title`)
+  assert.ok(
+    long.rect && long.rect.width <= long.inner + 1,
+    `${label}: long current page stays inside the viewport`,
+  )
+  await assertNoPageOverflow(page, `${label} long breadcrumbs`)
+
+  // Phone keyboard: breadcrumb links stay reachable.
+  await page.keyboard.press("Tab")
+  let foundCrumb = false
+
+  for (let i = 0; i < 15; i++) {
+    const inTrail = await page.evaluate(
+      () => !!document.activeElement?.closest(".reader-breadcrumbs"),
+    )
+
+    if (inTrail) {
+      foundCrumb = true
+      break
+    }
+
+    await page.keyboard.press("Tab")
+  }
+
+  assert.ok(foundCrumb, `${label}: trail stays keyboard reachable`)
+}
+
+/**
+ * Phone drawer carries the projection switcher with the current
+ * projection, folded from the retired projection suite.
+ */
+async function runPhoneDrawerSwitcher(page, baseUrl, expect, label) {
+  await goto(page, `${baseUrl}/`)
+  await openBrowse(page)
+
+  const drawerSwitcher = await page.evaluate(() => {
+    const el = document.querySelector(".reader-phone-drawer-switcher .reader-projection-trigger")
+
+    if (!el) return null
+    const rect = el.getBoundingClientRect()
+
+    return { text: el.textContent?.trim() || "", visible: rect.width > 0 && rect.height > 0 }
+  })
+
+  assert.ok(drawerSwitcher, `${label}: phone drawer shows the projection switcher`)
+  assert.ok(
+    drawerSwitcher.text.includes(expect.projection),
+    `${label}: drawer switcher names the current projection`,
+  )
+  assert.ok(drawerSwitcher.visible, `${label}: drawer switcher is visible`)
+  await closeBrowseViaClose(page)
+}
+
 test("synthetic phone journey covers Browse, overflow, keyboard, and refresh", async () => {
   assert.ok(
     fs.existsSync(path.join(READER_ROOT, "node_modules", "next")),
@@ -1623,11 +1818,25 @@ test("synthetic phone journey covers Browse, overflow, keyboard, and refresh", a
     folderRoute: built.journey.folderRoute,
     leafTitle: built.journey.leafTitle,
     leafRoute: built.journey.leafRoute,
+    areaRoutes: built.metadata.navigation.map((entry) => rootRoute(entry)),
+    kinds: built.metadata.navigation.map((entry) =>
+      entry.kind === "directory" ? "folder" : "note",
+    ),
+    projection: built.metadata.title,
   }
 
   try {
     await withPhonePage(browser, "narrow", async (page) => {
       await runPhoneJourney(page, built.baseUrl, expect, "narrow phone")
+    })
+    await withPhonePage(browser, "narrow", async (page) => {
+      await runPhoneCardsDetail(page, built.baseUrl, expect, "narrow phone")
+    })
+    await withPhonePage(browser, "narrow", async (page) => {
+      await runPhoneBreadcrumbsDetail(page, built.baseUrl, built.contentDir, "narrow phone")
+    })
+    await withPhonePage(browser, "narrow", async (page) => {
+      await runPhoneDrawerSwitcher(page, built.baseUrl, expect, "narrow phone")
     })
     await withPhonePage(browser, "narrow", async (page) => {
       await runDerivedOverflowProbes(page, built.baseUrl, built.contentDir, "narrow phone", {

@@ -13,6 +13,13 @@
  * metadata, never from fixed subject routes. When KNOWLEDGE_BASE_ROOT points
  * at a vault checkout, the same generic journey runs against the real corpus.
  *
+ * The synthetic run also folds the retired static, home-card, breadcrumb,
+ * projection, last-edited, and note suites onto this export: complete
+ * page-set and output inspection, card order and kind cues, deep and hidden
+ * trails, the projection switcher, last-edited lines, and direct-note
+ * readability. Build-free offline revision checks and an env-gated
+ * real-corpus export complete the folded static coverage.
+ *
  * Run with:
  *   npm test -- tests/knowledge-reader-journey-browser.test.mjs
  *   KNOWLEDGE_BASE_ROOT=/path/to/vault npm test -- tests/knowledge-reader-journey-browser.test.mjs
@@ -20,6 +27,7 @@
 
 import assert from "node:assert/strict"
 import { execFile } from "node:child_process"
+import { createHash } from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 import { promisify } from "node:util"
@@ -37,7 +45,14 @@ import {
   stageKb,
   tmpdir,
 } from "./helpers/reader-env.mjs"
-import { LONG_SLUG, writeSyntheticKb } from "./fixtures/synthetic-kb.mjs"
+import {
+  HIDDEN_NOTE_PATH,
+  LONG_SLUG,
+  SYNTHETIC_DESTINATIONS,
+  SYNTHETIC_TITLE,
+  UNSELECTED_SENTINEL,
+  writeSyntheticKb,
+} from "./fixtures/synthetic-kb.mjs"
 
 const execFileAsync = promisify(execFile)
 
@@ -2235,6 +2250,1215 @@ async function runOfflineAppearancePlacement(page, baseUrl) {
   })
 }
 
+function listFilesRecursive(dir, relative = "") {
+  const entries = fs.readdirSync(dir, { withFileTypes: true })
+  const files = []
+
+  for (const entry of entries) {
+    const rel = relative ? `${relative}/${entry.name}` : entry.name
+
+    if (entry.isDirectory()) files.push(...listFilesRecursive(path.join(dir, entry.name), rel))
+    else if (entry.isFile()) files.push(rel)
+  }
+
+  return files.sort()
+}
+
+/** Staged Markdown path -> expected static-export HTML path (posix). */
+function expectedHtmlForStagedMarkdown(rel) {
+  const posix = rel.split(path.sep).join("/")
+
+  if (/^index\.md$/i.test(path.posix.basename(posix))) {
+    const dir = path.posix.dirname(posix)
+
+    return dir === "." ? "index.html" : `${dir}.html`
+  }
+
+  return `${posix.replace(/\.md$/i, "")}.html`
+}
+
+/**
+ * Virtual folder HTML paths at or below generated directory navigation
+ * roots (dirs with Markdown, no index). Ancestors above a configured nested
+ * root never derive folders; Markdown roots create none.
+ */
+function deriveVirtualHtmls(contentDir, navigationRoots = []) {
+  const dirRoots = navigationRoots
+    .filter((entry) => entry && entry.kind === "directory" && String(entry.path) === entry.path)
+    .map((entry) => entry.path.split(path.sep).join("/"))
+
+  const isEligible = (dir) => dirRoots.some((root) => dir === root || dir.startsWith(`${root}/`))
+  const staged = listFilesRecursive(contentDir)
+  const markdown = staged.filter((rel) => /\.md$/i.test(rel))
+  const dirs = new Set()
+
+  for (const rel of markdown) {
+    const posix = rel.split(path.sep).join("/")
+    const parts = posix.split("/").slice(0, -1)
+
+    for (let i = 1; i <= parts.length; i++) {
+      const dir = parts.slice(0, i).join("/")
+
+      if (isEligible(dir)) dirs.add(dir)
+    }
+  }
+
+  const virtual = []
+
+  for (const dir of dirs) {
+    const abs = path.join(contentDir, ...dir.split("/"))
+    let hasIndex = false
+
+    try {
+      for (const entry of fs.readdirSync(abs)) {
+        if (/^index\.md$/i.test(entry)) {
+          hasIndex = true
+          break
+        }
+      }
+    } catch {
+      continue
+    }
+
+    if (!hasIndex) virtual.push(`${dir}.html`)
+  }
+
+  return virtual.sort()
+}
+
+function readOut(outDir, rel) {
+  return fs.readFileSync(path.join(outDir, rel), "utf8")
+}
+
+/** Assert a private path or sentinel appears in no emitted file. */
+function assertAbsentEverywhere(outDir, needle, label) {
+  const hits = []
+
+  for (const rel of listFilesRecursive(outDir)) {
+    const abs = path.join(outDir, rel)
+    const buffer = fs.readFileSync(abs)
+
+    if (buffer.includes(needle)) hits.push(rel)
+  }
+
+  assert.deepEqual(
+    hits,
+    [],
+    `${label} must appear in no emitted file (found in: ${hits.join(", ")})`,
+  )
+}
+
+function lastEditedFromHtml(html) {
+  const match = html.match(
+    /<p class="reader-last-edited">Last edited <time date[Tt]ime="([^"]+)">([^<]+)<\/time><\/p>/,
+  )
+
+  if (!match) return null
+
+  return { datetime: match[1], display: match[2] }
+}
+
+/** Search excerpts highlight matches with <mark>; strip it for text checks. */
+function stripSearchMarks(value) {
+  return String(value ?? "").replace(/<\/?mark>/g, "")
+}
+
+/** Card links inside the home area list, in rendered order. */
+function areaListSection(home) {
+  const start = home.indexOf("reader-area-list")
+
+  if (start === -1) return ""
+
+  return home.slice(start).split("</ul>")[0]
+}
+
+function areaListLinks(home) {
+  const section = areaListSection(home)
+  const links = []
+
+  for (const tag of section.matchAll(/<a\b[^>]*>/g)) {
+    const href = tag[0].match(/href="([^"]+)"/)?.[1]
+    const kind = tag[0].match(/data-kind="(folder|note)"/)?.[1]
+
+    if (href && kind) links.push({ href, kind })
+  }
+
+  return links
+}
+
+function countOccurrences(hay, needle) {
+  return hay.split(needle).length - 1
+}
+
+/**
+ * Complete static-export inspection, folded from the retired static suite
+ * and the static halves of the home-card, breadcrumb, projection,
+ * last-edited, and note suites. Runs on the finished export before it is
+ * served: page-set equality, home cards, rich syntax, canonical metadata,
+ * install manifest, output safety, runtime inspection, search coverage,
+ * breadcrumb trails, last-edited lines, and the offline precache.
+ */
+async function runStaticExportChecks({
+  outDir,
+  contentDir,
+  metadata,
+  workDir,
+  kbRoot,
+  areaRoutes,
+  machineryBefore,
+}) {
+  const stagedMarkdown = listFilesRecursive(contentDir).filter((rel) => /\.md$/i.test(rel))
+  assert.ok(stagedMarkdown.length > 0, "staged tree holds Markdown pages")
+  const stagedHtmls = stagedMarkdown.map(expectedHtmlForStagedMarkdown).sort()
+  const virtualHtmls = deriveVirtualHtmls(contentDir, metadata.navigation)
+  assert.ok(virtualHtmls.includes("notes.html"), "virtual folder notes.html is derived")
+  assert.ok(virtualHtmls.includes("orchard.html"), "virtual folder orchard.html is derived")
+  assert.ok(virtualHtmls.includes("notes/nest.html"), "nested virtual folder is derived")
+  assert.ok(virtualHtmls.includes("notes/nest/inner.html"), "deep nested virtual folder is derived")
+  const expectedPages = [...new Set([...stagedHtmls, ...virtualHtmls])].sort()
+
+  for (const rel of expectedPages) {
+    assert.ok(
+      fs.existsSync(path.join(outDir, rel)),
+      `staged or virtual page must be emitted: ${rel}`,
+    )
+  }
+
+  const emittedContentPages = listFilesRecursive(outDir)
+    .filter((rel) => rel.endsWith(".html") && !rel.startsWith("_next"))
+    .filter((rel) => rel !== "404.html" && rel !== "_not-found.html")
+    .sort()
+
+  assert.deepEqual(
+    emittedContentPages,
+    expectedPages,
+    "emitted pages match staged Markdown plus virtual folders exactly",
+  )
+
+  // Authored Home keeps its introduction above ordered registry cards; the
+  // synthetic fallback never renders alongside authored content.
+  const home = readOut(outDir, "index.html")
+  assert.match(home, /Synthetic Garden Home/, "authored root introduction renders")
+  assert.ok(
+    !home.includes("Browse the published sections."),
+    "synthetic fallback is not duplicated",
+  )
+  assert.ok(home.includes('data-slot="card"'), "cards use the registry Card surface")
+
+  const positions = ["Lone Pine", "Orchard", "Notes", "Garden Plots"].map((text) =>
+    home.indexOf(text),
+  )
+
+  assert.ok(
+    positions.every((pos) => pos !== -1),
+    "home cards cover every published root",
+  )
+  assert.ok(
+    positions.every((pos, i, all) => i === 0 || all[i - 1] < pos),
+    "home cards keep metadata order",
+  )
+
+  const links = areaListLinks(home)
+
+  assert.deepEqual(
+    links.map((l) => l.href),
+    areaRoutes,
+    "cards link only published routes in order",
+  )
+  assert.deepEqual(
+    links.map((l) => l.kind),
+    ["note", "folder", "folder", "folder"],
+    "folder and note cards carry distinct cues",
+  )
+  assert.match(home, /Folder · 12 items/, "flat folder count is accurate")
+  assert.match(home, /Folder · 2 items/, "authored folder count is accurate")
+
+  const section = areaListSection(home)
+
+  const metas = [...section.matchAll(/reader-home-card-meta[^>]*>([^<]*)</g)].map((m) =>
+    m[1].trim(),
+  )
+
+  assert.ok(metas.length > 0, "folder/note cards carry a kind meta line")
+
+  for (const meta of metas) {
+    assert.match(
+      meta,
+      /^(Folder|Note)( · \d+ items?)?$/,
+      `card meta stays kind plus count: ${meta}`,
+    )
+  }
+
+  assert.ok(!home.includes("Hidden Draft"), "routes outside navigation never become cards")
+  assert.ok(!/href="\/"/.test(section), "no Home self-link card")
+
+  // Indexed folder owns its route and introduction; virtual folders supply titles.
+  const garden = readOut(outDir, "garden.html")
+  assert.match(garden, /Garden Plots/, "authored folder introduction renders")
+  assert.ok(garden.includes('href="/garden/alpha"'), "folder body links to emitted note route")
+  assert.ok(garden.includes("Alpha Bed"), "folder body names its notes")
+  const orchard = readOut(outDir, "orchard.html")
+  assert.match(orchard, /<h1[^>]*>Orchard<\/h1>/, "virtual flat folder supplies a humanized title")
+
+  for (let i = 1; i <= 12; i++) {
+    const n = String(i).padStart(2, "0")
+    assert.ok(orchard.includes(`Orchard Note ${n}`), `flat directory lists note ${n}`)
+  }
+
+  const nested = readOut(outDir, "notes/nest/inner.html")
+  assert.match(nested, /<h1[^>]*>Inner<\/h1>/, "nested virtual folder supplies a humanized title")
+  assert.match(nested, /Inner Leaf/, "nested virtual folder links its leaf")
+  const standalone = readOut(outDir, "standalone.html")
+  assert.match(standalone, /Lone Pine/, "standalone Markdown root renders")
+
+  // Rich syntax renders through the maintained pipeline.
+  const guide = readOut(outDir, "notes/guide.html")
+  assert.match(
+    guide,
+    /<title>Field Guide \| Synthetic Garden<\/title>/,
+    "explicit frontmatter title wins",
+  )
+  assert.match(guide, /<table[\s>]/, "tables render")
+  assert.match(guide, /type="checkbox"/, "task lists render")
+  assert.match(guide, /<a href="https:\/\/example\.com\/field-guide"/, "external links render")
+  assert.match(
+    guide,
+    /<img[^>]+src="https:\/\/example\.com\/photos\/very-wide-panoramic-meadow-view\.jpg"/,
+    "external images render",
+  )
+  assert.match(guide, /<pre[^>]*><code/, "fenced code blocks render")
+  assert.match(
+    guide,
+    /<code[^>]*>[\s\S]*\[\[Field Guide\]\][\s\S]*<\/code>/,
+    "wikilink-like text inside code blocks stays literal",
+  )
+  assert.match(
+    guide,
+    /<a href="\/notes\/plain" class="internal"[^>]*>Plain Meadow<\/a>/,
+    "title-based wikilink resolves",
+  )
+  assert.match(
+    guide,
+    /<a href="Missing Page" class="internal new"[^>]*>Missing Page<\/a>/,
+    "missing targets render unresolved without failing the build",
+  )
+
+  const plain = readOut(outDir, "notes/plain.html")
+  assert.match(
+    plain,
+    /<title>Plain Meadow \| Synthetic Garden<\/title>/,
+    "first H1 supplies the title",
+  )
+
+  const longPage = readOut(outDir, `notes/${LONG_SLUG}.html`)
+  assert.ok(longPage.includes("An extremely long packing checklist title"), "long title renders")
+
+  // Non-Markdown staged files never become pages.
+  assert.ok(
+    !fs.existsSync(path.join(outDir, "assets/photo.html")),
+    "assets/photo.html is not emitted",
+  )
+
+  const strayBinaries = listFilesRecursive(outDir).filter((rel) => /\.(png|pdf)$/i.test(rel))
+  assert.deepEqual(strayBinaries, [], "no staged binary is emitted as a page asset")
+
+  // Generated canonical metadata.
+  assert.match(
+    home,
+    /<title>Synthetic Garden Home \| Synthetic Garden<\/title>|<title>Synthetic Garden<\/title>/,
+    "landing document title",
+  )
+
+  for (const [label, html] of [
+    ["landing", home],
+    ["guide", guide],
+  ]) {
+    assert.match(
+      html,
+      /synthetic\.example\.com/,
+      `${label} metadata carries the canonical hostname`,
+    )
+  }
+
+  assert.match(
+    guide,
+    /rel="canonical" href="https:\/\/synthetic\.example\.com\/notes\/guide"/,
+    "note canonical URL",
+  )
+
+  // Per-projection install metadata: generated title, site-local start URL,
+  // standalone display, and generic Publisher-owned icons.
+  assert.ok(
+    fs.existsSync(path.join(outDir, "manifest.webmanifest")),
+    "static export carries a per-projection app manifest",
+  )
+  const webManifest = JSON.parse(readOut(outDir, "manifest.webmanifest"))
+  assert.equal(webManifest.name, metadata.title, "manifest name uses the generated title")
+  assert.equal(webManifest.start_url, "/", "manifest start URL stays site-local")
+  assert.equal(webManifest.scope, "/", "manifest scope stays site-local")
+  assert.equal(webManifest.display, "standalone", "manifest uses standalone display")
+  assert.ok(
+    Array.isArray(webManifest.icons) && webManifest.icons.length > 0,
+    "manifest lists generic Publisher-owned icons",
+  )
+
+  for (const icon of webManifest.icons) {
+    assert.ok(
+      String(icon.src) === icon.src && icon.src.startsWith("/"),
+      "manifest icon stays site-local",
+    )
+    const iconRel = icon.src.replace(/^\//, "")
+    assert.ok(fs.existsSync(path.join(outDir, iconRel)), `manifest icon is emitted: ${iconRel}`)
+  }
+
+  const manifestLinks = [...home.matchAll(/<link\b[^>]*\brel="manifest"[^>]*>/g)]
+  assert.equal(manifestLinks.length, 1, "landing links one per-projection app manifest")
+  assert.match(
+    manifestLinks[0][0],
+    /\bcrossorigin="use-credentials"/,
+    "protected manifest fetch sends the Access session cookie",
+  )
+
+  for (const rel of expectedPages) {
+    assert.match(
+      readOut(outDir, rel),
+      /<link rel="manifest" href="\/manifest\.webmanifest" crossorigin="use-credentials"\/>/,
+      `published page requests the protected manifest with credentials: ${rel}`,
+    )
+  }
+
+  // Bounded output safety inspection.
+  assertAbsentEverywhere(outDir, UNSELECTED_SENTINEL, "unselected sentinel")
+  assertAbsentEverywhere(outDir, fs.realpathSync(kbRoot), "original vault path")
+  assertAbsentEverywhere(outDir, fs.realpathSync(workDir), "private staging path")
+  assertAbsentEverywhere(outDir, fs.realpathSync(PUBLISHER_ROOT), "private publisher checkout path")
+
+  // Generated content stays untracked and ignored.
+  const porcelain = (
+    await execFileAsync("git", ["status", "--porcelain"], { cwd: PUBLISHER_ROOT })
+  ).stdout
+    .split("\n")
+    .filter(Boolean)
+
+  const generated = porcelain.filter((line) =>
+    /^(?:\?\?|..) (content\/|site-identity\.json|reader\/\.source\/|reader\/\.next\/|reader\/out\/)/.test(
+      line,
+    ),
+  )
+
+  assert.deepEqual(
+    generated,
+    [],
+    `generated content must stay untracked (got: ${generated.join("; ")})`,
+  )
+
+  for (const ignored of ["reader/.source", "reader/.next", "reader/out"]) {
+    const check = await execFileAsync("git", ["check-ignore", ignored], { cwd: PUBLISHER_ROOT })
+    assert.match(
+      check.stdout,
+      new RegExp(ignored.replace(/\./g, "\\.")),
+      `${ignored} is git-ignored`,
+    )
+  }
+
+  // Static and read-only runtime: fixed deps, static export, no API routes.
+  const pkg = JSON.parse(fs.readFileSync(path.join(READER_ROOT, "package.json"), "utf8"))
+
+  const allowedDeps = new Set([
+    "@base-ui/react",
+    "@flowershow/remark-wiki-link",
+    "class-variance-authority",
+    "cn",
+    "fumadocs-core",
+    "fumadocs-mdx",
+    "lucide-react",
+    "minisearch",
+    "next",
+    "react",
+    "react-dom",
+    "tw-animate-css",
+  ])
+
+  for (const name of Object.keys(pkg.dependencies || {})) {
+    assert.ok(allowedDeps.has(name), `reader runtime dependency ${name} is expected`)
+  }
+
+  const config = fs.readFileSync(path.join(READER_ROOT, "next.config.mjs"), "utf8")
+  assert.match(config, /output:\s*["']export["']/, "reader emits a serverless static export")
+
+  const routeFiles = listFilesRecursive(path.join(READER_ROOT, "app")).filter((rel) =>
+    /(^|\/)route\.ts$/.test(rel),
+  )
+
+  assert.deepEqual(routeFiles, [], "reader has no content API routes")
+  const emitted = listFilesRecursive(outDir)
+  assert.ok(
+    !emitted.some((rel) => /pagefind/i.test(rel)),
+    "static output carries no pagefind bundle",
+  )
+
+  // Offline generation from the finished export: a self-contained Workbox
+  // worker plus a reader-facing manifest, both derived from emitted files
+  // only (no Knowledge Base, staging tree, or content API input).
+  assert.ok(fs.existsSync(path.join(outDir, "sw.js")), "static export carries an offline worker")
+  assert.ok(
+    fs.existsSync(path.join(outDir, "offline.json")),
+    "static export carries an offline manifest",
+  )
+  const swText = readOut(outDir, "sw.js")
+  assert.match(swText, /precache/, "offline worker uses a Workbox revisioned precache")
+  assert.match(swText, /self\.location\.origin/, "offline worker stays on the projection origin")
+  assert.match(
+    swText,
+    /uri\.html|index\.html/,
+    "offline worker mirrors the nginx extensionless mapping",
+  )
+  assert.ok(
+    !/https?:\/\/[^"'\s]*cloudflare/i.test(swText),
+    "offline worker precaches no access host",
+  )
+  const offlineManifest = JSON.parse(readOut(outDir, "offline.json"))
+  assert.ok(
+    String(offlineManifest.version) === offlineManifest.version &&
+      offlineManifest.version.length > 0,
+    "offline manifest carries a version",
+  )
+  assert.ok(
+    Object.prototype.toString.call(offlineManifest.totalBytes) === "[object Number]" &&
+      offlineManifest.totalBytes > 0,
+    "offline manifest carries an estimated size",
+  )
+  assert.ok(Array.isArray(offlineManifest.urls), "offline manifest lists urls")
+
+  for (const url of offlineManifest.urls) {
+    assert.ok(String(url) === url && url.startsWith("/"), `offline url stays site-local: ${url}`)
+    assert.ok(!url.split("/").includes(".."), `offline url never traverses: ${url}`)
+    assert.ok(!/^https?:/i.test(url), `offline url is never cross-origin: ${url}`)
+  }
+
+  // Every published page (authored plus virtual) is listed for the offline
+  // save; the search index and the install manifest travel with them.
+  for (const rel of expectedPages) {
+    assert.ok(
+      offlineManifest.urls.includes(`/${rel}`),
+      `offline manifest covers published page: ${rel}`,
+    )
+  }
+
+  for (const rel of ["search-index.json", "manifest.webmanifest"]) {
+    assert.ok(
+      offlineManifest.urls.includes(`/${rel}`),
+      `offline manifest covers required file: ${rel}`,
+    )
+  }
+
+  let manifestBytes = 0
+
+  for (const url of offlineManifest.urls) {
+    const rel = url.replace(/^\//, "")
+    manifestBytes += fs.statSync(path.join(outDir, rel)).size
+  }
+
+  assert.equal(
+    offlineManifest.totalBytes,
+    manifestBytes,
+    "offline estimated size matches the listed export files",
+  )
+
+  // Workbox precache entries revision every listed file by content hash,
+  // reuse hashed `_next/static` URLs without a revision query, and guard
+  // every fetch with the exact export bytes: a redirected sign-in page
+  // fails integrity instead of being cached as publication.
+  const precacheEntries = [
+    ...swText.matchAll(/\{url:"([^"]+)",revision:("[^"]+"|null)(?:,integrity:"([^"]+)")?\}/g),
+  ].map(([, url, revision, integrity]) => ({ url, revision, integrity }))
+
+  assert.ok(precacheEntries.length > 0, "offline worker inlines precache entries")
+
+  for (const url of offlineManifest.urls) {
+    const entryUrl = url.replace(/^\//, "")
+    assert.ok(
+      precacheEntries.some((entry) => entry.url === entryUrl),
+      `precache covers offline url: ${url}`,
+    )
+  }
+
+  for (const entry of precacheEntries) {
+    assert.match(
+      entry.integrity ?? "",
+      /^sha384-[A-Za-z0-9+/]+={0,2}$/,
+      `precache entry guards exact bytes: ${entry.url}`,
+    )
+
+    if (entry.url.startsWith("_next/static/")) {
+      assert.equal(entry.revision, "null", `hashed asset reuses its URL: ${entry.url}`)
+    } else if (entry.url.endsWith(".html") || entry.url === "search-index.json") {
+      assert.match(
+        entry.revision ?? "",
+        /^"[0-9a-f]{16,}"$/,
+        `published file carries a content revision: ${entry.url}`,
+      )
+    }
+  }
+
+  // The integrity guard matches the real file: recompute it for the search
+  // index and one published page.
+  for (const rel of ["search-index.json", "standalone.html"]) {
+    const entry = precacheEntries.find((candidate) => candidate.url === rel)
+    assert.ok(entry, `precache lists ${rel}`)
+
+    const digest = createHash("sha384")
+      .update(fs.readFileSync(path.join(outDir, rel)))
+      .digest("base64")
+
+    assert.equal(entry.integrity, `sha384-${digest}`, `integrity matches ${rel} bytes`)
+  }
+
+  // Build-time full-text search index over staged content only: the export
+  // carries one static JSON file, with no runtime service or dynamic route.
+  const searchIndexRel = "search-index.json"
+  assert.ok(
+    fs.existsSync(path.join(outDir, searchIndexRel)),
+    "static export carries a build-time search index",
+  )
+  const searchIndexRaw = readOut(outDir, searchIndexRel)
+  JSON.parse(searchIndexRaw) // the static client must be able to parse it
+
+  // Coverage: titles of staged pages, including the published page omitted
+  // from navigation; plus heading and body samples.
+  for (const title of [
+    "Synthetic Garden Home",
+    "Garden Plots",
+    "Alpha Bed",
+    "Beta Bed",
+    "Field Guide",
+    "Plain Meadow",
+    "Inner Leaf",
+    "Lone Pine",
+    "Orchard Note 01",
+    "Orchard Note 12",
+    "Valid Zulu",
+    "Valid Offset",
+    "Hidden Draft",
+    "An extremely long packing checklist title",
+  ]) {
+    assert.ok(searchIndexRaw.includes(title), `search index covers staged title: ${title}`)
+  }
+
+  for (const token of ["Details", "Cultivated beds", "Flat orchard note", "Deep nested note"]) {
+    assert.ok(searchIndexRaw.includes(token), `search index covers heading/body text: ${token}`)
+  }
+
+  // Exclusions: the unselected sentinel and binary content never enter the index.
+  for (const [label, token] of [
+    ["unselected sentinel", UNSELECTED_SENTINEL],
+    ["staged binary", "not-a-real-png"],
+  ]) {
+    assert.ok(!searchIndexRaw.includes(token), `search index excludes ${label}`)
+  }
+
+  // The published page omitted from navigation stays out of presentation
+  // but stays searchable.
+  assert.ok(!home.includes("Hidden Draft"), "hidden-navigation page stays out of the home listing")
+
+  // Engine behavior through the reader's own search module against the
+  // finished export: the same load+search path the Search dialog will use.
+  const searchModule = await import(path.join(READER_ROOT, "lib", "search.mjs"))
+  const index = searchModule.loadSearchIndex(JSON.parse(searchIndexRaw))
+
+  // Title matches carry a title, a location, and an excerpt tied to the match.
+  const titled = searchModule.searchNotes(index, "Field Guide")
+  assert.ok(titled.length > 0, "title query returns")
+  assert.equal(titled[0].url, "/notes/guide", "title match reaches the guide")
+
+  for (const hit of titled) {
+    assert.ok(String(hit.title) === hit.title && hit.title.length > 0, "result carries a title")
+    assert.ok(String(hit.url) === hit.url && hit.url.startsWith("/"), "result carries a location")
+    assert.ok(
+      String(hit.excerpt) === hit.excerpt && hit.excerpt.length > 0,
+      "result carries an excerpt",
+    )
+    assert.ok(
+      stripSearchMarks(hit.excerpt).toLowerCase().includes("field") ||
+        stripSearchMarks(hit.excerpt).toLowerCase().includes("guide"),
+      "each result excerpt ties to the matching text",
+    )
+  }
+
+  assert.ok(
+    stripSearchMarks(titled[0].excerpt).includes("Field Guide"),
+    "top result carries the page title",
+  )
+
+  // The published page omitted from navigation is searchable.
+  const hidden = searchModule.searchNotes(index, "hidden")
+  assert.ok(hidden.length > 0, "hidden-navigation page is searchable")
+  assert.ok(
+    hidden.some((hit) => String(hit.url).startsWith("/hidden/secret")),
+    "hidden query reaches the staged route",
+  )
+
+  // Excluded text never surfaces in search output.
+  assert.deepEqual(
+    searchModule.searchNotes(index, UNSELECTED_SENTINEL),
+    [],
+    "excluded text has no search output",
+  )
+
+  // Reading-header breadcrumb trails in static HTML: one landmark in the
+  // header, full ancestry on the deep page, the staged title on the hidden
+  // route, and no unselected leaks.
+  assert.ok(home.includes('data-slot="sidebar-trigger"'), "static home keeps the trigger")
+  assert.ok(home.includes('data-slot="breadcrumb"'), "static home renders the registry breadcrumb")
+  assert.ok(home.includes('aria-label="Breadcrumb"'), "breadcrumb landmark keeps its name")
+  assert.equal(
+    countOccurrences(home, 'aria-label="Breadcrumb"'),
+    1,
+    "one breadcrumb trail in the header, no second row above article",
+  )
+  assert.match(home, /Home/, "home trail shows Home current")
+
+  const deep = readOut(outDir, "notes/nest/inner/leaf.html")
+  assert.ok(deep.includes("Inner Leaf"), "deep static page shows its current title")
+  assert.ok(deep.includes('href="/notes"'), "deep static trail links Notes parent")
+  assert.ok(deep.includes('href="/notes/nest"'), "deep static trail links Nest parent")
+  assert.ok(deep.includes('href="/notes/nest/inner"'), "deep static trail links Inner parent")
+  assert.ok(deep.includes('href="/"'), "deep static trail links Home")
+  assert.equal(countOccurrences(deep, 'aria-label="Breadcrumb"'), 1, "deep page keeps one trail")
+  assert.ok(garden.includes('href="/"'), "folder trail links Home")
+  assert.ok(standalone.includes("Lone Pine"), "root note shows its authored title")
+
+  const hiddenPage = readOut(outDir, "hidden/secret.html")
+  assert.ok(
+    hiddenPage.includes("Hidden Draft"),
+    "outside-navigation route shows its actual staged title",
+  )
+  assert.ok(hiddenPage.includes('href="/"'), "hidden trail still links Home")
+  assert.ok(
+    longPage.includes("An extremely long packing checklist title"),
+    "long-title page keeps its title",
+  )
+  assert.ok(!home.includes("Unselected"), "unselected sentinel stays out of home")
+  assert.ok(!deep.includes("Unselected"), "unselected sentinel stays out of deep pages")
+
+  // Last edited lines in static HTML: valid authored timestamps render
+  // date, hour, minute, zone, and machine time; missing, invalid, and
+  // date-only values never create a label; virtual folders never guess one.
+  const offset = lastEditedFromHtml(readOut(outDir, "notes/valid-offset.html"))
+  assert.ok(offset, "valid offset note renders Last edited")
+  assert.equal(offset.display, "2026-09-20 14:30 UTC+02:00")
+  assert.equal(offset.datetime, "2026-09-20T12:30:00.000Z")
+
+  const zulu = lastEditedFromHtml(readOut(outDir, "notes/valid-z.html"))
+  assert.ok(zulu, "valid Zulu note renders Last edited")
+  assert.equal(zulu.display, "2026-08-27 05:49 UTC")
+  assert.equal(zulu.datetime, "2026-08-27T05:49:53.387Z")
+
+  for (const rel of [
+    "notes/plain.html",
+    "notes/date-only.html",
+    "notes/feb-thirty.html",
+    "garden.html",
+    "index.html",
+  ]) {
+    const html = readOut(outDir, rel)
+    assert.equal(lastEditedFromHtml(html), null, `${rel} omits Last edited`)
+    assert.ok(!html.includes("Last edited"), `${rel} shows no freshness claim`)
+  }
+
+  for (const rel of ["notes.html", "notes/nest.html", "notes/nest/inner.html"]) {
+    assert.ok(fs.existsSync(path.join(outDir, rel)), `virtual page emitted: ${rel}`)
+    assert.equal(lastEditedFromHtml(readOut(outDir, rel)), null, `${rel} omits a guessed label`)
+  }
+
+  for (const rel of ["notes/valid-offset.html", "notes/valid-z.html"]) {
+    const html = readOut(outDir, rel)
+    assert.ok(!/synchron/i.test(html), `${rel} never implies sync`)
+    assert.ok(!/drift/i.test(html), `${rel} never implies drift`)
+    assert.ok(!/up to date/i.test(html), `${rel} never claims freshness`)
+  }
+
+  // The same source timestamp stays in the offline-saved static page: the
+  // emitted HTML is what the Workbox precache stores, and it is listed.
+  for (const rel of ["notes/valid-offset.html", "notes/valid-z.html"]) {
+    assert.ok(offlineManifest.urls.includes(`/${rel}`), `offline manifest covers ${rel}`)
+    assert.ok(
+      readOut(outDir, rel).includes("2026-"),
+      `offline-saved page keeps its source timestamp: ${rel}`,
+    )
+  }
+
+  // Static export carries the projection switcher with the current projection.
+  assert.ok(home.includes("reader-projection-trigger"), "static HTML carries the switcher")
+  assert.ok(home.includes(SYNTHETIC_TITLE), "static HTML names the current projection")
+
+  // Publisher machinery stays unchanged by the reader test run itself: the
+  // run introduces no new touches beyond what the working tree already held
+  // (the consolidation item itself deletes the spike script and prunes a
+  // devDependency, so an absolute-emptiness check cannot hold here).
+  const machineryAfter = porcelain.filter((line) =>
+    /(^| )(nginx\.conf|package\.json|pnpm-lock\.yaml|scripts\/|tools\/)/.test(line.trim()),
+  )
+
+  assert.deepEqual(
+    machineryAfter,
+    machineryBefore,
+    `reader test run must leave Publisher machinery unchanged (got: ${machineryAfter.join("; ")})`,
+  )
+}
+
+/**
+ * Home card slice on desktop, folded from the retired home-cards suite:
+ * ordered links, distinct folder/note cues, accurate counts, kind-only
+ * meta, hidden-route exclusion, Home self-link omission, containment,
+ * and touch targets.
+ */
+async function runHomeCardsDetail(page, baseUrl, expect) {
+  await page.goto(`${baseUrl}/`, { waitUntil: "networkidle", timeout: 15000 })
+
+  const cards = await page.evaluate(() =>
+    Array.from(document.querySelectorAll(".reader-area-list a")).map((a) => ({
+      text: a.textContent?.trim() || "",
+      href: a.getAttribute("href") || "",
+      kind: a.getAttribute("data-kind") || "",
+      card: !!a.querySelector('[data-slot="card"]'),
+    })),
+  )
+
+  assert.deepEqual(
+    cards.map((c) => c.href),
+    expect.areaRoutes,
+    "cards link published routes in order",
+  )
+  assert.deepEqual(
+    cards.map((c) => c.kind),
+    ["note", "folder", "folder", "folder"],
+    "cards keep distinct folder/note cues",
+  )
+
+  for (const [index, title] of expect.areas.entries()) {
+    assert.ok(cards[index].text.includes(title), `card keeps its published title: ${title}`)
+  }
+
+  for (const card of cards) {
+    assert.ok(card.card, "card uses the registry Card surface")
+    assert.ok(card.kind === "folder" || card.kind === "note", "distinct folder/note cue")
+  }
+
+  assert.ok(!cards.some((c) => c.href === "/"), "no Home self-link card")
+  assert.ok(
+    !cards.some((c) => c.text.includes("Hidden Draft")),
+    "routes outside navigation never become cards",
+  )
+
+  const metas = await page.evaluate(() =>
+    Array.from(document.querySelectorAll(".reader-area-list .reader-home-card-meta")).map(
+      (el) => el.textContent?.trim() || "",
+    ),
+  )
+
+  assert.ok(metas.length > 0, "cards carry a kind meta line")
+
+  for (const meta of metas) {
+    assert.match(
+      meta,
+      /^(Folder|Note)( · \d+ items?)?$/,
+      `card meta stays kind plus count: ${meta}`,
+    )
+  }
+
+  const cardText = cards.map((c) => c.text).join("\n")
+  assert.match(cardText, /Folder · 12 items/, "flat folder count is accurate")
+  assert.match(cardText, /Folder · 2 items/, "authored folder count is accurate")
+
+  const overflow = await page.evaluate(() => ({
+    doc: document.documentElement.scrollWidth,
+    body: document.body.scrollWidth,
+    inner: window.innerWidth,
+  }))
+
+  assert.ok(
+    overflow.doc <= overflow.inner + 1,
+    `document width ${overflow.doc} inside viewport ${overflow.inner}`,
+  )
+  assert.ok(
+    overflow.body <= overflow.inner + 1,
+    `body width ${overflow.body} inside viewport ${overflow.inner}`,
+  )
+
+  const titlesFit = await page.evaluate(() =>
+    Array.from(document.querySelectorAll(".reader-area-list .reader-home-card-title")).map(
+      (el) => ({
+        right: el.getBoundingClientRect().right,
+        inner: window.innerWidth,
+      }),
+    ),
+  )
+
+  for (const title of titlesFit) {
+    assert.ok(title.right <= title.inner + 1, "long card title stays inside the viewport")
+  }
+
+  const heights = await page.evaluate(() =>
+    Array.from(document.querySelectorAll(".reader-area-list a")).map(
+      (a) => a.getBoundingClientRect().height,
+    ),
+  )
+
+  for (const height of heights) {
+    assert.ok(height >= 44, `card link touch target is ${height}px (expected >= 44)`)
+  }
+}
+
+/**
+ * Breadcrumb slice on desktop, folded from the retired breadcrumbs suite:
+ * deep ancestry by visible text, parent navigation plus Back, the
+ * hidden-route staged title, registry composition, and keyboard reach.
+ */
+async function runBreadcrumbsDetail(page, baseUrl, expect) {
+  await page.goto(`${baseUrl}${expect.deepRoute}`, { waitUntil: "networkidle", timeout: 15000 })
+
+  const deep = await page.evaluate(() => ({
+    crumbs: Array.from(
+      document.querySelectorAll(".reader-breadcrumbs [data-slot='breadcrumb-item']"),
+    ).map((li) => ({
+      text: li.textContent?.trim() || "",
+      href: li.querySelector("a")?.getAttribute("href") || null,
+    })),
+    h1: document.querySelector("article h1")?.textContent?.trim() || "",
+    mainCount: document.querySelectorAll("main").length,
+    trigger: !!document.querySelector('[data-slot="sidebar-trigger"]'),
+    breadcrumbSlot: !!document.querySelector('[data-slot="breadcrumb"]'),
+    breadcrumbList: !!document.querySelector('[data-slot="breadcrumb-list"]'),
+  }))
+
+  assert.ok(deep.trigger, "header keeps the registry trigger")
+  assert.ok(deep.breadcrumbSlot, "header renders the registry breadcrumb")
+  assert.ok(deep.breadcrumbList, "header renders the registry list")
+  assert.ok(
+    deep.crumbs.length >= 4,
+    `deep trail keeps ancestry (got ${deep.crumbs.map((c) => c.text).join(" / ")})`,
+  )
+  assert.ok(
+    deep.crumbs[deep.crumbs.length - 1].text.includes(expect.deepTitle),
+    "trail ends at the deep note",
+  )
+  assert.equal(deep.h1, expect.deepTitle, "deep article title matches the trail")
+  assert.equal(deep.mainCount, 1, "one main landmark on the deep note")
+
+  const parentHref = deep.crumbs[1].href
+  assert.ok(parentHref, "deep trail links a parent")
+  await Promise.all([
+    page.waitForFunction(
+      (href) => window.location.pathname === href || window.location.pathname === `${href}/`,
+      parentHref,
+      { timeout: 15000 },
+    ),
+    page.evaluate((href) => {
+      document.querySelector(`.reader-breadcrumbs a[href="${href}"]`)?.click()
+    }, parentHref),
+  ])
+  await page.waitForLoadState("networkidle", { timeout: 15000 })
+  assert.ok(page.url().includes(parentHref), "breadcrumb parent navigates")
+  await page.goBack()
+  await page.waitForFunction((route) => window.location.href.includes(route), expect.deepRoute, {
+    timeout: 15000,
+  })
+  assert.ok(page.url().includes(expect.deepRoute), "browser Back returns to the deep note")
+
+  await page.goto(`${baseUrl}${expect.hiddenRoute}`, { waitUntil: "networkidle", timeout: 15000 })
+  await page.waitForFunction(
+    (title) =>
+      document.querySelector("[data-slot='breadcrumb-page']")?.textContent?.includes(title) ||
+      false,
+    expect.hiddenTitle,
+    { timeout: 5000 },
+  )
+
+  const hidden = await page.evaluate(() => ({
+    crumbs: Array.from(
+      document.querySelectorAll(".reader-breadcrumbs [data-slot='breadcrumb-item']"),
+    ).map((li) => ({
+      text: li.textContent?.trim() || "",
+      href: li.querySelector("a")?.getAttribute("href") || null,
+    })),
+    h1: document.querySelector("article h1")?.textContent?.trim() || "",
+  }))
+
+  assert.ok(
+    hidden.crumbs[hidden.crumbs.length - 1].text.includes(expect.hiddenTitle),
+    `hidden trail shows the staged title (got ${hidden.crumbs.map((c) => c.text).join(" / ")})`,
+  )
+  assert.ok(hidden.h1.includes(expect.hiddenTitle), "hidden article title")
+  assert.ok(
+    hidden.crumbs[0].href === "/" || hidden.crumbs[0].text.includes("Home"),
+    "hidden trail links Home",
+  )
+
+  // Keyboard: Tab reaches a breadcrumb link with visible focus.
+  await page.goto(`${baseUrl}${expect.deepRoute}`, { waitUntil: "networkidle", timeout: 15000 })
+  await page.evaluate(() => document.querySelector('[data-slot="sidebar-trigger"]')?.focus())
+  let focused = ""
+
+  for (let i = 0; i < 12; i++) {
+    await page.keyboard.press("Tab")
+    focused = await page.evaluate(() => document.activeElement?.textContent?.trim() || "")
+
+    const tag = await page.evaluate(
+      () => document.activeElement?.closest(".reader-breadcrumbs")?.textContent?.trim() || "",
+    )
+
+    if (tag) break
+  }
+
+  assert.ok(focused.length > 0, "keyboard reaches the header trail")
+
+  const outline = await page.evaluate(() => {
+    const el = document.activeElement
+
+    if (!el) return null
+    const s = getComputedStyle(el)
+
+    return { style: s.outlineStyle, width: s.outlineWidth }
+  })
+
+  assert.equal(outline?.style, "solid", "header trail focus stays visible")
+}
+
+/**
+ * Projection switcher on desktop, folded from the retired projection suite
+ * minus its zero-destination variant (the canonical fixture declares two
+ * destinations; emptiness is covered by stage-destinations validation):
+ * the trigger always names the current Web Projection, the menu lists only
+ * the declared destinations as ordinary anchors to distinct HTTPS origins,
+ * and keyboard open/close returns focus. The real cross-origin probe runs
+ * last because it leaves the export origin.
+ */
+async function runProjectionSwitcher(page, baseUrl, expect) {
+  const failedUrls = []
+  page.on("requestfailed", (request) => {
+    failedUrls.push(request.url())
+  })
+  await page.goto(`${baseUrl}/`, { waitUntil: "networkidle", timeout: 15000 })
+
+  const trigger = await page.evaluate(() => {
+    const el = document.querySelector(".reader-projection-trigger")
+
+    if (!el) return null
+    const rect = el.getBoundingClientRect()
+
+    return { text: el.textContent?.trim() || "", visible: rect.width > 0 && rect.height > 0 }
+  })
+
+  assert.ok(trigger, "sidebar shows a projection switcher trigger")
+  assert.ok(trigger.text.includes(expect.projection), "trigger names the current projection")
+  assert.ok(trigger.visible, "switcher trigger is visible")
+
+  await page.evaluate(() => document.querySelector(".reader-projection-trigger")?.click())
+  await page.waitForSelector(".reader-projection-menu", { state: "visible", timeout: 5000 })
+
+  const menu = await page.evaluate(() => {
+    const root = document.querySelector(".reader-projection-menu")
+
+    if (!root) return null
+
+    const items = Array.from(root.querySelectorAll('[data-slot="dropdown-menu-item"]')).map(
+      (el) => ({
+        text: el.textContent?.trim() || "",
+        tag: el.tagName,
+        href: el.getAttribute("href"),
+        target: el.getAttribute("target"),
+        current: el.getAttribute("aria-current"),
+      }),
+    )
+
+    return { text: root.textContent || "", items }
+  })
+
+  assert.ok(menu, "switcher opens a menu")
+  assert.equal(
+    menu.items.length,
+    1 + expect.destinations.length,
+    "menu holds the current projection plus its choices",
+  )
+  assert.ok(!menu.text.includes("Add"), "menu offers no add-projection action")
+
+  const [current, ...choices] = menu.items
+  assert.equal(current.current, "true", "first item marks the current projection")
+  assert.ok(current.text.includes(expect.projection), "current item names this projection")
+  assert.deepEqual(
+    choices.map((choice) => ({ text: choice.text, href: choice.href })),
+    expect.destinations.map((destination) => ({
+      text: destination.name,
+      href: destination.origin,
+    })),
+    "choices keep manifest order with absolute HTTPS origins",
+  )
+
+  for (const choice of choices) {
+    assert.equal(choice.tag, "A", "each choice is an ordinary anchor")
+    assert.ok(choice.href?.startsWith("https://"), "each choice targets a secure origin")
+    assert.equal(choice.target, null, "choices stay a same-tab normal navigation")
+  }
+
+  // Keyboard: Escape closes and returns focus to the trigger.
+  await page.keyboard.press("Escape")
+  await page.waitForFunction(() => !document.querySelector(".reader-projection-menu"), null, {
+    timeout: 5000,
+  })
+
+  const returned = await page.evaluate(() => document.activeElement?.className || "")
+  assert.ok(
+    String(returned).includes("reader-projection-trigger"),
+    "Escape returns focus to the switcher trigger",
+  )
+
+  // Keyboard: focusing the trigger and pressing Enter reopens the menu.
+  await page.evaluate(() => document.querySelector(".reader-projection-trigger")?.focus())
+  await page.keyboard.press("Enter")
+  await page.waitForSelector(".reader-projection-menu", { state: "visible", timeout: 5000 })
+  await page.keyboard.press("Escape")
+  await page.waitForFunction(() => !document.querySelector(".reader-projection-menu"), null, {
+    timeout: 5000,
+  })
+
+  // Real cross-origin navigation: both choice domains are reserved example
+  // names, so the request fails at DNS and the browser leaves this origin
+  // for its error page; the failed-request log carries the destination
+  // origin as proof of where the anchor pointed.
+  await page.evaluate(() => document.querySelector(".reader-projection-trigger")?.click())
+  await page.waitForSelector(".reader-projection-menu", { state: "visible", timeout: 5000 })
+  await page.locator(".reader-projection-choice").first().click()
+  await page
+    .waitForURL((url) => url.href.startsWith(expect.destinations[0].origin), { timeout: 30000 })
+    .catch(() => null)
+
+  assert.ok(
+    failedUrls.some((url) => url.startsWith(expect.destinations[0].origin)),
+    `choice navigates to its distinct origin (failed requests: ${failedUrls.join(", ")})`,
+  )
+  assert.ok(
+    !page.url().startsWith(baseUrl),
+    `navigation leaves the current origin (got ${page.url()})`,
+  )
+}
+
+/**
+ * Last edited line in the browser, folded from the retired last-edited
+ * suite (its parseUpdatedAt unit test stays in place): valid authored
+ * timestamps render with machine time, missing and virtual pages omit.
+ */
+async function runLastEditedBrowser(page, baseUrl) {
+  const errors = []
+  page.on("pageerror", (error) => errors.push(String(error)))
+  await page.goto(`${baseUrl}/notes/valid-offset`, { waitUntil: "networkidle", timeout: 15000 })
+
+  const rendered = await page.evaluate(() => {
+    const line = document.querySelector("p.reader-last-edited")
+    const time = line?.querySelector("time")
+
+    return {
+      text: line?.textContent?.trim() || null,
+      datetime: time?.getAttribute("datetime") || null,
+      display: time?.textContent?.trim() || null,
+    }
+  })
+
+  assert.ok(rendered.text?.startsWith("Last edited"), "browser shows Last edited")
+  assert.equal(rendered.datetime, "2026-09-20T12:30:00.000Z")
+  assert.equal(rendered.display, "2026-09-20 14:30 UTC+02:00")
+
+  await page.goto(`${baseUrl}/notes/plain`, { waitUntil: "networkidle", timeout: 15000 })
+  assert.equal(
+    await page.evaluate(() => document.querySelector("p.reader-last-edited")),
+    null,
+    "browser omits the label without a valid timestamp",
+  )
+
+  await page.goto(`${baseUrl}/notes`, { waitUntil: "networkidle", timeout: 15000 })
+  assert.equal(
+    await page.evaluate(() => document.querySelector("p.reader-last-edited")),
+    null,
+    "browser omits a guessed virtual-folder label",
+  )
+
+  assert.deepEqual(errors, [], "no hydration or page errors on timestamp routes")
+}
+
+/**
+ * Direct-note readability, folded from the retired note suite: document
+ * title, H1, article body, tables, canonical metadata, refresh, plus the
+ * virtual folder groups.
+ */
+async function runDirectNoteDetail(page, baseUrl, expect) {
+  await page.goto(`${baseUrl}${expect.route}`, { waitUntil: "networkidle", timeout: 15000 })
+
+  const note = await page.evaluate(() => {
+    const article = document.querySelector("article.reader-article")
+    const h1s = Array.from(document.querySelectorAll("article.reader-article h1"))
+    const canonical = document.querySelector('link[rel="canonical"]')
+
+    return {
+      title: document.title,
+      mainCount: document.querySelectorAll("main").length,
+      articleExists: !!article,
+      h1Texts: h1s.map((h) => h.textContent?.trim() || ""),
+      bodyLength: (article?.textContent || "").trim().length,
+      tableCount: article ? article.querySelectorAll("table").length : 0,
+      hasExternalLink: !!article?.querySelector('a[href^="https://"]'),
+      canonicalHref: canonical?.getAttribute("href") || null,
+    }
+  })
+
+  assert.ok(
+    note.title.includes(expect.title),
+    `document title carries the note title ${expect.title}`,
+  )
+  assert.ok(
+    note.title.includes(expect.siteTitle),
+    "document title carries the generated site title",
+  )
+  assert.equal(note.mainCount, 1, "one main landmark")
+  assert.ok(note.articleExists, "readable article element")
+  assert.ok(
+    note.h1Texts.includes(expect.h1),
+    `authored H1 rendered (got: ${note.h1Texts.join("|")})`,
+  )
+  assert.ok(note.bodyLength > 200, `article body is substantial (got ${note.bodyLength} chars)`)
+  assert.ok(note.tableCount >= 1, `tables rendered (got ${note.tableCount})`)
+  assert.ok(note.hasExternalLink, "external links rendered")
+  assert.equal(
+    note.canonicalHref,
+    `https://${expect.hostname}${expect.route}`,
+    "canonical hostname metadata",
+  )
+  await page.reload({ waitUntil: "networkidle", timeout: 15000 })
+
+  const afterReload = await page.evaluate(
+    () => document.querySelector("article h1")?.textContent?.trim() || "",
+  )
+
+  assert.equal(afterReload, expect.h1, "refresh keeps the direct note")
+
+  if (expect.virtualRoute && expect.virtualRoute !== "/") {
+    await page.goto(`${baseUrl}${expect.virtualRoute}`, {
+      waitUntil: "networkidle",
+      timeout: 15000,
+    })
+
+    const folder = await page.evaluate(() => ({
+      h1: document.querySelector("article h1")?.textContent?.trim() || "",
+      groups: Array.from(document.querySelectorAll("article h2")).map((h) => h.textContent?.trim()),
+    }))
+
+    assert.equal(folder.h1, expect.virtualTitle, `virtual folder title ${expect.virtualTitle}`)
+    assert.ok(
+      folder.groups.includes("Notes") || folder.groups.includes("Folders"),
+      "virtual folder uses generic groups",
+    )
+  }
+}
+
 test("synthetic browse journey covers home → folder → nested note → Back", async () => {
   assert.ok(
     fs.existsSync(path.join(READER_ROOT, "node_modules", "next")),
@@ -2247,6 +3471,16 @@ test("synthetic browse journey covers home → folder → nested note → Back",
   await stageKb(kb, contentDir, identityFile)
   const metadata = JSON.parse(fs.readFileSync(identityFile, "utf8"))
   const journey = deriveJourney(contentDir, metadata)
+
+  const machineryBefore = (
+    await execFileAsync("git", ["status", "--porcelain"], { cwd: PUBLISHER_ROOT })
+  ).stdout
+    .split("\n")
+    .filter(Boolean)
+    .filter((line) =>
+      /(^| )(nginx\.conf|package\.json|pnpm-lock\.yaml|scripts\/|tools\/)/.test(line.trim()),
+    )
+
   cleanReaderArtifacts()
   await buildReader(contentDir, identityFile)
   const outDir = path.join(READER_ROOT, "out")
@@ -2258,6 +3492,22 @@ test("synthetic browse journey covers home → folder → nested note → Back",
   ]) {
     assert.ok(fs.existsSync(path.join(outDir, rel)), `static export emits ${rel}`)
   }
+
+  const areaRoutes = metadata.navigation.map((entry) => rootRoute(entry))
+  await runStaticExportChecks({
+    outDir,
+    contentDir,
+    metadata,
+    workDir: work,
+    kbRoot: kb,
+    areaRoutes,
+    machineryBefore,
+  })
+
+  const hiddenRoute = `/${HIDDEN_NOTE_PATH.replace(/\.md$/i, "")}`
+  const hiddenTitle = stagedFileTitle(path.join(contentDir, HIDDEN_NOTE_PATH), "Hidden Draft")
+  const deepRoute = "/notes/nest/inner/leaf"
+  const deepTitle = stagedFileTitle(path.join(contentDir, "notes/nest/inner/leaf.md"), "Inner Leaf")
 
   const { server, baseUrl } = await serveOut(outDir)
   const browser = await launchBrowser()
@@ -2283,35 +3533,49 @@ test("synthetic browse journey covers home → folder → nested note → Back",
     await page.setViewportSize({ width: 1280, height: 800 })
     await runJourney(page, baseUrl, {
       areas: journey.areas,
-      areaRoutes: metadata.navigation.map((entry) => rootRoute(entry)),
+      areaRoutes,
       folderTitle: journey.folderTitle,
       folderRoute: journey.folderRoute,
       leafTitle: journey.leafTitle,
       leafRoute: journey.leafRoute,
     })
+    await runDirectNoteDetail(page, baseUrl, {
+      route: "/notes/guide",
+      title: "Field Guide",
+      h1: "Ignored H1",
+      siteTitle: metadata.title,
+      hostname: metadata.canonicalHostname,
+      virtualRoute: "/notes",
+      virtualTitle: "Notes",
+    })
     await page.goto(`${baseUrl}${journey.leafRoute}`, {
       waitUntil: "networkidle",
       timeout: 15000,
     })
-
-    const direct = await page.evaluate(() => ({
-      h1: document.querySelector("article h1")?.textContent?.trim() || "",
-      table: !!document.querySelector("article table"),
-      external: !!document.querySelector('article a[href^="https://"]'),
-    }))
-
-    // Direct routes render; the rich guide page proves tables and externals.
-    await page.goto(`${baseUrl}/notes/guide`, { waitUntil: "networkidle", timeout: 15000 })
-
-    const rich = await page.evaluate(() => ({
-      table: !!document.querySelector("article table"),
-      external: !!document.querySelector('article a[href^="https://"]'),
-    }))
-
-    assert.ok(rich.table, "direct rich note renders tables")
-    assert.ok(rich.external, "direct rich note renders external links")
-    assert.ok(direct.h1.length > 0, "direct note route renders a title")
+    assert.equal(
+      await page.evaluate(() => document.querySelector("article h1")?.textContent?.trim() || ""),
+      journey.leafTitle,
+      "direct nested note renders its title",
+    )
+    await runHomeCardsDetail(page, baseUrl, {
+      areas: journey.areas,
+      areaRoutes,
+    })
+    await runBreadcrumbsDetail(page, baseUrl, {
+      deepRoute,
+      deepTitle,
+      hiddenRoute,
+      hiddenTitle,
+    })
+    await runLastEditedBrowser(page, baseUrl)
     await page.close()
+    const projectionPage = await context.newPage()
+    await projectionPage.setViewportSize({ width: 1280, height: 800 })
+    await runProjectionSwitcher(projectionPage, baseUrl, {
+      projection: metadata.title,
+      destinations: SYNTHETIC_DESTINATIONS,
+    })
+    await projectionPage.close()
     const searchPage = await context.newPage()
     await searchPage.setViewportSize({ width: 1280, height: 800 })
     await runSearchDialog(searchPage, baseUrl, {
@@ -2348,6 +3612,217 @@ test("synthetic browse journey covers home → folder → nested note → Back",
     await browser.close()
     await closeServer(server)
   }
+})
+
+test("offline precache revisions follow exported files without a reader build", async () => {
+  const offlineScript = path.join(READER_ROOT, "scripts", "build-offline.mjs")
+  const dir = tmpdir("offline-revisions")
+
+  const write = (rel, content) => {
+    const abs = path.join(dir, rel)
+    fs.mkdirSync(path.dirname(abs), { recursive: true })
+    fs.writeFileSync(abs, content)
+  }
+
+  write("index.html", '<link rel="manifest" href="/manifest.webmanifest"/><h1>Home</h1>')
+  write("note.html", '<link rel="manifest" href="/manifest.webmanifest"/><h1>Note</h1>')
+  write("manifest.webmanifest", "{}")
+  write("search-index.json", JSON.stringify({ ok: true }))
+  write("_next/static/chunks/app-abc123.js", "console.log(1)")
+
+  const runOffline = () =>
+    execFileAsync(process.execPath, [offlineScript, "--dir", dir], {
+      cwd: PUBLISHER_ROOT,
+      timeout: 120000,
+    })
+
+  const revisionsOf = () => {
+    const sw = fs.readFileSync(path.join(dir, "sw.js"), "utf8")
+    const entries = new Map()
+
+    for (const [, url, revision] of sw.matchAll(
+      /\{url:"([^"]+)",revision:("[^"]+"|null)(?:,integrity:"[^"]+")?\}/g,
+    )) {
+      entries.set(url, revision)
+    }
+
+    return entries
+  }
+
+  await runOffline()
+  const before = revisionsOf()
+  assert.ok(before.has("note.html"), "precache lists the page")
+  assert.ok(before.has("search-index.json"), "precache lists the search index")
+  assert.equal(
+    before.get("_next/static/chunks/app-abc123.js"),
+    "null",
+    "hashed asset reuses its URL without a revision query",
+  )
+  assert.match(
+    fs.readFileSync(path.join(dir, "sw.js"), "utf8"),
+    /integrity:"sha384-[^"]+"/,
+    "precache entries guard exact export bytes",
+  )
+  const homeBefore = before.get("index.html")
+  const hashedBefore = before.get("_next/static/chunks/app-abc123.js")
+
+  write("note.html", '<link rel="manifest" href="/manifest.webmanifest"/><h1>Note changed</h1>')
+  write("search-index.json", JSON.stringify({ ok: true, v: 2 }))
+  await runOffline()
+  const after = revisionsOf()
+  assert.notEqual(
+    after.get("note.html"),
+    before.get("note.html"),
+    "changed page gets a new revision",
+  )
+  assert.notEqual(
+    after.get("search-index.json"),
+    before.get("search-index.json"),
+    "changed search index gets a new revision",
+  )
+  assert.equal(after.get("index.html"), homeBefore, "unchanged page keeps its revision")
+  assert.equal(
+    after.get("_next/static/chunks/app-abc123.js"),
+    hashedBefore,
+    "unchanged hashed asset keeps reusing its URL",
+  )
+
+  fs.rmSync(path.join(dir, "note.html"))
+  await runOffline()
+  assert.equal(
+    [
+      ...fs
+        .readFileSync(path.join(dir, "index.html"), "utf8")
+        .matchAll(/crossorigin="use-credentials"/g),
+    ].length,
+    1,
+    "generated manifest link gains credentials only once across repeated offline builds",
+  )
+  const removed = revisionsOf()
+  assert.ok(!removed.has("note.html"), "removed page leaves the precache")
+  assert.ok(removed.has("index.html"), "remaining pages stay precached")
+  // Update lifecycle preserves the reading session: the generated worker
+  // waits for an explicit reload instead of claiming clients, while still
+  // cleaning outdated caches so removed pages disappear after activation.
+  const offlineSource = fs.readFileSync(offlineScript, "utf8")
+  assert.match(offlineSource, /skipWaiting:\s*false/, "updated worker waits for Reload")
+  assert.match(offlineSource, /clientsClaim:\s*false/, "updated worker never claims the session")
+  assert.match(
+    offlineSource,
+    /cleanupOutdatedCaches:\s*true/,
+    "successful update clears removed pages",
+  )
+})
+
+test("offline generation rejects an export file omitted from the precache", async () => {
+  const dir = tmpdir("offline-oversize")
+  fs.writeFileSync(path.join(dir, "index.html"), "<h1>Home</h1>")
+  fs.writeFileSync(path.join(dir, "search-index.json"), "{}")
+  fs.writeFileSync(path.join(dir, "large.html"), "")
+  fs.truncateSync(path.join(dir, "large.html"), 5 * 1024 * 1024 + 1)
+  await assert.rejects(
+    execFileAsync(
+      process.execPath,
+      [path.join(READER_ROOT, "scripts", "build-offline.mjs"), "--dir", dir],
+      {
+        cwd: PUBLISHER_ROOT,
+        timeout: 120000,
+      },
+    ),
+    /large\.html|omitted|precache/i,
+    "publishing must fail instead of claiming an incomplete offline copy",
+  )
+})
+
+test("generic real corpus builds a complete static export from staged content only", async (t) => {
+  const kbRoot = process.env.KNOWLEDGE_BASE_ROOT
+
+  if (!kbRoot || !fs.existsSync(path.resolve(kbRoot))) {
+    t.skip("KNOWLEDGE_BASE_ROOT is not set to a vault checkout; skipping real-corpus build")
+
+    return
+  }
+
+  assert.ok(
+    fs.existsSync(path.join(READER_ROOT, "node_modules", "next")),
+    "reader dependencies must be installed (run `npm ci` in reader/)",
+  )
+  const work = tmpdir("corpus")
+  const contentDir = path.join(work, "content")
+  const identityFile = path.join(work, "site-identity.json")
+  const outDir = path.join(READER_ROOT, "out")
+  await stageKb(path.resolve(kbRoot), contentDir, identityFile)
+
+  const metadata = JSON.parse(fs.readFileSync(identityFile, "utf8"))
+  assert.ok(metadata.title && metadata.title.trim() !== "", "generated metadata carries a title")
+  assert.ok(
+    metadata.canonicalHostname && metadata.canonicalHostname.trim() !== "",
+    "generated metadata carries a canonical hostname",
+  )
+  assert.ok(
+    Array.isArray(metadata.navigation) && metadata.navigation.length > 0,
+    "generated navigation is non-empty",
+  )
+
+  for (const entry of metadata.navigation) {
+    assert.ok(!path.isAbsolute(entry.path), "navigation paths stay relative")
+    assert.ok(!entry.path.includes(".."), "navigation paths never traverse")
+  }
+
+  const stagedMarkdown = listFilesRecursive(contentDir).filter((rel) => /\.md$/i.test(rel))
+  assert.ok(stagedMarkdown.length > 0, "staged tree holds Markdown pages")
+
+  cleanReaderArtifacts()
+  await buildReader(contentDir, identityFile)
+
+  const stagedHtmls = stagedMarkdown.map(expectedHtmlForStagedMarkdown).sort()
+  const virtualHtmls = deriveVirtualHtmls(contentDir, metadata.navigation)
+  const expectedPages = [...new Set([...stagedHtmls, ...virtualHtmls])].sort()
+
+  for (const rel of expectedPages) {
+    assert.ok(
+      fs.existsSync(path.join(outDir, rel)),
+      `staged or virtual page must be emitted: ${rel}`,
+    )
+  }
+
+  const emittedContentPages = listFilesRecursive(outDir)
+    .filter((rel) => rel.endsWith(".html") && !rel.startsWith("_next"))
+    .filter((rel) => rel !== "404.html" && rel !== "_not-found.html")
+    .sort()
+
+  assert.deepEqual(
+    emittedContentPages,
+    expectedPages,
+    "emitted pages match staged Markdown plus virtual folders exactly",
+  )
+
+  // The generic build path inherits the search index without new orchestration.
+  assert.ok(
+    fs.existsSync(path.join(outDir, "search-index.json")),
+    "generic build also emits the search index",
+  )
+
+  // Canonical metadata derives from generated metadata, not fixed subjects.
+  const home = readOut(outDir, "index.html")
+  assert.ok(home.includes(metadata.title), "home carries the generated title")
+  assert.ok(home.includes(metadata.canonicalHostname), "home carries the canonical hostname")
+  const firstPageRel = expectedPages.find((rel) => rel !== "index.html")
+  assert.ok(firstPageRel, "staged corpus has a non-home page")
+  const firstPage = readOut(outDir, firstPageRel)
+  const firstRoute = `/${firstPageRel.replace(/\.html$/, "")}`
+  assert.match(
+    firstPage,
+    new RegExp(
+      `rel="canonical" href="https://${metadata.canonicalHostname.replace(/\./g, "\\.")}${firstRoute.replace(/\//g, "\\/")}"`,
+    ),
+    "page canonical URL uses generated hostname",
+  )
+
+  // Output safety stays generic: no private checkout paths in output.
+  assertAbsentEverywhere(outDir, fs.realpathSync(path.resolve(kbRoot)), "original vault path")
+  assertAbsentEverywhere(outDir, fs.realpathSync(work), "private staging path")
+  assertAbsentEverywhere(outDir, fs.realpathSync(PUBLISHER_ROOT), "private publisher checkout path")
 })
 
 test("generic real browse journey covers home → folder → nested note", async (t) => {
