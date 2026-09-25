@@ -891,9 +891,9 @@ body {
   margin-bottom: 0.75rem;
 }
 
-/* The header control is phone-only: desktop readers use the sidebar one. */
+/* The header Search icon renders at all widths in the desktop inset header. */
 .reader-search-header {
-  display: none;
+  display: inline-flex;
 }
 
 .reader-search-body {
@@ -1027,12 +1027,6 @@ body {
 .dark .reader-search-result-excerpt mark {
   background: #404040;
   color: #fafafa;
-}
-
-@media (max-width: 899px) {
-  .reader-search-header {
-    display: inline-flex;
-  }
 }
 
 /**

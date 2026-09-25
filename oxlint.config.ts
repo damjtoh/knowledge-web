@@ -152,13 +152,40 @@ const config: OxlintConfig = {
                 pattern: "^DropdownMenuItem$",
                 allow: ["reader-projection-current", "reader-projection-choice"],
               },
-              // Registry shell layout: trigger offset and mobile visibility
-              // must stay on the trigger itself; the header has no wrapper
-              // that can own them without breaking the sample header row.
-              { pattern: "^SidebarTrigger$", allow: ["-ml-1", "max-md:hidden"] },
-              // Separator spacing and responsive visibility must stay on the
-              // separator; it renders no wrapper DOM.
-              { pattern: "^Separator$", allow: ["mr-2", "hidden", "md:block"] },
+              // Registry shell layout: trigger owns the design inset-header
+              // treatment (bordered 28px square) plus its sample offset and
+              // mobile visibility; the header has no wrapper that can own
+              // them without breaking the sample header row.
+              {
+                pattern: "^SidebarTrigger$",
+                allow: [
+                  "-ml-1",
+                  "max-md:hidden",
+                  "size-7",
+                  "rounded-md",
+                  "border",
+                  "border-border",
+                  "bg-card",
+                ],
+              },
+              // Separator spacing, responsive visibility, and design
+              // 1x16 size must stay on the separator; it renders no
+              // wrapper DOM.
+              {
+                pattern: "^Separator$",
+                allow: ["mr-2", "hidden", "md:block", "w-px", "h-4"],
+              },
+              // Reading-header trail keeps 13px/600 crumbs on the link
+              // and current-page elements; the Breadcrumb primitives own
+              // landmarks and aria, so utilities stay on the items.
+              {
+                pattern: "^BreadcrumbLink$",
+                allow: ["text-13", "font-semibold"],
+              },
+              {
+                pattern: "^BreadcrumbPage$",
+                allow: ["text-13", "font-semibold"],
+              },
               // Phone drawer dimensions must stay on the Sheet popup: Sheet
               // renders no wrapper DOM, so full-viewport width/height and
               // safe-area containment cannot move to a parent.

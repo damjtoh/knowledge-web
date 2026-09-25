@@ -33,11 +33,13 @@ export default function Breadcrumbs({ items }: { items: Crumb[] }) {
               <Fragment key={`${item.title}-${i}`}>
                 <BreadcrumbItem>
                   {item.url && !item.isCurrent ? (
-                    <BreadcrumbLink href={item.url}>{item.title}</BreadcrumbLink>
+                    <BreadcrumbLink href={item.url} className="text-13 font-semibold">
+                      {item.title}
+                    </BreadcrumbLink>
                   ) : item.isCurrent ? (
-                    <BreadcrumbPage>{item.title}</BreadcrumbPage>
+                    <BreadcrumbPage className="text-13 font-semibold">{item.title}</BreadcrumbPage>
                   ) : (
-                    <span>{item.title}</span>
+                    <span className="text-13 font-semibold">{item.title}</span>
                   )}
                 </BreadcrumbItem>
                 {!isLast ? <BreadcrumbSeparator /> : null}

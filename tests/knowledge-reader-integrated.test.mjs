@@ -1334,7 +1334,21 @@ async function runSearchDialog(page, baseUrl, expect) {
     "desktop sidebar shows a Search control",
   )
   assert.ok(controls.sidebar.text.includes("Search"), "sidebar Search control is labeled")
-  assert.ok(!controls.header.visible, "phone header Search stays hidden on desktop")
+  assert.ok(controls.header.visible, "desktop header shows the Search icon trigger")
+
+  const headerMeta = await page.evaluate(() => {
+    const el = document.querySelector(".reader-search-header")
+
+    return {
+      label: el?.getAttribute("aria-label") || "",
+      text: el?.textContent?.trim() || "",
+      hasIcon: !!el?.querySelector("svg"),
+    }
+  })
+
+  assert.equal(headerMeta.label, "Search", "header Search keeps its accessible name")
+  assert.equal(headerMeta.text, "", "header Search is icon-only")
+  assert.ok(headerMeta.hasIcon, "header Search shows its icon")
 
   await page.evaluate(() => document.querySelector(".reader-search-sidebar")?.click())
   await dialogOpen(page)
@@ -1464,6 +1478,18 @@ async function runSearchDialog(page, baseUrl, expect) {
   await dialogOpen(page)
   await page.keyboard.press("Escape")
   await dialogClosed(page)
+
+  // Desktop header icon opens the same shared dialog.
+  await page.evaluate(() => document.querySelector(".reader-search-header")?.click())
+  await dialogOpen(page)
+  await page.keyboard.press("Escape")
+  await dialogClosed(page)
+  const headerReturned = await page.evaluate(() => document.activeElement?.className || "")
+
+  assert.ok(
+    String(headerReturned).includes("reader-search-header"),
+    "Escape returns focus to the header control",
+  )
 }
 
 /** Loading state: the dialog announces while the static index is in flight. */

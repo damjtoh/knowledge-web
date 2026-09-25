@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { usePathname } from "next/navigation"
+import { Search } from "lucide-react"
 import AppearanceControl, { AppearanceProvider } from "./appearance-control"
 import OfflineSave, { OfflineCue, OfflineProvider } from "./offline-save"
 import { ProjectionSwitcher } from "./projection-switcher"
@@ -138,10 +139,10 @@ export default function ReaderChrome({
               onSearch={openSearch}
             />
             <SidebarInset>
-              <header className="reader-header">
-                <div className="reader-header-trail">
-                  <SidebarTrigger className="-ml-1 max-md:hidden" />
-                  <Separator orientation="vertical" className="mr-2 hidden md:block" />
+              <header className="reader-header h-11 items-center justify-between gap-3 border-b px-4">
+                <div className="reader-header-trail items-center gap-2">
+                  <SidebarTrigger className="-ml-1 size-7 rounded-md border border-border bg-card max-md:hidden" />
+                  <Separator orientation="vertical" className="mr-2 hidden h-4 w-px md:block" />
                   <ReadingBreadcrumbs roots={roots} siteTitle={title} />
                 </div>
                 <div className="reader-header-actions">
@@ -149,9 +150,10 @@ export default function ReaderChrome({
                   <button
                     type="button"
                     className="reader-search-trigger reader-search-header"
+                    aria-label="Search"
                     onClick={(event) => openSearch(event.currentTarget)}
                   >
-                    Search
+                    <Search aria-hidden="true" className="size-4 text-muted-foreground" />
                   </button>
                   <button
                     ref={toggleRef}
