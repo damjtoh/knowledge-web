@@ -33,8 +33,6 @@ jobs:
           tests/wiki-aliases.test.mjs
       - name: Install reader dependencies
         run: pnpm --dir reader install --frozen-lockfile
-      - name: Build reader
-        run: pnpm --dir reader run build
       - name: Install Playwright Chromium
         run: pnpm exec playwright install chromium --with-deps
       - name: Reader integrated suite (retry once)
