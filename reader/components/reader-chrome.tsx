@@ -2,15 +2,15 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { usePathname } from "next/navigation"
-import AppearanceControl from "./appearance-control"
-import OfflineSave from "./offline-save"
+import AppearanceControl, { AppearanceProvider } from "./appearance-control"
+import OfflineSave, { OfflineCue, OfflineProvider } from "./offline-save"
 import { ProjectionSwitcher } from "./projection-switcher"
 import SearchDialog, { SEARCH_INPUT_ID } from "./search-dialog"
 import ReaderTree from "./sidebar"
 import { AppSidebar } from "./app-sidebar"
 import ReadingBreadcrumbs from "./reading-breadcrumbs"
 import { Separator } from "./ui/separator"
-import { Sheet, SheetClose, SheetContent, SheetTitle } from "./ui/sheet"
+import { Sheet, SheetClose, SheetContent, SheetFooter, SheetTitle } from "./ui/sheet"
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "./ui/sidebar"
 import type { NavigationNode } from "../lib/navigation"
 import type { ProjectionDestination } from "../lib/site"
@@ -26,19 +26,25 @@ function normalize(path: string | null): string {
  *
  * The desktop sidebar is the registry Sidebar (offcanvas, fully hidden,
  * no icon rail) with a SidebarHeader (projection switcher, Home,
- * Search) and SidebarContent (published tree). The reading inset holds a
- * header with the registry SidebarTrigger, Separator, and Breadcrumb
- * route trail, the reading column, and the footer. Block sample data is
- * not used: shell structure only.
+ * Search), SidebarContent (published tree), and SidebarFooter
+ * (appearance plus offline status/actions). The reading inset holds a
+ * header with the registry SidebarTrigger, Separator, Breadcrumb route
+ * trail, a compact phone-only offline cue, and Search/Browse actions,
+ * plus the reading column. There is no page footer: the old footer
+ * offline control moved into the sidebar and drawer footers. Block
+ * sample data is not used: shell structure only.
  *
  * Phone navigation is the registry Sheet drawer (side left, full
  * viewport, safe-area aware) with the same published tree: a fixed header
- * with a visible Close, Home and Search actions, and a scrollable tree
- * middle. The Sheet primitive owns focus containment, Escape dismissal,
- * and background scroll lock; dismissing returns focus to the Browse
- * toggle. Offline actions stay outside the drawer until a later slice
- * moves them; dismissing the drawer returns to reading where the footer
- * offline control remains available.
+ * with a visible Close, Home and Search actions, a scrollable tree
+ * middle, and a registry SheetFooter with appearance plus detailed
+ * offline actions that stays reachable while the tree scrolls. The Sheet
+ * primitive owns focus containment, Escape dismissal, and background
+ * scroll lock; dismissing returns focus to the Browse toggle. One
+ * OfflineProvider at the shell root shares a single mounted offline
+ * state between the desktop footer, the drawer footer, and the closed-
+ * phone header cue; the cue is display-only and never starts a save.
+ * Choosing appearance or opening the drawer never starts a save.
  * Plain anchors navigate, so selecting a page closes the drawer through
  * the route change without adding drawer state to URL history. There is
  * one Search dialog: all trigger controls and Command+K/Control+K share
@@ -122,78 +128,87 @@ export default function ReaderChrome({
       className="reader-chrome min-h-screen antialiased"
       data-browse={browseOpen ? "open" : "closed"}
     >
-      <SidebarProvider>
-        <AppSidebar title={title} destinations={destinations} roots={roots} onSearch={openSearch} />
-        <SidebarInset>
-          <header className="reader-header">
-            <div className="reader-header-trail">
-              <SidebarTrigger className="-ml-1 max-md:hidden" />
-              <Separator orientation="vertical" className="mr-2 hidden md:block" />
-              <ReadingBreadcrumbs roots={roots} siteTitle={title} />
-            </div>
-            <div className="reader-header-actions">
-              <AppearanceControl />
-              <button
-                type="button"
-                className="reader-search-trigger reader-search-header"
-                onClick={(event) => openSearch(event.currentTarget)}
-              >
-                Search
-              </button>
-              <button
-                ref={toggleRef}
-                type="button"
-                className="reader-browse-toggle shrink-0"
-                aria-expanded={browseOpen}
-                aria-controls="reader-browse-panel"
-                onClick={() => setBrowseOpen((open) => !open)}
-              >
-                Browse
-              </button>
-            </div>
-          </header>
-          <div className="reader-shell">
-            <div className="reader-main">{children}</div>
-          </div>
-          <Sheet open={browseOpen} onOpenChange={handleBrowseOpenChange}>
-            <SheetContent
-              id="reader-browse-panel"
-              side="left"
-              showCloseButton={false}
-              keepMounted
-              className="reader-phone-drawer"
-            >
-              <div className="reader-phone-drawer-header">
-                <SheetTitle>Browse</SheetTitle>
-                <SheetClose className="reader-drawer-close">Close</SheetClose>
+      <AppearanceProvider>
+        <OfflineProvider>
+          <SidebarProvider>
+            <AppSidebar
+              title={title}
+              destinations={destinations}
+              roots={roots}
+              onSearch={openSearch}
+            />
+            <SidebarInset>
+              <header className="reader-header">
+                <div className="reader-header-trail">
+                  <SidebarTrigger className="-ml-1 max-md:hidden" />
+                  <Separator orientation="vertical" className="mr-2 hidden md:block" />
+                  <ReadingBreadcrumbs roots={roots} siteTitle={title} />
+                </div>
+                <div className="reader-header-actions">
+                  <OfflineCue />
+                  <button
+                    type="button"
+                    className="reader-search-trigger reader-search-header"
+                    onClick={(event) => openSearch(event.currentTarget)}
+                  >
+                    Search
+                  </button>
+                  <button
+                    ref={toggleRef}
+                    type="button"
+                    className="reader-browse-toggle shrink-0"
+                    aria-expanded={browseOpen}
+                    aria-controls="reader-browse-panel"
+                    onClick={() => setBrowseOpen((open) => !open)}
+                  >
+                    Browse
+                  </button>
+                </div>
+              </header>
+              <div className="reader-shell">
+                <div className="reader-main">{children}</div>
               </div>
-              <div className="reader-phone-drawer-switcher">
-                <ProjectionSwitcher current={title} destinations={destinations} />
-              </div>
-              <div className="reader-phone-drawer-actions">
-                <a className="reader-drawer-home" href="/">
-                  Home
-                </a>
-                <button
-                  type="button"
-                  className="reader-search-trigger"
-                  onClick={(event) => openSearch(event.currentTarget)}
+              <Sheet open={browseOpen} onOpenChange={handleBrowseOpenChange}>
+                <SheetContent
+                  id="reader-browse-panel"
+                  side="left"
+                  showCloseButton={false}
+                  keepMounted
+                  className="reader-phone-drawer"
                 >
-                  Search
-                </button>
-              </div>
-              <div className="reader-phone-drawer-tree">
-                <ReaderTree roots={roots} />
-              </div>
-            </SheetContent>
-          </Sheet>
-          <SearchDialog open={searchOpen} onOpenChange={handleSearchOpenChange} />
-          <footer className="reader-footer">
-            <span>{title}</span>
-            <OfflineSave />
-          </footer>
-        </SidebarInset>
-      </SidebarProvider>
+                  <div className="reader-phone-drawer-header">
+                    <SheetTitle>Browse</SheetTitle>
+                    <SheetClose className="reader-drawer-close">Close</SheetClose>
+                  </div>
+                  <div className="reader-phone-drawer-switcher">
+                    <ProjectionSwitcher current={title} destinations={destinations} />
+                  </div>
+                  <div className="reader-phone-drawer-actions">
+                    <a className="reader-drawer-home" href="/">
+                      Home
+                    </a>
+                    <button
+                      type="button"
+                      className="reader-search-trigger"
+                      onClick={(event) => openSearch(event.currentTarget)}
+                    >
+                      Search
+                    </button>
+                  </div>
+                  <div className="reader-phone-drawer-tree">
+                    <ReaderTree roots={roots} />
+                  </div>
+                  <SheetFooter className="reader-phone-drawer-footer">
+                    <AppearanceControl />
+                    <OfflineSave />
+                  </SheetFooter>
+                </SheetContent>
+              </Sheet>
+              <SearchDialog open={searchOpen} onOpenChange={handleSearchOpenChange} />
+            </SidebarInset>
+          </SidebarProvider>
+        </OfflineProvider>
+      </AppearanceProvider>
     </div>
   )
 }

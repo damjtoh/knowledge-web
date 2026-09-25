@@ -1,6 +1,7 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react"
+import { Button } from "./ui/button"
 
 const MANIFEST_URL = "/offline.json"
 
@@ -96,10 +97,86 @@ async function countCached(urls: string[]): Promise<number> {
   return done
 }
 
+interface OfflineValue {
+  status: Status
+  manifest: OfflineManifest | null
+  done: number
+  failure: Failure
+  updateAvailable: boolean
+  reloading: boolean
+  removing: boolean
+  save: () => Promise<void>
+  reloadUpdate: () => Promise<void>
+  removeCopy: () => Promise<void>
+}
+
+const OfflineContext = createContext<OfflineValue | null>(null)
+
 /**
- * Save for offline use: one explicit action per Web Projection.
+ * Single mounted offline state for the reader shell.
  *
- * The control fetches only the small generated manifest before the reader
+ * One provider lives at the shell root so the desktop SidebarFooter,
+ * the phone drawer footer, and the closed-phone header cue all read the
+ * same status. The detailed footer actions and the compact cue share this
+ * value; the cue never initiates a save.
+ */
+export function useOffline(): OfflineValue {
+  const value = useContext(OfflineContext)
+
+  if (!value) throw new Error("useOffline must be used within OfflineProvider.")
+
+  return value
+}
+
+/**
+ * Compact offline cue for the closed phone header.
+ *
+ * Concise display only: checking, idle, saving progress, ready, update
+ * ready, incomplete, and removal failure. Shares the provider state with
+ * the detailed footer actions and never starts a save.
+ */
+export function OfflineCue() {
+  const { status, manifest, done, updateAvailable } = useOffline()
+
+  if (status === "unsupported") return null
+
+  const total = manifest?.urls.length ?? 0
+  let text = ""
+  let role: "status" | "alert" = "status"
+
+  if (status === "checking") {
+    text = "Checking offline status…"
+  } else if (status === "saving") {
+    text = total > 0 ? `Saving offline… ${done} of ${total}` : "Saving offline…"
+  } else if (status === "ready") {
+    text = updateAvailable ? "Update ready" : "Ready offline"
+  } else if (status === "incomplete") {
+    text = "Save incomplete"
+    role = "alert"
+  } else if (status === "remove-failed") {
+    text = "Couldn’t remove offline copy"
+    role = "alert"
+  } else {
+    text = "Not saved offline"
+  }
+
+  return (
+    <p
+      className="reader-offline-cue"
+      data-offline-state={status}
+      data-update={updateAvailable ? "true" : undefined}
+      role={role}
+      aria-live={role === "alert" ? "assertive" : "polite"}
+    >
+      {text}
+    </p>
+  )
+}
+
+/**
+ * Shell offline state: one explicit action per Web Projection.
+ *
+ * The provider fetches only the small generated manifest before the reader
  * chooses Save, so visiting or installing never starts a whole-site
  * download. Saving works on any connection. Progress counts real cache
  * entries; Ready offline appears only after every listed export file is
@@ -123,7 +200,7 @@ async function countCached(urls: string[]): Promise<number> {
  * and other origins stay unaffected. After removal the control returns
  * to the explicit Save action; later visits never re-register on their own.
  */
-export default function OfflineSave() {
+export function OfflineProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<Status>("checking")
   const [manifest, setManifest] = useState<OfflineManifest | null>(null)
   const [done, setDone] = useState(0)
@@ -466,9 +543,51 @@ export default function OfflineSave() {
     }
   }, [manifest])
 
+  return (
+    <OfflineContext.Provider
+      value={{
+        status,
+        manifest,
+        done,
+        failure,
+        updateAvailable,
+        reloading,
+        removing,
+        save,
+        reloadUpdate,
+        removeCopy,
+      }}
+    >
+      {children}
+    </OfflineContext.Provider>
+  )
+}
+
+/**
+ * Detailed offline actions for the sidebar and drawer footers.
+ *
+ * Reads the single shell provider state; two mounted details (desktop
+ * SidebarFooter and phone drawer footer) stay in sync. Buttons use the
+ * installed shadcn Button registry component; copy keeps the existing
+ * explicit Save/Remove wording.
+ */
+export default function OfflineSave() {
+  const {
+    status,
+    manifest,
+    done,
+    failure,
+    updateAvailable,
+    reloading,
+    removing,
+    save,
+    reloadUpdate,
+    removeCopy,
+  } = useOffline()
+
   if (status === "checking") {
     return (
-      <section aria-label="Offline" className="reader-offline">
+      <section aria-label="Offline" className="reader-offline" data-offline-state="checking">
         <p className="reader-offline-status" role="status" aria-live="polite">
           Checking offline status…
         </p>
@@ -482,35 +601,37 @@ export default function OfflineSave() {
 
   if (status === "ready") {
     return (
-      <section aria-label="Offline" className="reader-offline">
+      <section aria-label="Offline" className="reader-offline" data-offline-state="ready">
         <p className="reader-offline-ready" role="status" aria-live="polite">
           Ready offline ({formatBytes(manifest.totalBytes).toLowerCase()} saved on this device).
         </p>
         {updateAvailable ? (
-          <button
+          <Button
             type="button"
+            variant="outline"
             className="reader-offline-reload"
             onClick={reloadUpdate}
             disabled={reloading}
           >
             {reloading ? "Reloading…" : "Update ready — Reload"}
-          </button>
+          </Button>
         ) : null}
-        <button
+        <Button
           type="button"
+          variant="outline"
           className="reader-offline-remove"
           onClick={removeCopy}
           disabled={removing}
         >
           {removing ? "Removing…" : "Remove offline copy"}
-        </button>
+        </Button>
       </section>
     )
   }
 
   if (status === "saving") {
     return (
-      <section aria-label="Offline" className="reader-offline">
+      <section aria-label="Offline" className="reader-offline" data-offline-state="saving">
         <p className="reader-offline-status" role="status" aria-live="polite">
           Saving… {done} of {total}. Keep this page open.
         </p>
@@ -526,25 +647,26 @@ export default function OfflineSave() {
 
   if (status === "remove-failed") {
     return (
-      <section aria-label="Offline" className="reader-offline">
+      <section aria-label="Offline" className="reader-offline" data-offline-state="remove-failed">
         <p className="reader-offline-status reader-offline-remove-error" role="alert">
           Couldn’t remove the offline copy. Try again before leaving this device.
         </p>
-        <button
+        <Button
           type="button"
+          variant="outline"
           className="reader-offline-remove"
           onClick={removeCopy}
           disabled={removing}
         >
           {removing ? "Removing…" : "Retry removal"}
-        </button>
+        </Button>
       </section>
     )
   }
 
   if (status === "incomplete") {
     return (
-      <section aria-label="Offline" className="reader-offline">
+      <section aria-label="Offline" className="reader-offline" data-offline-state="incomplete">
         <p className="reader-offline-status" role="alert">
           {failure === "access"
             ? "Save incomplete. Couldn’t reach the publication — check your connection or sign-in, then retry."
@@ -554,18 +676,18 @@ export default function OfflineSave() {
                 ? "Saved data was cleared on this device. Save again for offline reading."
                 : "Save incomplete. Some pages didn’t save."}
         </p>
-        <button type="button" className="reader-offline-retry" onClick={save}>
+        <Button type="button" variant="outline" className="reader-offline-retry" onClick={save}>
           Retry save
-        </button>
+        </Button>
       </section>
     )
   }
 
   return (
-    <section aria-label="Offline" className="reader-offline">
-      <button type="button" className="reader-offline-save" onClick={save}>
+    <section aria-label="Offline" className="reader-offline" data-offline-state="idle">
+      <Button type="button" variant="outline" className="reader-offline-save" onClick={save}>
         Save for offline use
-      </button>
+      </Button>
       <p className="reader-offline-size">{formatBytes(manifest.totalBytes)} to download.</p>
       <p className="reader-offline-trust">
         Saved pages stay on this device. Only save on a device you trust.

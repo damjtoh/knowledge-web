@@ -2263,6 +2263,212 @@ async function runOfflineRemove(browser, baseUrl, expect) {
   }
 }
 
+/**
+ * Offline and appearance placement in the new shell (desktop).
+ *
+ * SidebarFooter owns Light/Dark/System plus detailed offline
+ * status/actions from one mounted state; the old page footer is gone;
+ * the phone cue exists for the closed drawer but stays hidden on
+ * desktop; choosing appearance or toggling the sidebar never starts a
+ * save; the head bootstrap restores the explicit choice without a flash.
+ */
+async function runOfflineAppearancePlacement(page, baseUrl) {
+  await page.goto(`${baseUrl}/`, { waitUntil: "networkidle0", timeout: 15000 })
+
+  assert.equal(
+    await page.evaluate(() => !!document.querySelector(".reader-footer")),
+    false,
+    "old page footer does not duplicate shell controls",
+  )
+
+  const footer = await page.evaluate(() => {
+    const el = document.querySelector('[data-slot="sidebar-footer"].reader-sidebar-footer')
+
+    if (!el) return { present: false, visible: false }
+    const style = getComputedStyle(el)
+    const rect = el.getBoundingClientRect()
+
+    return {
+      present: true,
+      visible: style.display !== "none" && rect.width > 0 && rect.height > 0,
+    }
+  })
+
+  assert.ok(footer.present && footer.visible, "desktop SidebarFooter is visible")
+
+  const appearance = await page.evaluate(() => {
+    const group = document.querySelector(
+      '.reader-sidebar-footer [role="group"][aria-label="Appearance"]',
+    )
+
+    if (!group) return null
+
+    return {
+      options: Array.from(group.querySelectorAll("button")).map((button) => ({
+        text: button.textContent?.trim() || "",
+        pressed: button.getAttribute("aria-pressed") || "",
+        height: button.getBoundingClientRect().height,
+      })),
+    }
+  })
+
+  assert.ok(appearance, "SidebarFooter shows appearance choices")
+  assert.deepEqual(
+    appearance.options.map((option) => option.text),
+    ["Light", "Dark", "System"],
+    "appearance offers Light/Dark/System",
+  )
+
+  for (const option of appearance.options) {
+    assert.ok(option.height >= 44, `appearance ${option.text} is ${option.height}px`)
+  }
+
+  const offline = await page.evaluate(() => {
+    const save = document.querySelector(".reader-sidebar-footer .reader-offline-save")
+    const rect = save?.getBoundingClientRect()
+
+    return {
+      hasSave: !!save,
+      visible: !!save && rect.width > 0 && rect.height > 0,
+      size:
+        document.querySelector(".reader-sidebar-footer .reader-offline-size")?.textContent || "",
+      trust:
+        document.querySelector(".reader-sidebar-footer .reader-offline-trust")?.textContent || "",
+    }
+  })
+
+  assert.ok(offline.hasSave && offline.visible, "SidebarFooter shows Save for offline use")
+  assert.match(offline.size, /B/, "estimated download size is shown")
+  assert.match(offline.trust, /trust/i, "trusted-device note is shown")
+
+  const cue = await page.evaluate(() => {
+    const el = document.querySelector(".reader-offline-cue")
+
+    if (!el) return null
+    const style = getComputedStyle(el)
+    const rect = el.getBoundingClientRect()
+
+    return {
+      text: el.textContent?.trim() || "",
+      state: el.getAttribute("data-offline-state") || "",
+      visible: style.display !== "none" && rect.width > 0 && rect.height > 0,
+      tag: el.tagName,
+    }
+  })
+
+  assert.ok(cue, "offline cue exists for the phone header")
+  assert.equal(cue.tag, "P", "cue never initiates a save")
+  assert.equal(cue.visible, false, "cue stays hidden on desktop")
+
+  const hasBoot = await page.evaluate(() =>
+    Array.from(document.querySelectorAll("head script")).some((script) =>
+      (script.textContent || "").includes("knowledge-reader-appearance"),
+    ),
+  )
+
+  assert.ok(hasBoot, "appearance bootstrap restores without a flash")
+
+  await page.evaluate(() => {
+    const buttons = Array.from(
+      document.querySelectorAll(
+        '.reader-sidebar-footer [role="group"][aria-label="Appearance"] button',
+      ),
+    )
+
+    buttons.find((button) => (button.textContent || "").includes("Dark"))?.click()
+  })
+  await page.waitForFunction(() => document.documentElement.classList.contains("dark"), {
+    timeout: 5000,
+  })
+  assert.equal(
+    await page.evaluate(() => window.localStorage.getItem("knowledge-reader-appearance")),
+    "dark",
+    "explicit Dark choice is stored",
+  )
+
+  const afterAppearance = await page.evaluate(async () => {
+    let hasReg = false
+    let count = 0
+
+    try {
+      hasReg = !!(await navigator.serviceWorker.getRegistration())
+    } catch {}
+
+    try {
+      count = (await caches.keys()).length
+    } catch {}
+
+    return { hasReg, count }
+  })
+
+  assert.equal(afterAppearance.hasReg, false, "choosing appearance does not register a worker")
+  assert.equal(afterAppearance.count, 0, "choosing appearance does not download")
+
+  await page.reload({ waitUntil: "networkidle0", timeout: 15000 })
+  assert.ok(
+    await page.evaluate(() => document.documentElement.classList.contains("dark")),
+    "reload restores Dark without a flash",
+  )
+  assert.equal(
+    await page.evaluate(() => {
+      const buttons = Array.from(
+        document.querySelectorAll(
+          '.reader-sidebar-footer [role="group"][aria-label="Appearance"] button',
+        ),
+      )
+
+      return (
+        buttons
+          .find((button) => (button.textContent || "").includes("Dark"))
+          ?.getAttribute("aria-pressed") || ""
+      )
+    }),
+    "true",
+    "restored Dark stays pressed",
+  )
+
+  await page.evaluate(() => document.querySelector('[data-slot="sidebar-trigger"]')?.click())
+  await page.waitForFunction(
+    () =>
+      document.querySelector('[data-slot="sidebar"]')?.getAttribute("data-state") === "collapsed",
+    { timeout: 5000 },
+  )
+  await page.evaluate(() => document.querySelector('[data-slot="sidebar-trigger"]')?.click())
+  await page.waitForFunction(
+    () =>
+      document.querySelector('[data-slot="sidebar"]')?.getAttribute("data-state") === "expanded",
+    { timeout: 5000 },
+  )
+
+  const afterToggle = await page.evaluate(async () => {
+    let hasReg = false
+    let count = 0
+
+    try {
+      hasReg = !!(await navigator.serviceWorker.getRegistration())
+    } catch {}
+
+    try {
+      count = (await caches.keys()).length
+    } catch {}
+
+    return { hasReg, count }
+  })
+
+  assert.equal(afterToggle.hasReg, false, "toggling the sidebar does not register a worker")
+  assert.equal(afterToggle.count, 0, "toggling the sidebar does not download")
+
+  await page.evaluate(() => {
+    const buttons = Array.from(
+      document.querySelectorAll(
+        '.reader-sidebar-footer [role="group"][aria-label="Appearance"] button',
+      ),
+    )
+
+    buttons.find((button) => (button.textContent || "").includes("System"))?.click()
+  })
+}
+
 test("synthetic browse journey covers home → folder → nested note → Back", async () => {
   assert.ok(
     fs.existsSync(path.join(READER_ROOT, "node_modules", "next")),
@@ -2350,6 +2556,10 @@ test("synthetic browse journey covers home → folder → nested note → Back",
     await searchPage.close()
     await runSearchIndexLoading(browser, baseUrl)
     await runSearchIndexFailure(browser, baseUrl)
+    const placementPage = await browser.newPage()
+    await placementPage.setViewport({ width: 1280, height: 800 })
+    await runOfflineAppearancePlacement(placementPage, baseUrl)
+    await placementPage.close()
     const offlineProbes = deriveOfflineProbes(contentDir, metadata, journey)
     await runOfflineSave(browser, baseUrl, server, {
       offlineFolderRoute: offlineProbes.offlineFolderRoute,

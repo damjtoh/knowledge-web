@@ -66,8 +66,19 @@ const config: OxlintConfig = {
               // wrapper DOM, so there is no parent element to move it to.
               { pattern: "^DialogContent$", allow: ["sm:max-w-lg"] },
               // Touch-target sizing must live on the button itself, same as
-              // the tree toggle above.
-              { pattern: "^Button$", allow: ["reader-appearance-option"] },
+              // the tree toggle above. Offline actions share the same
+              // 44px target and the browser journeys query them by hook
+              // class; a wrapper would break activation and selectors.
+              {
+                pattern: "^Button$",
+                allow: [
+                  "reader-appearance-option",
+                  "reader-offline-save",
+                  "reader-offline-retry",
+                  "reader-offline-reload",
+                  "reader-offline-remove",
+                ],
+              },
               // Registry sidebar-11 tree hooks: published root order and
               // active cues must stay on the menu elements the browser
               // journeys query; wrappers would break
@@ -124,6 +135,14 @@ const config: OxlintConfig = {
               // button itself; a wrapper would break focus return and the
               // 44px touch target.
               { pattern: "^SheetClose$", allow: ["reader-drawer-close"] },
+              // Sidebar and drawer footers own offline plus appearance
+              // layout (border, scroll cap, safe-area reachability). The
+              // registry Footer elements render no wrapper DOM, so the
+              // hook must stay on the footer itself; a parent would scope
+              // the wrong element and break the fixed-footer/tree-scroll
+              // split.
+              { pattern: "^SidebarFooter$", allow: ["reader-sidebar-footer"] },
+              { pattern: "^SheetFooter$", allow: ["reader-phone-drawer-footer"] },
             ],
           },
         ],

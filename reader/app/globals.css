@@ -1029,12 +1029,14 @@ body {
 }
 
 /**
- * Offline save control in the reader footer.
+ * Offline save control in the sidebar and drawer footers.
  *
  * One explicit action per Web Projection: Save for offline use with its
  * estimated size and trusted-device note, Saving progress, a Ready offline
  * state only after the whole export is cached, an explicit Remove offline
- * copy action, and an incomplete state with retry. Surfaces stay grayscale
+ * copy action, and an incomplete state with retry. The desktop
+ * SidebarFooter and the phone drawer SheetFooter share one mounted state,
+ * so both footers stay in sync. Surfaces stay grayscale
  * only, with dark variants matching the reader shell. Controls keep the
  * 44px touch target used by Browse and navigation.
  */
@@ -1487,6 +1489,66 @@ body {
   color: #a3a3a3;
 }
 
+/**
+ * Sidebar and drawer footers own offline plus appearance.
+ *
+ * Registry SidebarFooter (desktop) and SheetFooter (phone drawer) hold
+ * the same Appearance group and detailed offline actions from one mounted
+ * state. Footers stay fixed while the tree scrolls: the desktop content
+ * and the phone drawer tree own their scroll, the footer keeps
+ * flex-shrink zero with its own cap so short viewports keep controls
+ * reachable. The closed-phone header cue is phone-only and display-only.
+ */
+.reader-sidebar-footer {
+  border-top: 1px solid #e5e5e5;
+  max-height: 45dvh;
+  overflow-y: auto;
+}
+
+.reader-phone-drawer-footer {
+  border-top: 1px solid #e5e5e5;
+  flex-shrink: 0;
+  max-height: 38dvh;
+  overflow-y: auto;
+}
+
+.reader-sidebar-footer .reader-offline,
+.reader-phone-drawer-footer .reader-offline {
+  margin-top: 0;
+  max-width: 100%;
+}
+
+.reader-sidebar-footer .reader-appearance,
+.reader-phone-drawer-footer .reader-appearance {
+  flex-wrap: wrap;
+}
+
+.reader-offline-cue {
+  display: none;
+  align-items: center;
+  min-height: 44px;
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #525252;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 32vw;
+}
+
+.dark .reader-sidebar-footer {
+  border-top-color: #262626;
+}
+
+.dark .reader-phone-drawer-footer {
+  border-top-color: #262626;
+}
+
+.dark .reader-offline-cue {
+  color: #d4d4d4;
+}
+
 @media (max-width: 899px) {
   .reader-header-actions {
     gap: 0.4rem;
@@ -1494,5 +1556,9 @@ body {
 
   .reader-appearance-option span {
     font-size: 0.8rem;
+  }
+
+  .reader-offline-cue {
+    display: inline-flex;
   }
 }

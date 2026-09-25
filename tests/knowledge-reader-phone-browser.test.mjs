@@ -1616,6 +1616,218 @@ async function runPhoneSearchDialog(page, baseUrl, expect, label) {
   await assertTouchTargets(page, `${label} search`)
 }
 
+/**
+ * Offline and appearance placement on phones.
+ *
+ * The closed drawer leaves a compact display-only cue in the reading
+ * header; opening the drawer reveals appearance plus detailed offline
+ * actions in a fixed footer that stays reachable while the tree scrolls.
+ * Both read one mounted state. Choosing appearance or opening the drawer
+ * never starts a save; the old page footer is gone.
+ */
+async function runPhoneOfflinePlacement(page, baseUrl, label) {
+  await goto(page, `${baseUrl}/`)
+  assert.equal(
+    await page.evaluate(() => !!document.querySelector(".reader-footer")),
+    false,
+    `${label}: old page footer does not duplicate shell controls`,
+  )
+  await page.waitForSelector(".reader-offline-cue", { visible: true, timeout: 15000 })
+
+  const cue = await page.evaluate(() => {
+    const el = document.querySelector(".reader-offline-cue")
+
+    if (!el) return null
+    const style = getComputedStyle(el)
+    const rect = el.getBoundingClientRect()
+
+    return {
+      text: el.textContent?.trim() || "",
+      state: el.getAttribute("data-offline-state") || "",
+      visible: style.display !== "none" && rect.width > 0 && rect.height > 0,
+      tag: el.tagName,
+    }
+  })
+
+  assert.ok(cue && cue.visible, `${label}: closed drawer leaves a compact offline cue`)
+  assert.equal(cue.tag, "P", `${label}: cue never initiates a save`)
+  await page.waitForFunction(
+    () =>
+      document.querySelector(".reader-offline-cue")?.getAttribute("data-offline-state") === "idle",
+    { timeout: 20000 },
+  )
+  assert.match(
+    await page.evaluate(
+      () => document.querySelector(".reader-offline-cue")?.textContent?.trim() || "",
+    ),
+    /Not saved offline/,
+    `${label}: idle cue is concise`,
+  )
+
+  await page.evaluate(() => document.querySelector(".reader-offline-cue")?.click())
+  await new Promise((resolve) => setTimeout(resolve, 500))
+
+  const afterCue = await page.evaluate(async () => {
+    let hasReg = false
+    let count = 0
+
+    try {
+      hasReg = !!(await navigator.serviceWorker.getRegistration())
+    } catch {}
+
+    try {
+      count = (await caches.keys()).length
+    } catch {}
+
+    return { hasReg, count }
+  })
+
+  assert.equal(afterCue.hasReg, false, `${label}: cue does not start a save`)
+  assert.equal(afterCue.count, 0, `${label}: cue downloads nothing`)
+
+  await openBrowse(page)
+
+  const afterOpen = await page.evaluate(async () => {
+    let hasReg = false
+    let count = 0
+
+    try {
+      hasReg = !!(await navigator.serviceWorker.getRegistration())
+    } catch {}
+
+    try {
+      count = (await caches.keys()).length
+    } catch {}
+
+    return { hasReg, count }
+  })
+
+  assert.equal(afterOpen.hasReg, false, `${label}: opening the drawer does not start a save`)
+  assert.equal(afterOpen.count, 0, `${label}: opening the drawer downloads nothing`)
+
+  const footer = await page.evaluate(() => {
+    const el = document.querySelector(".reader-phone-drawer-footer")
+
+    if (!el) return null
+    const rect = el.getBoundingClientRect()
+    const style = getComputedStyle(el)
+
+    return {
+      visible: style.display !== "none" && rect.width > 0 && rect.height > 0,
+      bottom: rect.bottom,
+      inner: window.innerHeight,
+    }
+  })
+
+  assert.ok(footer && footer.visible, `${label}: drawer footer shows actions`)
+  assert.ok(
+    footer.bottom <= footer.inner + 1,
+    `${label}: drawer footer stays reachable while the tree scrolls`,
+  )
+
+  const drawer = await page.evaluate(() => {
+    const group = document.querySelector(
+      '.reader-phone-drawer-footer [role="group"][aria-label="Appearance"]',
+    )
+
+    return {
+      hasAppearance: !!group,
+      appearanceText: group?.textContent?.trim() || "",
+      hasSave: !!document.querySelector(".reader-phone-drawer-footer .reader-offline-save"),
+      size:
+        document.querySelector(".reader-phone-drawer-footer .reader-offline-size")?.textContent ||
+        "",
+      trust:
+        document.querySelector(".reader-phone-drawer-footer .reader-offline-trust")?.textContent ||
+        "",
+    }
+  })
+
+  assert.ok(
+    drawer.hasAppearance &&
+      drawer.appearanceText.includes("Light") &&
+      drawer.appearanceText.includes("Dark") &&
+      drawer.appearanceText.includes("System"),
+    `${label}: drawer footer shows appearance`,
+  )
+  assert.ok(drawer.hasSave, `${label}: drawer footer shows Save for offline use`)
+  assert.match(drawer.size, /B/, `${label}: estimated size stays clear`)
+  assert.match(drawer.trust, /trust/i, `${label}: trusted-device reminder stays clear`)
+
+  const shared = await page.evaluate(() => ({
+    cue: document.querySelector(".reader-offline-cue")?.getAttribute("data-offline-state") || "",
+    detail:
+      document
+        .querySelector(".reader-phone-drawer-footer .reader-offline")
+        ?.getAttribute("data-offline-state") || "",
+  }))
+
+  assert.equal(shared.cue, "idle", `${label}: cue shares the mounted offline state`)
+  assert.equal(shared.detail, "idle", `${label}: drawer details share the mounted offline state`)
+
+  const scroll = await page.evaluate(() => {
+    const tree = document.querySelector(".reader-phone-drawer-tree")
+    const style = tree ? getComputedStyle(tree) : null
+
+    return {
+      overflowY: style ? style.overflowY : "",
+      height: tree ? tree.getBoundingClientRect().height : 0,
+    }
+  })
+
+  assert.ok(
+    scroll.overflowY === "auto" || scroll.overflowY === "scroll",
+    `${label}: drawer tree scrolls independently`,
+  )
+
+  await page.evaluate(() => {
+    const buttons = Array.from(
+      document.querySelectorAll(
+        '.reader-phone-drawer-footer [role="group"][aria-label="Appearance"] button',
+      ),
+    )
+
+    buttons.find((button) => (button.textContent || "").includes("Dark"))?.click()
+  })
+  await page.waitForFunction(() => document.documentElement.classList.contains("dark"), {
+    timeout: 5000,
+  })
+
+  const afterAppearance = await page.evaluate(async () => {
+    let hasReg = false
+    let count = 0
+
+    try {
+      hasReg = !!(await navigator.serviceWorker.getRegistration())
+    } catch {}
+
+    try {
+      count = (await caches.keys()).length
+    } catch {}
+
+    return { hasReg, count }
+  })
+
+  assert.equal(afterAppearance.hasReg, false, `${label}: choosing appearance does not save`)
+  assert.equal(afterAppearance.count, 0, `${label}: choosing appearance downloads nothing`)
+
+  await page.evaluate(() => {
+    const buttons = Array.from(
+      document.querySelectorAll(
+        '.reader-phone-drawer-footer [role="group"][aria-label="Appearance"] button',
+      ),
+    )
+
+    buttons.find((button) => (button.textContent || "").includes("System"))?.click()
+  })
+  await closeBrowseViaClose(page)
+  assert.equal(
+    await isVisible(page, ".reader-offline-cue"),
+    true,
+    `${label}: cue remains after the drawer closes`,
+  )
+}
+
 test("synthetic phone journey covers Browse, overflow, keyboard, and refresh", async () => {
   assert.ok(
     fs.existsSync(path.join(READER_ROOT, "node_modules", "next")),
@@ -1648,6 +1860,9 @@ test("synthetic phone journey covers Browse, overflow, keyboard, and refresh", a
     })
     await withPage(browser, NARROW_PHONE, async (page) => {
       await runPhoneSearchDialog(page, built.baseUrl, expect, "narrow phone")
+    })
+    await withPage(browser, NARROW_PHONE, async (page) => {
+      await runPhoneOfflinePlacement(page, built.baseUrl, "narrow phone")
     })
     await withPage(browser, LARGER_PHONE, async (page) => {
       await runPhoneJourney(page, built.baseUrl, expect, "larger phone")

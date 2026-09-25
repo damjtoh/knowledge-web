@@ -6,6 +6,7 @@ import type { ProjectionDestination } from "../lib/site"
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarHeader,
@@ -15,6 +16,8 @@ import {
   SidebarRail,
 } from "./ui/sidebar"
 import { ProjectionSwitcher } from "./projection-switcher"
+import AppearanceControl from "./appearance-control"
+import OfflineSave from "./offline-save"
 import ReaderTree from "./sidebar"
 
 /**
@@ -23,7 +26,11 @@ import ReaderTree from "./sidebar"
  * Block sample Changes/Files data is not used: the header shows the
  * current Web Projection switcher (current plus only owner-declared
  * destinations) with Home and Search, and the scrollable content
- * is the published folder-and-note tree in metadata order. Collapse uses
+ * is the published folder-and-note tree in metadata order. The registry
+ * SidebarFooter holds appearance and offline status/actions, so the
+ * sidebar bottom owns Light/Dark/System plus the explicit whole-
+ * projection Save, progress, Ready, update Reload, retry, and named
+ * Remove offline copy. Collapse uses
  * offcanvas so hiding removes the sidebar fully (no icon rail) and
  * restoring exposes the same mounted tree.
  */
@@ -74,6 +81,10 @@ export function AppSidebar({
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+      <SidebarFooter className="reader-sidebar-footer">
+        <AppearanceControl />
+        <OfflineSave />
+      </SidebarFooter>
       <SidebarRail />
     </Sidebar>
   )
