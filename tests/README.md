@@ -1,20 +1,20 @@
 # Reader browser suite
 
-The reader browser suite is two backbone files on one shared harness and one
+The reader browser suite is one integrated file on one shared harness and one
 canonical fixture:
 
-- `tests/knowledge-reader-journey-browser.test.mjs` — desktop backbone.
-- `tests/knowledge-reader-phone-browser.test.mjs` — phone backbone.
+- `tests/knowledge-reader-integrated.test.mjs` — desktop + phone journeys, one shared build.
 - `tests/helpers/reader-env.mjs` — staging, build, serve, and Playwright harness.
 - `tests/fixtures/synthetic-kb.mjs` — canonical synthetic Knowledge Base.
 
-New reader journeys extend these backbones. They do not add parallel
+New reader journeys extend this suite. They do not add parallel
 harnesses, fixtures, or servers.
 
 ## Fold manifest (item 03a)
 
 One row per significant deleted assertion group. Line numbers refer to the
-backbone files as committed with the fold.
+backbone files as committed with the fold (now merged into
+`tests/knowledge-reader-integrated.test.mjs` with function names unchanged).
 
 | Deleted source                                        | Assertion group                                                                                                                                            | New home                                                                                                                                                                                                                                                                              |
 | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
