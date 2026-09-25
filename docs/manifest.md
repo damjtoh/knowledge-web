@@ -17,6 +17,7 @@ here by default; a custom path can be passed with `--manifest`.
 | `canonicalHostname` | yes      | Canonical DNS hostname of the Web Projection (no scheme, port, or path).                                          |
 | `select`            | yes      | Explicit allowlist: one or more content roots or files, relative to the Knowledge Base root.                      |
 | `navigation`        | no       | Optional ordered presentation list: a subset of the allowlist that sets the visible reader roots and their order. |
+| `destinations`      | no       | Optional owner-declared cross-origin Web Projection links: display names plus absolute secure HTTPS origins.      |
 
 ### Example
 
@@ -48,6 +49,26 @@ navigation:
 Here the reader shows three roots in the listed order. The asset-heavy
 `attachments/handouts` selection stays staged but has no navigation root
 because it names no Markdown page worth browsing.
+
+### Example with declared projection destinations
+
+```yaml
+title: Example Garden
+canonicalHostname: garden.example.com
+select:
+  - notes
+  - about.md
+destinations:
+  - name: Personal Garden
+    origin: https://personal.example.com
+  - name: Shared Garden
+    origin: https://shared.example.com
+```
+
+The sidebar switcher shows the current Web Projection plus these two
+explicitly declared destinations as ordinary cross-origin links.
+Manifests without `destinations` stay valid and show the current
+projection only.
 
 ## Semantics
 
@@ -86,34 +107,50 @@ because it names no Markdown page worth browsing.
   carries its own identity without modifying a tracked configuration file.
   See ADR-0002 for the reader replacement decision and
   ADR-0003 for the generic reader decision.
+- **Destinations are owner-declared presentation links only.** Each entry
+  pairs an explicit display `name` with an absolute secure HTTPS `origin`
+  (`https://hostname` with no path, query, fragment, credentials, or
+  port). The reader switcher shows the current Web Projection plus only
+  these declared destinations as ordinary cross-origin anchors; selecting
+  one is a normal link navigation, so browser history, access policy,
+  offline copy, and install identity remain per-origin. Destinations never
+  broaden `select`, never admit content, are never auto-discovered, and the
+  Publisher never hard-codes projection hostnames. Manifests without
+  `destinations` stay valid and show the current projection only.
 
 ## Validation rules
 
 The build **fails before producing any output** when the manifest or any
 selection is invalid. All violations are reported in one pass:
 
-| Rule                                                                                                         | Example                                              |
-| ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------- |
-| Manifest must exist and be a YAML mapping                                                                    | missing file, invalid YAML                           |
-| `title` required, non-empty                                                                                  | `title:` empty                                       |
-| `canonicalHostname` required, valid DNS hostname with at least one dot; no scheme, port, path, or whitespace | `canonicalHostname: https://garden.example.com`      |
-| `select` required with at least one entry                                                                    | missing `select`, `select: []`                       |
-| Selections must be non-empty strings                                                                         | `- ""`                                               |
-| Selections must be relative                                                                                  | `- /etc/passwd`, `- C:\notes`                        |
-| Selections must not traverse above the root                                                                  | `- ../secret`                                        |
-| Selections must not select the root or empty paths                                                           | `- .`, `- ./`                                        |
-| Selections must exist                                                                                        | `- missing.md`                                       |
-| Selections must resolve inside the Knowledge Base root                                                       | a symlink pointing outside the root                  |
-| Symlinks encountered inside selected content must resolve within the allowlisted content                     | a symlink in `notes/` pointing at an unselected file |
-| The Git directory can never be selected                                                                      | `- .git`                                             |
-| The build content directory must not be inside the Knowledge Base root                                       | misconfigured `--content-dir`                        |
-| `navigation`, when present, must be a non-empty list of non-empty strings                                    | `navigation: notes`, `navigation: []`, `- ""`        |
-| Navigation paths use the same safety rules as `select`                                                       | `- /etc/passwd`, `- ../secret`, `- .git`             |
-| Navigation paths must not repeat after normalization                                                         | `- notes` and `- notes/` together                    |
-| Every navigation entry must be covered by `select`                                                           | `navigation: [diary]` with `select: [notes]`         |
-| An explicitly named navigation file must be a Markdown file                                                  | `navigation: [logo.png]`                             |
-| A navigation directory must contain at least one staged Markdown page                                        | `navigation: [assets]` with only images inside       |
-| A navigation entry must exist in the staged tree                                                             | `navigation: [notes/missing.md]`                     |
+| Rule                                                                                                         | Example                                                                                             |
+| ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| Manifest must exist and be a YAML mapping                                                                    | missing file, invalid YAML                                                                          |
+| `title` required, non-empty                                                                                  | `title:` empty                                                                                      |
+| `canonicalHostname` required, valid DNS hostname with at least one dot; no scheme, port, path, or whitespace | `canonicalHostname: https://garden.example.com`                                                     |
+| `select` required with at least one entry                                                                    | missing `select`, `select: []`                                                                      |
+| Selections must be non-empty strings                                                                         | `- ""`                                                                                              |
+| Selections must be relative                                                                                  | `- /etc/passwd`, `- C:\notes`                                                                       |
+| Selections must not traverse above the root                                                                  | `- ../secret`                                                                                       |
+| Selections must not select the root or empty paths                                                           | `- .`, `- ./`                                                                                       |
+| Selections must exist                                                                                        | `- missing.md`                                                                                      |
+| Selections must resolve inside the Knowledge Base root                                                       | a symlink pointing outside the root                                                                 |
+| Symlinks encountered inside selected content must resolve within the allowlisted content                     | a symlink in `notes/` pointing at an unselected file                                                |
+| The Git directory can never be selected                                                                      | `- .git`                                                                                            |
+| The build content directory must not be inside the Knowledge Base root                                       | misconfigured `--content-dir`                                                                       |
+| `navigation`, when present, must be a non-empty list of non-empty strings                                    | `navigation: notes`, `navigation: []`, `- ""`                                                       |
+| Navigation paths use the same safety rules as `select`                                                       | `- /etc/passwd`, `- ../secret`, `- .git`                                                            |
+| Navigation paths must not repeat after normalization                                                         | `- notes` and `- notes/` together                                                                   |
+| Every navigation entry must be covered by `select`                                                           | `navigation: [diary]` with `select: [notes]`                                                        |
+| An explicitly named navigation file must be a Markdown file                                                  | `navigation: [logo.png]`                                                                            |
+| A navigation directory must contain at least one staged Markdown page                                        | `navigation: [assets]` with only images inside                                                      |
+| A navigation entry must exist in the staged tree                                                             | `navigation: [notes/missing.md]`                                                                    |
+| `destinations`, when present, must be a non-empty list of mappings                                           | `destinations: []`, `destinations: notes`                                                           |
+| Every destination must declare a non-empty display `name`                                                    | a destination without `name`, `- name: ""`                                                          |
+| Every destination must declare a non-empty absolute secure HTTPS `origin`                                    | a destination without `origin`, `origin: ""`                                                        |
+| Destination origins must be `https://hostname` with no path, query, fragment, credentials, or port           | `http://garden.example.com`, `https://garden.example.com/notes`, `https://garden.example.com:8443`  |
+| Destination origins and names must not repeat after normalization                                            | two entries for `https://a.example.com` and `https://a.example.com/`, or two entries named `Shared` |
+| A destination origin must not match the current `canonicalHostname`                                          | `canonicalHostname: garden.example.com` with a destination `https://garden.example.com`             |
 
 Navigation normalization trims surrounding whitespace, strips leading
 `./` segments, collapses repeated slashes, and removes trailing slashes,
@@ -147,13 +184,15 @@ tree (default `<publisher>/site-identity.json`, override with
     { "path": "about.md", "kind": "markdown" },
     { "path": "notes", "kind": "directory" },
     { "path": "trip-log", "kind": "directory" }
-  ]
+  ],
+  "destinations": [{ "name": "Shared Garden", "origin": "https://shared.example.com" }]
 }
 ```
 
 Rules:
 
-- Key order is always `title`, `canonicalHostname`, `navigation`.
+- Key order is always `title`, `canonicalHostname`, `navigation`,
+  `destinations`.
 - `navigation` preserves manifest order, or derived `select` order when the
   manifest has no `navigation` list.
 - Default derivation filters out selections with no Markdown pages, so an
@@ -162,6 +201,10 @@ Rules:
   (`directory` or `markdown`).
 - Staging validates `navigation` against the staged tree before the atomic
   swap, so generated `navigation` only names staged Markdown content.
+- `destinations` preserves manifest order and carries only explicitly
+  declared display names plus normalized absolute secure HTTPS origins. A
+  manifest without `destinations` emits an empty list.
+- Each destination entry records exactly `name` and `origin` keys.
 - The file never carries a Knowledge Base root, an absolute path, a
   manifest path, or an unselected path.
 

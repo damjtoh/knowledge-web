@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { usePathname } from "next/navigation"
 import AppearanceControl from "./appearance-control"
 import OfflineSave from "./offline-save"
+import { ProjectionSwitcher } from "./projection-switcher"
 import SearchDialog, { SEARCH_INPUT_ID } from "./search-dialog"
 import ReaderTree from "./sidebar"
 import { AppSidebar } from "./app-sidebar"
@@ -12,6 +13,7 @@ import { Separator } from "./ui/separator"
 import { Sheet, SheetClose, SheetContent, SheetTitle } from "./ui/sheet"
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "./ui/sidebar"
 import type { NavigationNode } from "../lib/navigation"
+import type { ProjectionDestination } from "../lib/site"
 
 function normalize(path: string | null): string {
   if (!path || path === "/") return "/"
@@ -23,7 +25,7 @@ function normalize(path: string | null): string {
  * Reader shell adapted from registry sidebar-11.
  *
  * The desktop sidebar is the registry Sidebar (offcanvas, fully hidden,
- * no icon rail) with a SidebarHeader (current Web Projection, Home,
+ * no icon rail) with a SidebarHeader (projection switcher, Home,
  * Search) and SidebarContent (published tree). The reading inset holds a
  * header with the registry SidebarTrigger, Separator, and Breadcrumb
  * route trail, the reading column, and the footer. Block sample data is
@@ -45,10 +47,12 @@ function normalize(path: string | null): string {
  */
 export default function ReaderChrome({
   title,
+  destinations,
   roots,
   children,
 }: {
   title: string
+  destinations: ProjectionDestination[]
   roots: NavigationNode[]
   children: React.ReactNode
 }) {
@@ -119,7 +123,7 @@ export default function ReaderChrome({
       data-browse={browseOpen ? "open" : "closed"}
     >
       <SidebarProvider>
-        <AppSidebar title={title} roots={roots} onSearch={openSearch} />
+        <AppSidebar title={title} destinations={destinations} roots={roots} onSearch={openSearch} />
         <SidebarInset>
           <header className="reader-header">
             <div className="reader-header-trail">
@@ -162,6 +166,9 @@ export default function ReaderChrome({
               <div className="reader-phone-drawer-header">
                 <SheetTitle>Browse</SheetTitle>
                 <SheetClose className="reader-drawer-close">Close</SheetClose>
+              </div>
+              <div className="reader-phone-drawer-switcher">
+                <ProjectionSwitcher current={title} destinations={destinations} />
               </div>
               <div className="reader-phone-drawer-actions">
                 <a className="reader-drawer-home" href="/">

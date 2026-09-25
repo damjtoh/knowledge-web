@@ -243,6 +243,51 @@ body {
   min-width: 0;
 }
 
+/**
+ * Projection switcher: registry SidebarMenuButton trigger plus registry
+ * DropdownMenu choices. The trigger shows the current Web Projection even
+ * when no destinations are declared; each declared destination is an
+ * ordinary cross-origin anchor. Long projection names wrap instead of
+ * pushing the sidebar wider.
+ */
+.reader-projection-switcher {
+  margin-bottom: 0.25rem;
+}
+
+.reader-projection-trigger {
+  min-height: 44px;
+}
+
+.reader-projection-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  text-align: left;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.reader-projection-menu {
+  min-width: 12rem;
+  max-width: min(16rem, calc(100vw - 2rem));
+}
+
+.reader-projection-current,
+.reader-projection-choice {
+  overflow-wrap: anywhere;
+}
+
+.reader-projection-link {
+  overflow-wrap: anywhere;
+}
+
+/* Phone drawer shows the same switcher above its Home/Search actions. */
+.reader-phone-drawer-switcher {
+  padding: 0.75rem 1rem 0;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
 .reader-sidebar-nav ul {
   list-style: none;
   margin: 0;

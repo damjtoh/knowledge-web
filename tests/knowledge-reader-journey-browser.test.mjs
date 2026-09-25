@@ -598,18 +598,29 @@ async function runJourney(page, baseUrl, expect) {
     }
   }, expect.leafRoute)
 
+  // Home cards keep published root order (metadata order) with one card
+  // per root: each card links its root route and names its root title
+  // alongside the approved folder/note kind and child-count meta.
   assert.deepEqual(
-    home.links.map((l) => l.text),
-    expect.areas,
+    home.links.map((l) => l.href),
+    expect.areaRoutes,
     "home keeps generated metadata order",
   )
+
+  for (const [index, title] of expect.areas.entries()) {
+    assert.ok(
+      home.links[index].text.includes(title),
+      `home card names its published root: ${title}`,
+    )
+  }
+
   assert.deepEqual(home.roots, expect.areas, "tree keeps published root order")
   assert.equal(home.leafText, expect.leafTitle, "tree renders the nested leaf")
   assert.equal(home.mainCount, 1, "one main landmark on home")
   assert.ok(home.navCount >= 1, "semantic navigation present on home")
   assert.equal(home.h1s.length, 1, `home article has one H1 (got ${home.h1s.join("|")})`)
 
-  const folderHref = home.links.find((l) => l.text === expect.folderTitle)?.href
+  const folderHref = home.links.find((l) => l.href === expect.folderRoute)?.href
   assert.ok(folderHref, "home folder link has an href from staged content")
   assert.equal(folderHref, expect.folderRoute, "home folder href matches the derived route")
   await Promise.all([
@@ -736,6 +747,10 @@ async function runJourney(page, baseUrl, expect) {
   assert.ok(note.folderMarked, "tree keeps the section indicated")
 
   // Breadcrumb return to the folder, then browser Back through the journey.
+  // Each Back waits for the address to actually arrive: network idle can
+  // resolve while an SPA Back is still committing, which would check the
+  // previous page instead. The folder gate also requires leaving the leaf,
+  // since the leaf route contains the folder route as a prefix.
   const crumbHref = note.crumbs.length > 1 ? note.crumbs[1].href : null
   assert.ok(crumbHref, "breadcrumbs link a parent")
   await Promise.all([
@@ -744,11 +759,29 @@ async function runJourney(page, baseUrl, expect) {
       document.querySelector(`.reader-breadcrumbs a[href="${href}"]`)?.click()
     }, crumbHref),
   ])
-  await page.goBack({ waitUntil: "networkidle0", timeout: 15000 })
+  await Promise.all([
+    page.waitForFunction(
+      (route) => window.location.href.includes(route),
+      { timeout: 15000 },
+      expect.leafRoute,
+    ),
+    page.goBack(),
+  ])
   assert.ok(page.url().includes(expect.leafRoute), "browser Back returns to the nested note")
-  await page.goBack({ waitUntil: "networkidle0", timeout: 15000 })
+  await Promise.all([
+    page.waitForFunction(
+      ([leaf, folder]) =>
+        window.location.href.includes(folder) && !window.location.href.includes(leaf),
+      { timeout: 15000 },
+      [expect.leafRoute, expect.folderRoute],
+    ),
+    page.goBack(),
+  ])
   assert.ok(page.url().includes(expect.folderRoute), "browser Back returns to the folder")
-  await page.goBack({ waitUntil: "networkidle0", timeout: 15000 })
+  await Promise.all([
+    page.waitForFunction(() => window.location.pathname === "/", { timeout: 15000 }),
+    page.goBack(),
+  ])
   assert.match(page.url(), /\/$/, "browser Back returns home")
 }
 
@@ -1193,11 +1226,11 @@ async function runSidebarCollapse(page, baseUrl, expect) {
 }
 
 /** Wait until the Search dialog is open with its input focused. */
-async function dialogOpen(page) {
-  await page.waitForSelector('[data-slot="dialog-content"]', { visible: true, timeout: 5000 })
+async function dialogOpen(page, timeout = 5000) {
+  await page.waitForSelector('[data-slot="dialog-content"]', { visible: true, timeout })
   await page.waitForFunction(
     () => document.activeElement && document.activeElement.id === "reader-search-input",
-    { timeout: 5000 },
+    { timeout },
   )
 }
 
@@ -1705,10 +1738,24 @@ async function runOfflineSave(browser, baseUrl, server, expect) {
     )
 
     // Focus stays in the page before the shortcut: the offline leaf loads
-    // with domcontentloaded and focus may not have settled into the page yet.
+    // with domcontentloaded and hydration may still be attaching the
+    // shortcut listener, so retry the shortcut until the dialog answers.
     await offline.evaluate(() => document.querySelector(".reader-search-header")?.focus())
-    await pressShortcut(offline, "Control")
-    await dialogOpen(offline)
+
+    let searchReady = false
+
+    for (let attempt = 0; attempt < 5 && !searchReady; attempt++) {
+      await pressShortcut(offline, "Control")
+
+      try {
+        await dialogOpen(offline, 2000)
+        searchReady = true
+      } catch {
+        await new Promise((resolve) => setTimeout(resolve, 1000))
+      }
+    }
+
+    assert.ok(searchReady, "offline search opens through the shortcut")
     await setSearchQuery(offline, expect.offlineLeafTitle)
     await offline.waitForSelector(".reader-search-result", { visible: true, timeout: 15000 })
 
@@ -2265,6 +2312,7 @@ test("synthetic browse journey covers home → folder → nested note → Back",
     await page.setViewport({ width: 1280, height: 800 })
     await runJourney(page, baseUrl, {
       areas: journey.areas,
+      areaRoutes: metadata.navigation.map((entry) => rootRoute(entry)),
       folderTitle: journey.folderTitle,
       folderRoute: journey.folderRoute,
       leafTitle: journey.leafTitle,
@@ -2368,6 +2416,7 @@ test("generic real browse journey covers home → folder → nested note", async
     await page.setViewport({ width: 1280, height: 800 })
     await runJourney(page, baseUrl, {
       areas: journey.areas,
+      areaRoutes: metadata.navigation.map((entry) => rootRoute(entry)),
       folderTitle: journey.folderTitle,
       folderRoute: journey.folderRoute,
       leafTitle: journey.leafTitle,

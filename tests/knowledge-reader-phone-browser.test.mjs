@@ -863,7 +863,7 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
         href: a.getAttribute("href") || "",
       })),
     )
-  ).find((l) => l.text === expect.folderTitle)?.href
+  ).find((l) => l.href === expect.folderRoute)?.href
 
   assert.ok(folderHref, `${label}: home links the folder from staged content`)
   await Promise.all([

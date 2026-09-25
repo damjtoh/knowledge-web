@@ -206,7 +206,12 @@ test("emits deterministic generated site identity outside the staged content tre
   assert.ok(fs.existsSync(identityFile), "site identity file must exist")
   const raw = fs.readFileSync(identityFile, "utf8")
   const parsed = JSON.parse(raw)
-  assert.deepEqual(Object.keys(parsed), ["title", "canonicalHostname", "navigation"])
+  assert.deepEqual(Object.keys(parsed), [
+    "title",
+    "canonicalHostname",
+    "navigation",
+    "destinations",
+  ])
   assert.equal(parsed.title, "Example Garden")
   assert.equal(parsed.canonicalHostname, "garden.example.com")
   // Derived navigation follows select order: notes directory then about.md.
@@ -214,6 +219,8 @@ test("emits deterministic generated site identity outside the staged content tre
     { path: "notes", kind: "directory" },
     { path: "about.md", kind: "markdown" },
   ])
+  // No destinations declared: the identity carries an empty list.
+  assert.deepEqual(parsed.destinations, [])
 
   for (const entry of parsed.navigation) {
     assert.deepEqual(Object.keys(entry), ["path", "kind"])
@@ -551,7 +558,12 @@ test("emits explicit navigation in manifest order with normalized paths and kind
     { path: "notes", kind: "directory" },
   ])
   const parsed = JSON.parse(fs.readFileSync(identityFile, "utf8"))
-  assert.deepEqual(Object.keys(parsed), ["title", "canonicalHostname", "navigation"])
+  assert.deepEqual(Object.keys(parsed), [
+    "title",
+    "canonicalHostname",
+    "navigation",
+    "destinations",
+  ])
 
   for (const entry of parsed.navigation) assert.deepEqual(Object.keys(entry), ["path", "kind"])
 })
@@ -605,7 +617,12 @@ test("emits deterministic navigation with relative public paths only", async () 
   await stageValid(kb, { contentDir, identityFile })
   const raw = fs.readFileSync(identityFile, "utf8")
   const parsed = JSON.parse(raw)
-  assert.deepEqual(Object.keys(parsed), ["title", "canonicalHostname", "navigation"])
+  assert.deepEqual(Object.keys(parsed), [
+    "title",
+    "canonicalHostname",
+    "navigation",
+    "destinations",
+  ])
   assert.equal(raw, `${JSON.stringify(parsed, null, 2)}\n`)
 
   for (const entry of parsed.navigation) {

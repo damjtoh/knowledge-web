@@ -65,7 +65,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body className="antialiased">
-        <ReaderChrome title={metadata.title} roots={roots}>
+        <ReaderChrome title={metadata.title} destinations={metadata.destinations} roots={roots}>
           {children}
         </ReaderChrome>
       </body>

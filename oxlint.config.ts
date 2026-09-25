@@ -72,7 +72,7 @@ const config: OxlintConfig = {
               // active cues must stay on the menu elements the browser
               // journeys query; wrappers would break
               // .reader-sidebar-nav > ul > li and active selectors.
-              { pattern: "^SidebarMenu$", allow: ["reader-tree"] },
+              { pattern: "^SidebarMenu$", allow: ["reader-tree", "reader-projection-switcher"] },
               { pattern: "^SidebarMenuSub$", allow: ["reader-tree-children"] },
               // Search and active hooks must live on the menu button itself;
               // a wrapper would break focus return and the 44px touch target.
@@ -82,8 +82,23 @@ const config: OxlintConfig = {
                   "reader-search-trigger",
                   "reader-search-sidebar",
                   "reader-sidebar-home",
+                  "reader-projection-trigger",
                   "is-active",
                 ],
+              },
+              // Projection switcher trigger owns its hook through the
+              // dropdown trigger render composition; the menu button has
+              // no other wrapper that can own it.
+              { pattern: "^DropdownMenuTrigger$", allow: ["reader-projection-trigger"] },
+              // Projection menu width must stay on the dropdown popup: the
+              // menu renders in a portal with no wrapper DOM.
+              { pattern: "^DropdownMenuContent$", allow: ["reader-projection-menu"] },
+              // Projection choices carry only readable long-name wrapping;
+              // the DropdownMenu primitive owns the menu surface and the
+              // anchors must stay on the menu items.
+              {
+                pattern: "^DropdownMenuItem$",
+                allow: ["reader-projection-current", "reader-projection-choice"],
               },
               // Registry shell layout: trigger offset and mobile visibility
               // must stay on the trigger itself; the header has no wrapper
