@@ -292,14 +292,28 @@ export function buildReaderNavigation(
     slugs.forEach((_, i) => {
       const prefix = slugs.slice(0, i + 1)
       const isCurrent = i === slugs.length - 1
-      const node = nodes.get(slugKey(prefix))
+      const key = slugKey(prefix)
+      const node = nodes.get(key)
 
       if (node) {
         if (isCurrent) crumbs.push({ title: node.title, isCurrent })
         else crumbs.push({ title: node.title, url: node.url, isCurrent: false })
       } else {
-        const title = humanizeSegment(prefix[prefix.length - 1])
-        crumbs.push(isCurrent ? { title, isCurrent } : { title, isCurrent: false })
+        // Routes outside visible navigation stay meaningful by using the
+        // actual staged published title when one exists; humanized slugs
+        // are the fallback. Staged pages are already allowlisted, so this
+        // never broadens publication.
+        const page = pageByKey.get(key)
+
+        if (page) {
+          const title = pageTitle(page)
+
+          if (isCurrent) crumbs.push({ title, isCurrent })
+          else crumbs.push({ title, url: page.url, isCurrent: false })
+        } else {
+          const title = humanizeSegment(prefix[prefix.length - 1])
+          crumbs.push(isCurrent ? { title, isCurrent } : { title, isCurrent: false })
+        }
       }
     })
 

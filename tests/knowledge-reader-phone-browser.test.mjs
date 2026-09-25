@@ -782,7 +782,7 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
 
   assert.ok(toggleHeight >= 44, `${label}: Browse control is ${toggleHeight}px (expected >= 44)`)
   await assertNoPageOverflow(page, `${label} home`)
-  await assertLandmarks(page, `${label} home`, { breadcrumb: false })
+  await assertLandmarks(page, `${label} home`)
 
   await openBrowse(page)
   assert.equal(
@@ -961,7 +961,9 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
 
   const note = await page.evaluate(() => ({
     h1: document.querySelector("article h1")?.textContent?.trim() || "",
-    crumbs: Array.from(document.querySelectorAll(".reader-breadcrumbs li")).map((li) => ({
+    crumbs: Array.from(
+      document.querySelectorAll(".reader-breadcrumbs [data-slot='breadcrumb-item']"),
+    ).map((li) => ({
       text: li.textContent?.trim() || "",
       href: li.querySelector("a")?.getAttribute("href") || null,
     })),
@@ -1120,9 +1122,11 @@ async function runDerivedOverflowProbes(
   await goto(page, `${baseUrl}${probes.deep.route}`)
 
   const crumbs = await page.evaluate(() =>
-    Array.from(document.querySelectorAll(".reader-breadcrumbs li")).map((li) => ({
-      text: li.textContent?.trim() || "",
-    })),
+    Array.from(document.querySelectorAll(".reader-breadcrumbs [data-slot='breadcrumb-item']")).map(
+      (li) => ({
+        text: li.textContent?.trim() || "",
+      }),
+    ),
   )
 
   assert.ok(

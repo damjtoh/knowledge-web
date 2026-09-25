@@ -7,6 +7,7 @@ import OfflineSave from "./offline-save"
 import SearchDialog, { SEARCH_INPUT_ID } from "./search-dialog"
 import ReaderTree from "./sidebar"
 import { AppSidebar } from "./app-sidebar"
+import ReadingBreadcrumbs from "./reading-breadcrumbs"
 import { Separator } from "./ui/separator"
 import { Sheet, SheetClose, SheetContent, SheetTitle } from "./ui/sheet"
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "./ui/sidebar"
@@ -24,8 +25,9 @@ function normalize(path: string | null): string {
  * The desktop sidebar is the registry Sidebar (offcanvas, fully hidden,
  * no icon rail) with a SidebarHeader (current Web Projection, Home,
  * Search) and SidebarContent (published tree). The reading inset holds a
- * header with the registry SidebarTrigger, the reading column, and the
- * footer. Block sample data is not used: shell structure only.
+ * header with the registry SidebarTrigger, Separator, and Breadcrumb
+ * route trail, the reading column, and the footer. Block sample data is
+ * not used: shell structure only.
  *
  * Phone navigation is the registry Sheet drawer (side left, full
  * viewport, safe-area aware) with the same published tree: a fixed header
@@ -120,11 +122,11 @@ export default function ReaderChrome({
         <AppSidebar title={title} roots={roots} onSearch={openSearch} />
         <SidebarInset>
           <header className="reader-header">
-            <SidebarTrigger className="-ml-1 max-md:hidden" />
-            <Separator orientation="vertical" className="mr-2 hidden md:block" />
-            <a className="reader-home" href="/">
-              {title}
-            </a>
+            <div className="reader-header-trail">
+              <SidebarTrigger className="-ml-1 max-md:hidden" />
+              <Separator orientation="vertical" className="mr-2 hidden md:block" />
+              <ReadingBreadcrumbs roots={roots} siteTitle={title} />
+            </div>
             <div className="reader-header-actions">
               <AppearanceControl />
               <button

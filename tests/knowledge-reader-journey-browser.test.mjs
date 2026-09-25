@@ -707,7 +707,9 @@ async function runJourney(page, baseUrl, expect) {
     return {
       h1s: Array.from(document.querySelectorAll("article h1")).map((h) => h.textContent?.trim()),
       mainCount: document.querySelectorAll("main").length,
-      crumbs: Array.from(document.querySelectorAll(".reader-breadcrumbs li")).map((li) => ({
+      crumbs: Array.from(
+        document.querySelectorAll(".reader-breadcrumbs [data-slot='breadcrumb-item']"),
+      ).map((li) => ({
         text: li.textContent?.trim() || "",
         href: li.querySelector("a")?.getAttribute("href") || null,
       })),

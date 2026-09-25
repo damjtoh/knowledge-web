@@ -9,7 +9,6 @@ import {
   getChildFolders,
   type NavigationNode,
 } from "../../lib/navigation"
-import Breadcrumbs from "../../components/breadcrumbs"
 
 export const dynamicParams = false
 
@@ -123,7 +122,6 @@ export default async function FolderOrNotePage({ params }: { params: Promise<Not
   const { slug } = await params
   const navigation = readerNavigation()
   const node = navigation.find(slug)
-  const crumbs = navigation.breadcrumbs(slug)
 
   if (node?.page) {
     // SAFETY: authored index pages own a compiled body component; node.page exists only for authored routes.
@@ -132,14 +130,11 @@ export default async function FolderOrNotePage({ params }: { params: Promise<Not
     const childFolders = getChildFolders(node)
 
     return (
-      <>
-        <Breadcrumbs items={crumbs} />
-        <article className="reader-article">
-          <Body />
-          <GroupSection title="Notes" nodes={directNotes} />
-          <GroupSection title="Folders" nodes={childFolders} />
-        </article>
-      </>
+      <article className="reader-article">
+        <Body />
+        <GroupSection title="Notes" nodes={directNotes} />
+        <GroupSection title="Folders" nodes={childFolders} />
+      </article>
     )
   }
 
@@ -148,14 +143,11 @@ export default async function FolderOrNotePage({ params }: { params: Promise<Not
     const childFolders = getChildFolders(node)
 
     return (
-      <>
-        <Breadcrumbs items={crumbs} />
-        <article className="reader-article">
-          <h1>{node.title}</h1>
-          <GroupSection title="Notes" nodes={directNotes} />
-          <GroupSection title="Folders" nodes={childFolders} />
-        </article>
-      </>
+      <article className="reader-article">
+        <h1>{node.title}</h1>
+        <GroupSection title="Notes" nodes={directNotes} />
+        <GroupSection title="Folders" nodes={childFolders} />
+      </article>
     )
   }
 
@@ -166,11 +158,8 @@ export default async function FolderOrNotePage({ params }: { params: Promise<Not
   const Body = (page.data as { body: React.ComponentType }).body
 
   return (
-    <>
-      <Breadcrumbs items={crumbs} />
-      <article className="reader-article">
-        <Body />
-      </article>
-    </>
+    <article className="reader-article">
+      <Body />
+    </article>
   )
 }

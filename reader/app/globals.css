@@ -63,6 +63,21 @@ body {
   padding: 0.75rem 1rem;
 }
 
+/**
+ * Reading-header trail: registry SidebarTrigger, Separator, and one
+ * route-derived Breadcrumb. The trail takes available room and shrinks
+ * below actions, so long titles and deep paths wrap inside the header
+ * without pushing the page wider.
+ */
+.reader-header-trail {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+
 .reader-home {
   display: inline-flex;
   align-items: center;
@@ -345,9 +360,32 @@ body {
 }
 
 .reader-breadcrumbs {
-  margin-bottom: 1rem;
+  flex: 1 1 auto;
   min-width: 0;
   max-width: 100%;
+  margin-bottom: 0;
+}
+
+/* Header trail owns the single breadcrumb landmark; article pages no
+   longer render a second row above content. */
+.reader-header .reader-breadcrumbs {
+  margin-bottom: 0;
+}
+
+.reader-breadcrumbs nav,
+.reader-breadcrumbs [data-slot="breadcrumb"],
+.reader-breadcrumbs [data-slot="breadcrumb-list"],
+.reader-breadcrumbs [data-slot="breadcrumb-item"],
+.reader-breadcrumbs [data-slot="breadcrumb-link"],
+.reader-breadcrumbs [data-slot="breadcrumb-page"] {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.reader-breadcrumbs [data-slot="breadcrumb-link"],
+.reader-breadcrumbs [data-slot="breadcrumb-page"] {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .reader-breadcrumbs ol {
@@ -359,6 +397,8 @@ body {
   gap: 0.25rem 0.5rem;
   font-size: 0.9rem;
   color: #525252;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .reader-breadcrumbs li {
@@ -370,17 +410,15 @@ body {
   overflow-wrap: anywhere;
 }
 
-.reader-breadcrumbs li + li::before {
-  content: "›";
-  color: #a3a3a3;
-}
-
 .reader-breadcrumbs a {
   display: inline-flex;
   align-items: center;
   min-height: 44px;
   color: #404040;
   text-decoration: none;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .reader-breadcrumbs a:hover {
@@ -1215,10 +1253,6 @@ body {
 
 .dark .reader-breadcrumbs ol {
   color: #d4d4d4;
-}
-
-.dark .reader-breadcrumbs li + li::before {
-  color: #525252;
 }
 
 .dark .reader-breadcrumbs a {
