@@ -77,6 +77,11 @@ const config: OxlintConfig = {
                   "reader-offline-retry",
                   "reader-offline-reload",
                   "reader-offline-remove",
+                  "flex-1",
+                  "rounded-full",
+                  "px-2.5",
+                  "py-1.5",
+                  "gap-1.5",
                 ],
               },
               // Registry sidebar-11 tree hooks: published root order and
@@ -176,9 +181,45 @@ const config: OxlintConfig = {
               // registry Footer elements render no wrapper DOM, so the
               // hook must stay on the footer itself; a parent would scope
               // the wrong element and break the fixed-footer/tree-scroll
-              // split.
-              { pattern: "^SidebarFooter$", allow: ["reader-sidebar-footer"] },
-              { pattern: "^SheetFooter$", allow: ["reader-phone-drawer-footer"] },
+              // split. Design footer stack adds a top border with padded
+              // gaps; the divider between On Device and Appearance is the
+              // registry Separator with no wrapper.
+              {
+                pattern: "^SidebarFooter$",
+                allow: ["reader-sidebar-footer", "gap-4", "border-t", "p-4"],
+              },
+              {
+                pattern: "^SheetFooter$",
+                allow: ["reader-phone-drawer-footer", "gap-4", "border-t", "p-4"],
+              },
+              // Appearance segmented control owns its muted pill container;
+              // the ToggleGroup primitive renders no wrapper DOM, so the
+              // pill utilities must stay on the group itself.
+              {
+                pattern: "^ToggleGroup$",
+                allow: ["bg-muted", "rounded-full", "p-0.5", "gap-0.5", "w-full"],
+              },
+              // Appearance options keep the DOM hook for touch sizing plus
+              // the pill option layout; the toggle primitive renders the
+              // button itself, so flex and active-state utilities must stay
+              // on the item. Active state uses aria-pressed variants; the
+              // readable names live in screen-reader labels.
+              {
+                pattern: "^ToggleGroupItem$",
+                allow: [
+                  "reader-appearance-option",
+                  "flex-1",
+                  "rounded-full",
+                  "border",
+                  "border-transparent",
+                  "p-1.5",
+                  "justify-center",
+                  "text-muted-foreground",
+                  "aria-pressed:bg-card",
+                  "aria-pressed:border-border",
+                  "aria-pressed:text-primary",
+                ],
+              },
             ],
           },
         ],

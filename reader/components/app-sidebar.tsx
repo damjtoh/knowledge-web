@@ -18,6 +18,7 @@ import {
 } from "./ui/sidebar"
 import { ProjectionSwitcher } from "./projection-switcher"
 import { Kbd } from "./ui/kbd"
+import { Separator } from "./ui/separator"
 import AppearanceControl from "./appearance-control"
 import OfflineSave from "./offline-save"
 import ReaderTree from "./sidebar"
@@ -88,9 +89,10 @@ export function AppSidebar({
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter className="reader-sidebar-footer">
-        <AppearanceControl />
+      <SidebarFooter className="reader-sidebar-footer gap-4 border-t p-4">
         <OfflineSave />
+        <Separator />
+        <AppearanceControl />
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>

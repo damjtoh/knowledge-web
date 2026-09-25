@@ -198,9 +198,10 @@ export default function ReaderChrome({
                   <div className="reader-phone-drawer-tree">
                     <ReaderTree roots={roots} />
                   </div>
-                  <SheetFooter className="reader-phone-drawer-footer">
-                    <AppearanceControl />
+                  <SheetFooter className="reader-phone-drawer-footer gap-4 border-t p-4">
                     <OfflineSave />
+                    <Separator />
+                    <AppearanceControl />
                   </SheetFooter>
                 </SheetContent>
               </Sheet>
