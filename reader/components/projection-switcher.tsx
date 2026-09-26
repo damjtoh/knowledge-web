@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import { Archive, Check, ChevronsUpDown } from "lucide-react"
 import type { ProjectionDestination } from "../lib/site"
 import {
@@ -11,7 +12,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu"
-import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "./ui/sidebar"
+import { SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar } from "./ui/sidebar"
+import { VaultSheet } from "./vault-sheet"
 
 /**
  * Current Web Projection switcher for the reader sidebar.
@@ -23,7 +25,9 @@ import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "./ui/sidebar"
  * navigation, so browser history, access policy, offline copy, and install
  * identity remain per-origin. There is no add-projection or team action.
  * Keyboard operation (open, move, Escape, focus return) comes from the
- * registry DropdownMenu primitive.
+ * registry DropdownMenu primitive. On phones the same trigger button
+ * opens the VaultSheet bottom sheet instead (design xPZVw); the desktop
+ * dropdown below is unchanged.
  */
 export function ProjectionSwitcher({
   current,
@@ -32,6 +36,42 @@ export function ProjectionSwitcher({
   current: string
   destinations: ProjectionDestination[]
 }) {
+  const { isMobile } = useSidebar()
+  const [sheetOpen, setSheetOpen] = useState(false)
+
+  if (isMobile) {
+    return (
+      <SidebarMenu className="reader-projection-switcher">
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            size="lg"
+            className="reader-projection-trigger"
+            aria-haspopup="dialog"
+            aria-expanded={sheetOpen}
+            onClick={() => setSheetOpen(true)}
+          >
+            <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary">
+              <Archive aria-hidden="true" className="size-4 text-card" />
+            </span>
+            <span className="reader-sidebar-brand reader-projection-name truncate text-sm font-medium text-primary">
+              {current}
+            </span>
+            <ChevronsUpDown
+              aria-hidden="true"
+              className="ml-auto size-4 shrink-0 text-muted-foreground"
+            />
+          </SidebarMenuButton>
+          <VaultSheet
+            current={current}
+            destinations={destinations}
+            open={sheetOpen}
+            onOpenChange={setSheetOpen}
+          />
+        </SidebarMenuItem>
+      </SidebarMenu>
+    )
+  }
+
   return (
     <SidebarMenu className="reader-projection-switcher">
       <SidebarMenuItem>

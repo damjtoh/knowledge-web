@@ -7,6 +7,7 @@ import { AppearanceProvider } from "./appearance-control"
 import { OfflineCue, OfflineProvider } from "./offline-save"
 import SearchDialog, { SEARCH_INPUT_ID } from "./search-dialog"
 import { AppSidebar } from "./app-sidebar"
+import { VaultSheet } from "./vault-sheet"
 import ReadingBreadcrumbs from "./reading-breadcrumbs"
 import { Separator } from "./ui/separator"
 import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from "./ui/sidebar"
@@ -54,6 +55,8 @@ function CloseMobileSidebarOnNavigate() {
  * AppSidebar slides in from the left over a dimmed overlay. The registry
  * Sheet primitive owns focus containment, Escape and overlay dismissal,
  * and background scroll lock; dismissing returns focus to the trigger.
+ * The phone header brand row is a button opening its own VaultSheet
+ * bottom sheet, so vaults switch without opening the drawer.
  * The registry SidebarTrigger is visible at every width and routes to
  * the mobile sheet below 768px. One OfflineProvider at the shell root
  * shares a single mounted offline state between the sidebar footer and
@@ -77,6 +80,11 @@ export default function ReaderChrome({
   children: React.ReactNode
 }) {
   const [searchOpen, setSearchOpen] = useState(false)
+  // Phone vault sheet state: the header brand button opens its own
+  // VaultSheet instance. The brand button is only reachable when the
+  // drawer is closed (and the drawer switcher only inside it), so the
+  // two instances never stack and share no state.
+  const [vaultOpen, setVaultOpen] = useState(false)
   // The control focused before Search opened; focus returns there on close.
   const searchOpenerRef = useRef<HTMLElement | null>(null)
   const searchOpenRef = useRef(false)
@@ -140,13 +148,19 @@ export default function ReaderChrome({
                     <Separator orientation="vertical" className="mr-2 hidden h-4 w-px md:block" />
                     <ReadingBreadcrumbs roots={roots} siteTitle={title} />
                   </div>
-                  <div className="flex h-8 min-w-0 flex-1 items-center gap-2 md:hidden">
+                  <button
+                    type="button"
+                    className="flex h-8 min-w-0 flex-1 items-center gap-2 md:hidden"
+                    aria-haspopup="dialog"
+                    aria-expanded={vaultOpen}
+                    onClick={() => setVaultOpen(true)}
+                  >
                     <span className="truncate text-sm font-bold text-primary">{title}</span>
                     <ChevronsUpDown
                       aria-hidden="true"
                       className="size-3.5 shrink-0 text-muted-foreground"
                     />
-                  </div>
+                  </button>
                 </div>
                 <div className="reader-header-actions">
                   <OfflineCue />
@@ -164,6 +178,12 @@ export default function ReaderChrome({
                 <div className="reader-main">{children}</div>
               </div>
               <SearchDialog open={searchOpen} onOpenChange={handleSearchOpenChange} />
+              <VaultSheet
+                current={title}
+                destinations={destinations}
+                open={vaultOpen}
+                onOpenChange={setVaultOpen}
+              />
             </SidebarInset>
           </SidebarProvider>
         </OfflineProvider>

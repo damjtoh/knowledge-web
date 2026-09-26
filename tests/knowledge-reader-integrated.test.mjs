@@ -4228,10 +4228,11 @@ async function assertBackgroundScrollLock(page, label) {
 }
 
 /**
- * Phone header composition (mobile port item 2): 64px header with
- * hamburger plus a truncated non-interactive brand row on the left and
- * the status cue plus search on the right. The desktop separator and
- * breadcrumb trail stay mounted for desktop parity but hidden on phones.
+ * Phone header composition (mobile port items 2+4): 64px header with
+ * hamburger plus a truncated brand button on the left (opens the vault
+ * bottom sheet) and the status cue plus search on the right. The desktop
+ * separator and breadcrumb trail stay mounted for desktop parity but
+ * hidden on phones.
  */
 async function runPhoneHeaderComposition(page, baseUrl, expect, label) {
   await goto(page, `${baseUrl}/`)
@@ -4244,8 +4245,8 @@ async function runPhoneHeaderComposition(page, baseUrl, expect, label) {
     const style = getComputedStyle(el)
     const brandSpan = document.querySelector(".reader-header-trail span.truncate")
     const brandRect = brandSpan?.getBoundingClientRect() || null
-    const brandDiv = brandSpan?.closest("div") || null
-    const icon = brandDiv?.querySelector("svg") || null
+    const brandControl = brandSpan?.closest("button") || brandSpan?.closest("div") || null
+    const icon = brandControl?.querySelector("svg") || null
     const iconRect = icon?.getBoundingClientRect() || null
     const crumbs = document.querySelector(".reader-header-trail .reader-breadcrumbs")
     const crumbsStyle = crumbs ? getComputedStyle(crumbs) : null
@@ -4272,8 +4273,11 @@ async function runPhoneHeaderComposition(page, baseUrl, expect, label) {
         brandRect.width > 0 &&
         brandRect.height > 0 &&
         getComputedStyle(brandSpan).display !== "none",
-      brandTag: brandDiv?.tagName || "",
-      brandIsButton: !!brandDiv?.closest("button"),
+      brandTag: brandControl?.tagName || "",
+      brandIsButton: (brandControl?.tagName || "") === "BUTTON",
+      brandType: brandControl?.getAttribute("type") || "",
+      brandHaspopup: brandControl?.getAttribute("aria-haspopup") || "",
+      brandExpanded: brandControl?.getAttribute("aria-expanded") || "",
       brandWeight: brandSpan ? getComputedStyle(brandSpan).fontWeight : "",
       iconVisible: !!iconRect && iconRect.width > 0 && iconRect.height > 0,
       iconWidth: iconRect ? iconRect.width : 0,
@@ -4311,8 +4315,11 @@ async function runPhoneHeaderComposition(page, baseUrl, expect, label) {
     header.brandText.includes(expect.projection),
     `${label}: brand text is the site title (got ${header.brandText})`,
   )
-  assert.equal(header.brandTag, "DIV", `${label}: brand row is a non-interactive div`)
-  assert.equal(header.brandIsButton, false, `${label}: brand row is not a button`)
+  assert.equal(header.brandTag, "BUTTON", `${label}: brand row is a button`)
+  assert.equal(header.brandIsButton, true, `${label}: brand row opens the vault sheet`)
+  assert.equal(header.brandType, "button", `${label}: brand row is a plain button`)
+  assert.equal(header.brandHaspopup, "dialog", `${label}: brand row announces the vault dialog`)
+  assert.equal(header.brandExpanded, "false", `${label}: vault sheet starts closed`)
   assert.ok(
     Number(header.brandWeight) >= 700 || header.brandWeight === "bold",
     `${label}: brand text is bold (got ${header.brandWeight})`,
@@ -4905,6 +4912,11 @@ async function runDesktopChecks(page, baseUrl, expect, label) {
     await isVisible(page, '[data-sidebar="trigger"]'),
     true,
     `${label}: sidebar trigger stays visible`,
+  )
+  assert.equal(
+    await isVisible(page, '.reader-header-trail > button:not([data-sidebar="trigger"])'),
+    false,
+    `${label}: phone brand button stays off desktop`,
   )
   assert.deepEqual(
     (await browseRoots(page)).map((a) => a.text),
@@ -5667,8 +5679,151 @@ async function runPhoneBreadcrumbsDetail(page, baseUrl, contentDir, label) {
 }
 
 /**
- * Phone drawer carries the projection switcher with the current
- * projection, folded from the retired projection suite.
+ * Reads the open vault bottom sheet: frame geometry plus the current
+ * row and ordered destination anchors. Null when no vault sheet is open
+ * (the drawer sidebar renders its own sheet content without the
+ * "Switch vault" list, so the two are never confused).
+ */
+async function readVaultSheet(page) {
+  return await page.evaluate(() => {
+    const root = Array.from(document.querySelectorAll('[data-slot="sheet-content"]')).find((el) =>
+      el.querySelector('[aria-label="Switch vault"]'),
+    )
+
+    if (!root) return null
+    const rect = root.getBoundingClientRect()
+    const handle = root.querySelector('div[aria-hidden="true"]')
+    const handleRect = handle?.getBoundingClientRect() || null
+    const title = root.querySelector('[data-slot="sheet-title"]')
+    const close = root.querySelector('[data-slot="sheet-close"]')
+    const closeRect = close?.getBoundingClientRect() || null
+    const list = root.querySelector('[aria-label="Switch vault"]')
+    const current = list?.querySelector(':scope > li[aria-current="true"]') || null
+    const anchors = list ? Array.from(list.querySelectorAll(":scope > li > a")) : []
+
+    return {
+      bottom: rect.bottom,
+      width: rect.width,
+      innerWidth: window.innerWidth,
+      innerHeight: window.innerHeight,
+      handleWidth: handleRect ? handleRect.width : 0,
+      handleHeight: handleRect ? handleRect.height : 0,
+      title: title?.textContent?.trim() || "",
+      closeVisible: !!closeRect && closeRect.width > 0 && closeRect.height > 0,
+      closeLabel: close?.getAttribute("aria-label") || "",
+      text: root.textContent || "",
+      current: current
+        ? {
+            text: current.textContent?.trim() || "",
+            marked: current.getAttribute("aria-current"),
+            hasCheck: !!current.querySelector("svg"),
+            isAnchor: !!current.querySelector("a"),
+          }
+        : null,
+      choices: anchors.map((anchor) => {
+        const inner = Array.from(anchor.querySelectorAll(":scope > span > span")).map(
+          (span) => span.textContent?.trim() || "",
+        )
+
+        return {
+          name: inner.length > 0 ? inner[0] : "",
+          meta: inner.length > 0 ? inner[inner.length - 1] : "",
+          href: anchor.getAttribute("href"),
+          tag: anchor.tagName,
+          target: anchor.getAttribute("target"),
+        }
+      }),
+    }
+  })
+}
+
+/** Vault sheet row assertions shared by the drawer and header journeys. */
+function assertVaultSheetRows(sheet, expect, label) {
+  assert.ok(sheet, `${label}: vault sheet opens`)
+  assert.ok(
+    Math.abs(sheet.bottom - sheet.innerHeight) <= 2,
+    `${label}: sheet anchors to the viewport bottom (got ${sheet.bottom}px of ${sheet.innerHeight}px)`,
+  )
+  assert.ok(
+    Math.abs(sheet.width - sheet.innerWidth) <= 1,
+    `${label}: sheet spans the full width (got ${sheet.width}px of ${sheet.innerWidth}px)`,
+  )
+  assert.ok(
+    Math.abs(sheet.handleWidth - 40) <= 1 && Math.abs(sheet.handleHeight - 4) <= 1,
+    `${label}: sheet shows the 40x4 handle bar`,
+  )
+  assert.equal(sheet.title, "Switch vault", `${label}: sheet titles the vault switch`)
+  assert.ok(sheet.closeVisible, `${label}: sheet shows its close control`)
+  assert.ok(sheet.closeLabel !== "", `${label}: close control is labelled`)
+  assert.ok(sheet.current, `${label}: sheet names the current vault`)
+  assert.ok(
+    sheet.current.text.includes(expect.projection),
+    `${label}: current row names this vault`,
+  )
+  assert.equal(sheet.current.marked, "true", `${label}: current row is marked current`)
+  assert.ok(sheet.current.hasCheck, `${label}: current row carries the check`)
+  assert.equal(sheet.current.isAnchor, false, `${label}: current row is information, not a link`)
+  assert.deepEqual(
+    sheet.choices.map((choice) => ({ name: choice.name, href: choice.href })),
+    expect.destinations.map((destination) => ({
+      name: destination.name,
+      href: destination.origin,
+    })),
+    `${label}: destination rows keep manifest order with absolute HTTPS origins`,
+  )
+
+  for (const [index, choice] of sheet.choices.entries()) {
+    assert.equal(choice.tag, "A", `${label}: destination row ${index} is an ordinary anchor`)
+    assert.ok(choice.href?.startsWith("https://"), `${label}: destination row ${index} is secure`)
+    assert.equal(choice.target, null, `${label}: destination row ${index} stays same-tab`)
+    assert.equal(
+      choice.meta,
+      new URL(choice.href).hostname,
+      `${label}: destination row ${index} metas its origin host`,
+    )
+  }
+
+  assert.ok(!sheet.text.includes("Add"), `${label}: sheet offers no add-vault row`)
+}
+
+async function vaultSheetOpen(page) {
+  await page.waitForSelector('[data-slot="sheet-content"] [aria-label="Switch vault"]', {
+    state: "visible",
+    timeout: 5000,
+  })
+  // The bottom sheet slides up on entry: wait until it settles at the
+  // viewport bottom before reading geometry.
+  await page.waitForFunction(
+    () => {
+      const root = Array.from(document.querySelectorAll('[data-slot="sheet-content"]')).find((el) =>
+        el.querySelector('[aria-label="Switch vault"]'),
+      )
+
+      if (!root) return false
+
+      return Math.abs(root.getBoundingClientRect().bottom - window.innerHeight) <= 2
+    },
+    null,
+    { timeout: 5000 },
+  )
+}
+
+async function vaultSheetClosed(page) {
+  await page.waitForFunction(
+    () =>
+      !Array.from(document.querySelectorAll('[data-slot="sheet-content"]')).some((el) =>
+        el.querySelector('[aria-label="Switch vault"]'),
+      ),
+    null,
+    { timeout: 5000 },
+  )
+}
+
+/**
+ * Phone drawer carries the projection switcher, folded from the retired
+ * projection suite (mobile port item 4): the same trigger that shows the
+ * desktop dropdown opens the vault bottom sheet on phones. Escape
+ * dismisses the sheet and returns focus to the drawer trigger.
  */
 async function runPhoneDrawerSwitcher(page, baseUrl, expect, label) {
   await goto(page, `${baseUrl}/`)
@@ -5691,7 +5846,71 @@ async function runPhoneDrawerSwitcher(page, baseUrl, expect, label) {
     `${label}: drawer switcher names the current projection`,
   )
   assert.ok(drawerSwitcher.visible, `${label}: drawer switcher is visible`)
+  await page.evaluate(() =>
+    document
+      .querySelector('[data-sidebar="sidebar"][data-mobile="true"] .reader-projection-trigger')
+      ?.click(),
+  )
+  await vaultSheetOpen(page)
+  assertVaultSheetRows(await readVaultSheet(page), expect, label)
+
+  await page.keyboard.press("Escape")
+  await vaultSheetClosed(page)
+
+  const returned = await page.evaluate(
+    () => document.activeElement?.closest(".reader-projection-trigger")?.className || "",
+  )
+
+  assert.ok(
+    String(returned).includes("reader-projection-trigger"),
+    `${label}: Escape returns focus to the drawer switcher trigger`,
+  )
   await closeDrawer(page)
+}
+
+/**
+ * Phone header brand opens the vault sheet without the drawer (mobile
+ * port item 4): a phone reader switches projections straight from the
+ * header. The close control and the overlay both dismiss it.
+ */
+async function runPhoneHeaderVaultSheet(page, baseUrl, expect, label) {
+  await goto(page, `${baseUrl}/`)
+
+  const openFromHeader = () =>
+    page.evaluate(() => {
+      const span = document.querySelector(".reader-header-trail span.truncate")
+      const button = span?.closest("button")
+
+      if (button instanceof HTMLElement) button.click()
+    })
+
+  await openFromHeader()
+  await vaultSheetOpen(page)
+  assertVaultSheetRows(await readVaultSheet(page), expect, label)
+  assert.equal(
+    await isVisible(page, '[data-sidebar="sidebar"][data-mobile="true"]'),
+    false,
+    `${label}: header vault switch needs no drawer`,
+  )
+
+  await page.evaluate(() => {
+    const root = Array.from(document.querySelectorAll('[data-slot="sheet-content"]')).find((el) =>
+      el.querySelector('[aria-label="Switch vault"]'),
+    )
+
+    root?.querySelector('[data-slot="sheet-close"]')?.click()
+  })
+  await vaultSheetClosed(page)
+
+  await openFromHeader()
+  await vaultSheetOpen(page)
+  await page.locator('[data-slot="sheet-overlay"]').click()
+  await vaultSheetClosed(page)
+  assert.equal(
+    await isVisible(page, '[data-sidebar="sidebar"][data-mobile="true"]'),
+    false,
+    `${label}: overlay dismissal leaves the drawer closed`,
+  )
 }
 
 /**
@@ -5790,6 +6009,54 @@ test("device status chip renders every offline state without starting a save", a
   assert.ok(!css.includes(".reader-offline-cue"), "chip styling lives in utilities, not CSS")
 })
 
+/**
+ * Vault bottom sheet static tokens (mobile port item 4): the phone vault
+ * switcher renders the registry Sheet side="bottom" with the xPZVw rows
+ * (washed current row with check, bordered destination anchors keyed by
+ * origin host, no add-vault row) in utilities only, while the desktop
+ * dropdown path and the two phone triggers stay wired.
+ */
+test("vault sheet matches the xPZVw bottom-sheet design tokens", async () => {
+  const sheet = fs.readFileSync(path.join(READER_ROOT, "components", "vault-sheet.tsx"), "utf8")
+
+  assert.match(sheet, /side="bottom"/, "sheet docks to the bottom")
+  assert.match(sheet, /Switch vault/, "sheet titles the vault switch")
+  assert.match(sheet, /aria-label="Switch vault"/, "sheet list is labelled")
+  assert.match(sheet, /showCloseButton=\{false\}/, "title row owns the close control")
+  assert.match(sheet, /aria-label="Close vault switcher"/, "close control is labelled")
+  assert.match(sheet, /aria-current="true"/, "current row is marked current")
+  assert.match(sheet, /bg-muted/, "current row carries the washed fill")
+  assert.match(sheet, /bg-primary/, "current icon box is inverted")
+  assert.match(sheet, /text-card/, "inverted icon reads on the primary fill")
+  assert.match(sheet, /border-border/, "destination rows carry the bordered read")
+  assert.match(sheet, /new URL\(/, "destination meta derives from the origin")
+  assert.match(sheet, /min-h-15/, "rows hold the 60px geometry without arbitrary values")
+  assert.ok(!/rounded-\[|min-h-\[|text-\[|w-\[|h-\[|p[xy]?-\[/.test(sheet), "no arbitrary values")
+  assert.ok(!sheet.includes("reader-"), "sheet adds no custom hook classes")
+  assert.ok(!/Add new vault/.test(sheet), "no add-vault row")
+
+  const config = fs.readFileSync(path.join(PUBLISHER_ROOT, "oxlint.config.ts"), "utf8")
+
+  for (const part of ["^SheetContent$", "^SheetTitle$", "^SheetClose$"]) {
+    assert.ok(config.includes(part), `lint contracts the ${part} restyle`)
+  }
+
+  const switcher = fs.readFileSync(
+    path.join(READER_ROOT, "components", "projection-switcher.tsx"),
+    "utf8",
+  )
+
+  assert.match(switcher, /isMobile/, "switcher branches on the phone viewport")
+  assert.match(switcher, /VaultSheet/, "drawer trigger opens the sheet on phones")
+  assert.match(switcher, /DropdownMenu/, "desktop dropdown stays mounted")
+
+  const chrome = fs.readFileSync(path.join(READER_ROOT, "components", "reader-chrome.tsx"), "utf8")
+
+  assert.match(chrome, /aria-haspopup="dialog"/, "brand button announces the sheet")
+  assert.match(chrome, /aria-expanded=\{vaultOpen\}/, "brand button tracks the sheet")
+  assert.match(chrome, /<VaultSheet/, "header mounts its own sheet instance")
+})
+
 test("synthetic phone journey covers drawer, overflow, keyboard, and refresh", async () => {
   assert.ok(
     fs.existsSync(path.join(READER_ROOT, "node_modules", "next")),
@@ -5846,7 +6113,20 @@ test("synthetic phone journey covers drawer, overflow, keyboard, and refresh", a
       await runPhoneBreadcrumbsDetail(page, built.baseUrl, built.contentDir, "narrow phone")
     })
     await withPhonePage(browser, "narrow", async (page) => {
-      await runPhoneDrawerSwitcher(page, built.baseUrl, expect, "narrow phone")
+      await runPhoneDrawerSwitcher(
+        page,
+        built.baseUrl,
+        { ...expect, destinations: SYNTHETIC_DESTINATIONS },
+        "narrow phone",
+      )
+    })
+    await withPhonePage(browser, "narrow", async (page) => {
+      await runPhoneHeaderVaultSheet(
+        page,
+        built.baseUrl,
+        { ...expect, destinations: SYNTHETIC_DESTINATIONS },
+        "narrow phone",
+      )
     })
     await withPhonePage(browser, "narrow", async (page) => {
       await runDerivedOverflowProbes(page, built.baseUrl, built.contentDir, "narrow phone", {

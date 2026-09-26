@@ -227,6 +227,27 @@ const config: OxlintConfig = {
                   "aria-pressed:text-primary",
                 ],
               },
+              // Vault bottom sheet (mobile port item 4): the phone vault
+              // switcher is a bottom sheet per design.pen xPZVw. The Sheet
+              // popup owns positioning, so the surface, padding, and gap
+              // stay on the content; the title keeps its compact semibold
+              // primary read; the title-row close keeps its own target.
+              {
+                pattern: "^SheetContent$",
+                allow: ["gap-2", "rounded-t-2xl", "bg-card", "px-4", "pt-3", "pb-6"],
+              },
+              { pattern: "^SheetTitle$", allow: ["text-sm", "font-semibold", "text-primary"] },
+              {
+                pattern: "^SheetClose$",
+                allow: [
+                  "flex",
+                  "size-8",
+                  "items-center",
+                  "justify-center",
+                  "rounded-md",
+                  "text-muted-foreground",
+                ],
+              },
             ],
           },
         ],
