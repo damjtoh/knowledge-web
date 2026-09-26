@@ -256,6 +256,7 @@ async function main() {
       (entries) => ({
         manifest: entries.map((entry) => {
           const url = toPublicationUrl(entry.url).slice(1)
+
           return { ...entry, url, integrity: integrityByUrl.get(url) ?? entry.integrity }
         }),
         warnings: [],
