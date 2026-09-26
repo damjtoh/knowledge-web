@@ -4226,9 +4226,114 @@ async function assertBackgroundScrollLock(page, label) {
   )
 }
 
+/**
+ * Phone header composition (mobile port item 2): 64px header with
+ * hamburger plus a truncated non-interactive brand row on the left and
+ * the status cue plus search on the right. The desktop separator and
+ * breadcrumb trail stay mounted for desktop parity but hidden on phones.
+ */
+async function runPhoneHeaderComposition(page, baseUrl, expect, label) {
+  await goto(page, `${baseUrl}/`)
+
+  const header = await page.evaluate(() => {
+    const el = document.querySelector(".reader-header")
+
+    if (!el) return null
+    const rect = el.getBoundingClientRect()
+    const style = getComputedStyle(el)
+    const brandSpan = document.querySelector(".reader-header-trail span.truncate")
+    const brandRect = brandSpan?.getBoundingClientRect() || null
+    const brandDiv = brandSpan?.closest("div") || null
+    const icon = brandDiv?.querySelector("svg") || null
+    const iconRect = icon?.getBoundingClientRect() || null
+    const crumbs = document.querySelector(".reader-header-trail .reader-breadcrumbs")
+    const crumbsStyle = crumbs ? getComputedStyle(crumbs) : null
+    const crumbsRect = crumbs?.getBoundingClientRect() || null
+    const separator = document.querySelector('.reader-header-trail [data-slot="separator"]')
+    const separatorStyle = separator ? getComputedStyle(separator) : null
+    const separatorRect = separator?.getBoundingClientRect() || null
+    const cue = document.querySelector(".reader-offline-cue")
+    const cueRect = cue?.getBoundingClientRect() || null
+    const cueStyle = cue ? getComputedStyle(cue) : null
+    const search = document.querySelector(".reader-search-header")
+    const searchRect = search?.getBoundingClientRect() || null
+    const trigger = document.querySelector('[data-sidebar="trigger"]')
+    const triggerRect = trigger?.getBoundingClientRect() || null
+
+    return {
+      height: rect.height,
+      borderWidth: style.borderBottomWidth,
+      borderStyle: style.borderBottomStyle,
+      brandText: brandSpan?.textContent?.trim() || "",
+      brandVisible:
+        !!brandSpan &&
+        !!brandRect &&
+        brandRect.width > 0 &&
+        brandRect.height > 0 &&
+        getComputedStyle(brandSpan).display !== "none",
+      brandTag: brandDiv?.tagName || "",
+      brandIsButton: !!brandDiv?.closest("button"),
+      brandWeight: brandSpan ? getComputedStyle(brandSpan).fontWeight : "",
+      iconVisible: !!iconRect && iconRect.width > 0 && iconRect.height > 0,
+      iconWidth: iconRect ? iconRect.width : 0,
+      crumbsVisible:
+        !!crumbs &&
+        !!crumbsRect &&
+        crumbsStyle.display !== "none" &&
+        crumbsRect.width > 0 &&
+        crumbsRect.height > 0,
+      separatorVisible:
+        !!separator &&
+        !!separatorRect &&
+        separatorStyle.display !== "none" &&
+        separatorRect.width > 0 &&
+        separatorRect.height > 0,
+      cueVisible:
+        !!cue &&
+        !!cueRect &&
+        cueStyle.display !== "none" &&
+        cueRect.width > 0 &&
+        cueRect.height > 0,
+      searchVisible: !!searchRect && searchRect.width > 0 && searchRect.height > 0,
+      triggerVisible: !!triggerRect && triggerRect.width > 0 && triggerRect.height > 0,
+    }
+  })
+
+  assert.ok(header, `${label}: phone header is present`)
+  assert.ok(
+    Math.abs(header.height - 64) <= 1,
+    `${label}: phone header is 64px tall (got ${header.height}px)`,
+  )
+  assert.ok(header.triggerVisible, `${label}: hamburger stays visible`)
+  assert.ok(header.brandVisible, `${label}: brand row is visible`)
+  assert.ok(
+    header.brandText.includes(expect.projection),
+    `${label}: brand text is the site title (got ${header.brandText})`,
+  )
+  assert.equal(header.brandTag, "DIV", `${label}: brand row is a non-interactive div`)
+  assert.equal(header.brandIsButton, false, `${label}: brand row is not a button`)
+  assert.ok(
+    Number(header.brandWeight) >= 700 || header.brandWeight === "bold",
+    `${label}: brand text is bold (got ${header.brandWeight})`,
+  )
+  assert.ok(header.iconVisible, `${label}: brand swap icon is visible`)
+  assert.ok(
+    Math.abs(header.iconWidth - 14) <= 1,
+    `${label}: brand swap icon is 14px (got ${header.iconWidth}px)`,
+  )
+  assert.equal(header.crumbsVisible, false, `${label}: breadcrumbs leave the phone header`)
+  assert.equal(header.separatorVisible, false, `${label}: separator leaves the phone header`)
+  assert.ok(header.cueVisible, `${label}: status cue stays right`)
+  assert.ok(header.searchVisible, `${label}: search stays right`)
+  assert.ok(
+    header.borderWidth !== "0px" && header.borderStyle !== "none",
+    `${label}: phone header keeps its bottom border`,
+  )
+}
+
 /** Phone assertions: drawer hidden until the trigger opens it, then home -> folder -> note. */
 async function runPhoneJourney(page, baseUrl, expect, label) {
-  await goto(page, `${baseUrl}/`)
+  await runPhoneHeaderComposition(page, baseUrl, expect, `${label} header`)
   assert.equal(
     await isVisible(page, '[data-sidebar="sidebar"][data-mobile="true"]'),
     false,
@@ -4442,20 +4547,33 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
   assert.equal(drawerUrlState.hash, "", `${label}: drawer adds no URL hash state`)
   assert.ok(!drawerUrlState.search.includes("browse"), `${label}: drawer adds no URL query state`)
 
-  const note = await page.evaluate(() => ({
-    h1: document.querySelector("article h1")?.textContent?.trim() || "",
-    crumbs: Array.from(
-      document.querySelectorAll(".reader-breadcrumbs [data-slot='breadcrumb-item']"),
-    ).map((li) => ({
-      text: li.textContent?.trim() || "",
-      href: li.querySelector("a")?.getAttribute("href") || null,
-    })),
-    h1Rect: document.querySelector("article h1")?.getBoundingClientRect().toJSON() || null,
-    media: { viewport: window.innerWidth },
-  }))
+  const note = await page.evaluate(() => {
+    const crumbs = document.querySelector(".reader-header-trail .reader-breadcrumbs")
+    const crumbsRect = crumbs?.getBoundingClientRect() || null
+    const brandSpan = document.querySelector(".reader-header-trail span.truncate")
+
+    return {
+      h1: document.querySelector("article h1")?.textContent?.trim() || "",
+      crumbsVisible:
+        !!crumbs &&
+        !!crumbsRect &&
+        getComputedStyle(crumbs).display !== "none" &&
+        crumbsRect.width > 0 &&
+        crumbsRect.height > 0,
+      brandText: brandSpan?.textContent?.trim() || "",
+      h1Rect: document.querySelector("article h1")?.getBoundingClientRect().toJSON() || null,
+      media: { viewport: window.innerWidth },
+    }
+  })
 
   assert.equal(note.h1, expect.leafTitle, `${label}: nested note title`)
-  assert.ok(note.crumbs.length >= 3, `${label}: breadcrumbs expose folder ancestry`)
+  // Phone header item 2: the breadcrumb trail leaves the phone header
+  // (it returns inside the body in item 6); the brand row stays instead.
+  assert.equal(note.crumbsVisible, false, `${label}: phone header hides breadcrumbs on the note`)
+  assert.ok(
+    note.brandText.includes(expect.projection),
+    `${label}: phone header keeps the site title on the note`,
+  )
   assert.ok(
     note.h1Rect && note.h1Rect.width <= note.media.viewport + 1,
     `${label}: long title stays inside the viewport`,
@@ -4464,28 +4582,10 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
   await assertTouchTargets(page, `${label} note`)
   await assertLandmarks(page, `${label} note`, { areasNav: false })
 
-  const crumbHref = note.crumbs.length > 1 ? note.crumbs[1].href : null
-  assert.ok(crumbHref, `${label}: breadcrumbs link a parent`)
-  await Promise.all([
-    page.waitForFunction(
-      (href) => window.location.pathname === href || window.location.pathname === `${href}/`,
-      crumbHref,
-      { timeout: 15000 },
-    ),
-    page.evaluate((href) => {
-      document.querySelector(`.reader-breadcrumbs a[href="${href}"]`)?.click()
-    }, crumbHref),
-  ])
-  await page.waitForLoadState("networkidle", { timeout: 15000 })
   // Timing-only stabilization: history traversals between static pages
   // can resolve while already idle, so each Back awaits its observable
-  // route before the next traversal. Same three traversals, same expected
-  // URLs, no fixed sleeps.
-  await page.goBack({ waitUntil: "networkidle", timeout: 15000 })
-  await page.waitForFunction((route) => window.location.href.includes(route), expect.leafRoute, {
-    timeout: 15000,
-  })
-  assert.ok(page.url().includes(expect.leafRoute), `${label}: Back returns to the note`)
+  // route before the next traversal. No crumb click on phones: the header
+  // trail is hidden, so Back alone walks the note -> folder -> home stack.
   await page.goBack({ waitUntil: "networkidle", timeout: 15000 })
   await page.waitForFunction(
     (route) => window.location.pathname === route || window.location.pathname === `${route}/`,
@@ -4629,6 +4729,17 @@ async function runDerivedOverflowProbes(
     crumbWidths.list <= crumbWidths.inner + 1,
     `${label}: breadcrumbs wrap inside the viewport`,
   )
+
+  // Phone header item 2: the trail stays mounted for desktop parity but
+  // hidden on phones (it returns inside the body in item 6).
+  if (crumbWidths.inner < 768) {
+    assert.equal(
+      await isVisible(page, ".reader-header-trail .reader-breadcrumbs"),
+      false,
+      `${label}: phone header hides the trail on the deep note`,
+    )
+  }
+
   await assertNoPageOverflow(page, `${label} deep note`)
 
   await goto(page, `${baseUrl}${probes.longTitle.route}`)
@@ -5415,51 +5526,78 @@ async function runPhoneCardsDetail(page, baseUrl, expect, label) {
 }
 
 /**
- * Phone breadcrumb variants, folded from the retired breadcrumbs suite:
- * the current page stays readable inside the viewport on deep and long
- * routes, and the trail stays keyboard reachable.
+ * Phone header trail (mobile port item 2): the desktop breadcrumb trail
+ * leaves the phone header — deep and long routes keep a 64px header with
+ * the brand row visible while the trail and separator stay hidden. The
+ * trail returns inside the body in item 6; desktop assertions stay in
+ * runBreadcrumbsDetail.
  */
 async function runPhoneBreadcrumbsDetail(page, baseUrl, contentDir, label) {
   const probes = deriveProbes(contentDir, { requireImage: true })
+
+  for (const [route, tag] of [
+    [probes.deep.route, "deep"],
+    [probes.longTitle.route, "long"],
+  ]) {
+    await goto(page, `${baseUrl}${route}`)
+
+    const header = await page.evaluate(() => {
+      const headerEl = document.querySelector(".reader-header")
+      const crumbs = document.querySelector(".reader-header-trail .reader-breadcrumbs")
+      const crumbsRect = crumbs?.getBoundingClientRect() || null
+      const separator = document.querySelector('.reader-header-trail [data-slot="separator"]')
+      const separatorRect = separator?.getBoundingClientRect() || null
+      const brandSpan = document.querySelector(".reader-header-trail span.truncate")
+      const brandRect = brandSpan?.getBoundingClientRect() || null
+
+      return {
+        height: headerEl?.getBoundingClientRect().height || 0,
+        brandText: brandSpan?.textContent?.trim() || "",
+        brandVisible:
+          !!brandSpan &&
+          !!brandRect &&
+          brandRect.width > 0 &&
+          brandRect.height > 0 &&
+          getComputedStyle(brandSpan).display !== "none",
+        crumbsVisible:
+          !!crumbs &&
+          !!crumbsRect &&
+          getComputedStyle(crumbs).display !== "none" &&
+          crumbsRect.width > 0 &&
+          crumbsRect.height > 0,
+        separatorVisible:
+          !!separator &&
+          !!separatorRect &&
+          getComputedStyle(separator).display !== "none" &&
+          separatorRect.width > 0 &&
+          separatorRect.height > 0,
+      }
+    })
+
+    assert.ok(
+      Math.abs(header.height - 64) <= 1,
+      `${label}: ${tag} header is 64px tall (got ${header.height}px)`,
+    )
+    assert.ok(header.brandVisible, `${label}: ${tag} header shows the brand row`)
+    assert.ok(header.brandText.length > 0, `${label}: ${tag} brand row keeps its title`)
+    assert.equal(header.crumbsVisible, false, `${label}: ${tag} trail leaves the phone header`)
+    assert.equal(
+      header.separatorVisible,
+      false,
+      `${label}: ${tag} separator leaves the phone header`,
+    )
+    await assertNoPageOverflow(page, `${label} ${tag} header`)
+  }
+
+  // Phone keyboard: the hidden trail is not focusable, so Tab never lands
+  // inside it. Trigger reachability stays covered by runKeyboardChecks.
   await goto(page, `${baseUrl}${probes.deep.route}`)
-
-  const deep = await page.evaluate(() => ({
-    current: document.querySelector('[data-slot="breadcrumb-page"]')?.textContent?.trim() || "",
-    rect:
-      document.querySelector('[data-slot="breadcrumb-page"]')?.getBoundingClientRect().toJSON() ||
-      null,
-    inner: window.innerWidth,
-  }))
-
-  assert.ok(deep.current.length > 0, `${label}: deep trail shows the current page`)
-  assert.ok(
-    deep.rect && deep.rect.width <= deep.inner + 1,
-    `${label}: deep current page stays inside the viewport`,
-  )
-  await assertNoPageOverflow(page, `${label} deep breadcrumbs`)
-
-  await goto(page, `${baseUrl}${probes.longTitle.route}`)
-
-  const long = await page.evaluate(() => ({
-    current: document.querySelector('[data-slot="breadcrumb-page"]')?.textContent?.trim() || "",
-    rect:
-      document.querySelector('[data-slot="breadcrumb-page"]')?.getBoundingClientRect().toJSON() ||
-      null,
-    inner: window.innerWidth,
-  }))
-
-  assert.ok(long.current.length > 0, `${label}: long trail keeps its title`)
-  assert.ok(
-    long.rect && long.rect.width <= long.inner + 1,
-    `${label}: long current page stays inside the viewport`,
-  )
-  await assertNoPageOverflow(page, `${label} long breadcrumbs`)
-
-  // Phone keyboard: breadcrumb links stay reachable.
-  await page.keyboard.press("Tab")
+  await page.evaluate(() => document.querySelector('[data-sidebar="trigger"]')?.blur())
   let foundCrumb = false
 
   for (let i = 0; i < 15; i++) {
+    await page.keyboard.press("Tab")
+
     const inTrail = await page.evaluate(
       () => !!document.activeElement?.closest(".reader-breadcrumbs"),
     )
@@ -5468,11 +5606,9 @@ async function runPhoneBreadcrumbsDetail(page, baseUrl, contentDir, label) {
       foundCrumb = true
       break
     }
-
-    await page.keyboard.press("Tab")
   }
 
-  assert.ok(foundCrumb, `${label}: trail stays keyboard reachable`)
+  assert.equal(foundCrumb, false, `${label}: hidden trail stays out of the tab order`)
 }
 
 /**
@@ -6093,6 +6229,7 @@ test("generic real phone journey covers drawer open/close and home to note", asy
     folderRoute: built.journey.folderRoute,
     leafTitle: built.journey.leafTitle,
     leafRoute: built.journey.leafRoute,
+    projection: built.metadata.title,
   }
 
   try {

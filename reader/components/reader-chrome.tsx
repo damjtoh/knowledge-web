@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { usePathname } from "next/navigation"
-import { Search } from "lucide-react"
+import { ChevronsUpDown, Search } from "lucide-react"
 import { AppearanceProvider } from "./appearance-control"
 import { OfflineCue, OfflineProvider } from "./offline-save"
 import SearchDialog, { SEARCH_INPUT_ID } from "./search-dialog"
@@ -133,11 +133,20 @@ export default function ReaderChrome({
               onSearch={openSearch}
             />
             <SidebarInset>
-              <header className="reader-header h-11 items-center justify-between gap-3 border-b px-4">
+              <header className="reader-header h-11 max-md:h-16 items-center justify-between gap-3 border-b px-4">
                 <div className="reader-header-trail items-center gap-2">
                   <SidebarTrigger className="-ml-1 size-7 rounded-md border border-border bg-card" />
-                  <Separator orientation="vertical" className="mr-2 hidden h-4 w-px md:block" />
-                  <ReadingBreadcrumbs roots={roots} siteTitle={title} />
+                  <div className="max-md:hidden md:contents">
+                    <Separator orientation="vertical" className="mr-2 hidden h-4 w-px md:block" />
+                    <ReadingBreadcrumbs roots={roots} siteTitle={title} />
+                  </div>
+                  <div className="flex h-8 min-w-0 flex-1 items-center gap-2 md:hidden">
+                    <span className="truncate text-sm font-bold text-primary">{title}</span>
+                    <ChevronsUpDown
+                      aria-hidden="true"
+                      className="size-3.5 shrink-0 text-muted-foreground"
+                    />
+                  </div>
                 </div>
                 <div className="reader-header-actions">
                   <OfflineCue />
