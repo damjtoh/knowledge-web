@@ -161,7 +161,7 @@ function TreeNode({ node, state }: { node: NavigationNode; state: TreeState }) {
         open={open}
         onOpenChange={(next) => state.setOpen(node.url, next)}
       >
-        <div className="reader-tree-row">
+        <div className={open ? "reader-tree-row reader-tree-open" : "reader-tree-row"}>
           {link}
           <CollapsibleTrigger
             className="reader-tree-toggle"
