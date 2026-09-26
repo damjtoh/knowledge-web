@@ -3076,7 +3076,9 @@ async function runStaticExportChecks({
   let manifestBytes = 0
 
   for (const url of offlineManifest.urls) {
-    const rel = url.replace(/^\//, "")
+    // Publication URLs are browser-normalized (brackets percent-encoded), so
+    // filesystem lookups decode them back to the emitted file names.
+    const rel = decodeURIComponent(url.replace(/^\//, ""))
     manifestBytes += fs.statSync(path.join(outDir, rel)).size
   }
 
@@ -3246,6 +3248,37 @@ async function runStaticExportChecks({
   assert.ok(deep.includes('href="/notes/nest/inner"'), "deep static trail links Inner parent")
   assert.ok(deep.includes('href="/"'), "deep static trail links Home")
   assert.equal(countOccurrences(deep, 'aria-label="Breadcrumb"'), 1, "deep page keeps one trail")
+  // Mobile port note-phone: leaf notes carry a phone-only slash trail
+  // (no second Breadcrumb landmark) plus the shared Other notes sibling
+  // section with its count, initial six rows, and expander foot.
+  const orchardNote = readOut(outDir, "orchard/note-01.html")
+
+  assert.ok(orchardNote.includes("reader-note-crumbs"), "leaf note carries the phone trail hook")
+  assert.ok(orchardNote.includes("md:hidden"), "phone trail stays hidden on desktop")
+  assert.ok(orchardNote.includes(" / "), "phone trail is slash-separated")
+  assert.ok(orchardNote.includes('href="/orchard"'), "phone trail links the parent")
+  assert.equal(
+    countOccurrences(orchardNote, 'aria-label="Breadcrumb"'),
+    1,
+    "phone trail adds no second breadcrumb landmark",
+  )
+  assert.ok(orchardNote.includes("Other notes in Orchard"), "leaf note heads its siblings")
+
+  const orchardSection = orchardNote.slice(orchardNote.indexOf("Other notes in Orchard"))
+
+  assert.match(orchardSection, />11</, "sibling count pill carries the total")
+  assert.equal(
+    countOccurrences(orchardSection.split("</section>")[0], "/orchard/note-"),
+    6,
+    "eleven siblings page to six rows before expanding",
+  )
+  assert.ok(orchardSection.includes("Show all 11 notes"), "expander foot offers the rest")
+
+  const guideNote = readOut(outDir, "notes/guide.html")
+
+  assert.ok(guideNote.includes("reader-note-crumbs"), "guide carries the phone trail")
+  assert.ok(guideNote.includes("Other notes in Notes"), "guide heads its siblings")
+  assert.ok(!guideNote.includes("Show all"), "six siblings need no expander foot")
   assert.ok(garden.includes('href="/"'), "folder trail links Home")
   assert.ok(standalone.includes("Lone Pine"), "root note shows its authored title")
 
@@ -3743,6 +3776,7 @@ async function runDirectNoteDetail(page, baseUrl, expect) {
     const article = document.querySelector("article.reader-article")
     const h1s = Array.from(document.querySelectorAll("article.reader-article h1"))
     const canonical = document.querySelector('link[rel="canonical"]')
+    const otherNotes = article?.querySelector('section[aria-label^="Other notes"]')
 
     return {
       title: document.title,
@@ -3753,6 +3787,13 @@ async function runDirectNoteDetail(page, baseUrl, expect) {
       tableCount: article ? article.querySelectorAll("table").length : 0,
       hasExternalLink: !!article?.querySelector('a[href^="https://"]'),
       canonicalHref: canonical?.getAttribute("href") || null,
+      otherNotesLabel: otherNotes?.getAttribute("aria-label") || null,
+      otherNotesRows: Array.from(otherNotes?.querySelectorAll(":scope ul a") ?? []).map(
+        (a) => a.getAttribute("href") || "",
+      ),
+      otherNotesFoot: !!otherNotes?.querySelector("button"),
+      otherNotesRowHeight:
+        otherNotes?.querySelector(":scope ul a")?.getBoundingClientRect().height || 0,
     }
   })
 
@@ -3777,6 +3818,20 @@ async function runDirectNoteDetail(page, baseUrl, expect) {
     note.canonicalHref,
     `https://${expect.hostname}${expect.route}`,
     "canonical hostname metadata",
+  )
+  // Mobile port note-phone: the shared Other notes sibling section
+  // renders on desktop too. The guide keeps six siblings, so all rows
+  // show at the 36px design read with no expander foot.
+  assert.equal(note.otherNotesLabel, "Other notes in Notes", "desktop sibling section head")
+  assert.equal(note.otherNotesRows.length, 6, "six siblings render without paging")
+  assert.ok(
+    note.otherNotesRows.every((href) => href.startsWith("/notes/")),
+    "sibling rows link published note routes",
+  )
+  assert.equal(note.otherNotesFoot, false, "six siblings need no expander foot")
+  assert.ok(
+    Math.abs(note.otherNotesRowHeight - 36) <= 2,
+    `desktop sibling rows are 36px-ish (got ${note.otherNotesRowHeight}px)`,
   )
   await page.reload({ waitUntil: "networkidle", timeout: 15000 })
 
@@ -5838,6 +5893,175 @@ async function runPhoneBreadcrumbsDetail(page, baseUrl, contentDir, label) {
 }
 
 /**
+ * Phone note page (mobile port item 6, design screen pWNyV): the body
+ * carries a 12px muted slash trail, then the 12px muted meta line, then
+ * the 24px/700 title, with the 14px body / 16px h2 / 12px code phone
+ * scale; the shared Other notes section shows its 13px/600 head with a
+ * count pill, file-icon rows, and a "Show all N notes" foot that expands
+ * client-side when more than six siblings exist.
+ */
+async function runPhoneNoteDetail(page, baseUrl, label) {
+  // Timestamped note with siblings: trail -> meta -> title order plus type scale.
+  await goto(page, `${baseUrl}/notes/valid-offset`)
+
+  const note = await page.evaluate(() => {
+    const article = document.querySelector(".reader-article")
+    const trail = article?.querySelector(".reader-note-crumbs")
+    const metas = Array.from(article?.querySelectorAll("p.reader-last-edited") ?? [])
+    const visibleMeta = metas.find((el) => el.getBoundingClientRect().height > 0)
+    const h1 = article?.querySelector("h1")
+    const h1Style = h1 ? getComputedStyle(h1) : null
+    const trailStyle = trail ? getComputedStyle(trail) : null
+    const metaStyle = visibleMeta ? getComputedStyle(visibleMeta) : null
+    const firstPara = article?.querySelector("p:not(.reader-last-edited):not(.reader-note-crumbs)")
+    const pre = article?.querySelector("pre")
+
+    return {
+      trailVisible:
+        !!trail && trailStyle.display !== "none" && trail.getBoundingClientRect().height > 0,
+      trailText: trail?.textContent?.trim() || "",
+      trailSize: trailStyle?.fontSize || "",
+      trailColor: trailStyle?.color || "",
+      trailPadding: trailStyle?.paddingBottom || "",
+      trailTop: trail?.getBoundingClientRect().top || 0,
+      metaText: visibleMeta?.textContent?.trim() || null,
+      metaSize: metaStyle?.fontSize || "",
+      metaTop: visibleMeta?.getBoundingClientRect().top || 0,
+      metaCount: metas.length,
+      h1Size: h1Style?.fontSize || "",
+      h1Weight: h1Style?.fontWeight || "",
+      h1Top: h1?.getBoundingClientRect().top || 0,
+      bodySize: firstPara ? getComputedStyle(firstPara).fontSize : "",
+      preSize: pre ? getComputedStyle(pre).fontSize : "",
+    }
+  })
+
+  assert.ok(note.trailVisible, `${label}: phone body shows the slash crumb trail`)
+  assert.ok(note.trailText.includes(" / "), `${label}: trail is slash-separated`)
+  assert.ok(note.trailText.includes("Home"), `${label}: trail starts at Home`)
+  assert.equal(note.trailSize, "12px", `${label}: trail is 12px`)
+  assert.match(note.trailColor, /115,\s*115,\s*115|oklch\(0\.556 0 0\)/, `${label}: trail is muted`)
+  assert.equal(note.trailPadding, "4px", `${label}: trail keeps 4px bottom padding`)
+  assert.ok(note.metaText?.startsWith("Last edited"), `${label}: meta line renders`)
+  assert.equal(note.metaSize, "12px", `${label}: meta line is 12px`)
+  assert.equal(note.metaCount, 2, `${label}: both responsive meta slots render`)
+  assert.ok(
+    note.trailTop <= note.metaTop && note.metaTop <= note.h1Top,
+    `${label}: trail -> meta -> title order`,
+  )
+  assert.equal(note.h1Size, "24px", `${label}: phone note title is 24px`)
+  assert.equal(note.h1Weight, "700", `${label}: phone note title is bold`)
+  assert.equal(note.bodySize, "14px", `${label}: phone body copy is 14px`)
+  await assertNoPageOverflow(page, `${label} note type scale`)
+
+  // Body scale probes on notes carrying those elements.
+  await goto(page, `${baseUrl}/notes/plain`)
+
+  const plainScale = await page.evaluate(() => {
+    const article = document.querySelector(".reader-article")
+    const h2 = article?.querySelector("h2")
+
+    const items = Array.from(article?.querySelectorAll("ul li") ?? []).map(
+      (li) => getComputedStyle(li).marginTop,
+    )
+
+    return {
+      h2Size: h2 ? getComputedStyle(h2).fontSize : "",
+      bulletGaps: items.slice(1),
+    }
+  })
+
+  assert.equal(plainScale.h2Size, "16px", `${label}: phone h2 is 16px`)
+
+  await goto(page, `${baseUrl}/notes/guide`)
+
+  const codeSize = await page.evaluate(() => {
+    const pre = document.querySelector("article.reader-article pre")
+
+    return pre ? getComputedStyle(pre).fontSize : ""
+  })
+
+  assert.equal(codeSize, "12px", `${label}: phone code block is 12px`)
+
+  // Orchard note with eleven siblings: head, badge, six rows, expander.
+  await goto(page, `${baseUrl}/orchard/note-01`)
+
+  const siblings = await page.evaluate(() => {
+    const section = document.querySelector('article section[aria-label^="Other notes"]')
+    const head = section?.querySelector(":scope > div")
+    const title = head?.querySelector("span")
+    const badge = head?.querySelectorAll("span")[1]
+    const rows = Array.from(section?.querySelectorAll(":scope ul a") ?? [])
+    const foot = section?.querySelector("button")
+
+    return {
+      present: !!section,
+      label: section?.getAttribute("aria-label") || "",
+      headSize: title ? getComputedStyle(title).fontSize : "",
+      headWeight: title ? getComputedStyle(title).fontWeight : "",
+      badge: badge?.textContent?.trim() || "",
+      badgePadding: badge
+        ? {
+            top: getComputedStyle(badge).paddingTop,
+            right: getComputedStyle(badge).paddingRight,
+          }
+        : null,
+      rows: rows.map((a) => ({
+        href: a.getAttribute("href") || "",
+        icon: !!a.querySelector("svg"),
+        iconSize: a.querySelector("svg")?.getBoundingClientRect().width || 0,
+        height: a.getBoundingClientRect().height,
+      })),
+      footText: foot?.textContent?.trim() || null,
+      footSize: foot ? getComputedStyle(foot).fontSize : "",
+      footWeight: foot ? getComputedStyle(foot).fontWeight : "",
+      footChevron:
+        foot?.parentElement?.querySelector("button svg")?.getBoundingClientRect().width || 0,
+    }
+  })
+
+  assert.ok(siblings.present, `${label}: phone note carries the Other notes section`)
+  assert.equal(siblings.label, "Other notes in Orchard", `${label}: head names the parent`)
+  assert.equal(siblings.headSize, "13px", `${label}: head is 13px`)
+  assert.equal(siblings.headWeight, "600", `${label}: head is semibold`)
+  assert.equal(siblings.badge, "11", `${label}: count pill carries the sibling total`)
+  assert.deepEqual(siblings.badgePadding, { top: "2px", right: "8px" }, `${label}: pill pads 2/8`)
+  assert.equal(siblings.rows.length, 6, `${label}: six rows show before expanding`)
+
+  for (const row of siblings.rows) {
+    assert.ok(row.href.startsWith("/orchard/note-"), `${label}: row links a sibling`)
+    assert.ok(row.icon, `${label}: row carries a file icon`)
+    assert.equal(row.iconSize, 14, `${label}: file icon is 14px`)
+    assert.ok(row.height >= 44, `${label}: phone row touch height is ${row.height}px`)
+  }
+
+  assert.equal(siblings.footText, "Show all 11 notes", `${label}: foot offers the rest`)
+  assert.equal(siblings.footSize, "13px", `${label}: foot is 13px`)
+  assert.equal(siblings.footWeight, "600", `${label}: foot is semibold`)
+  assert.equal(siblings.footChevron, 14, `${label}: foot chevron is 14px`)
+
+  await page.evaluate(() => {
+    document.querySelector('article section[aria-label^="Other notes"] button')?.click()
+  })
+  await page.waitForFunction(
+    () =>
+      document.querySelectorAll('article section[aria-label^="Other notes"] ul a').length === 11,
+    null,
+    { timeout: 5000 },
+  )
+
+  const expanded = await page.evaluate(() => ({
+    rows: document.querySelectorAll('article section[aria-label^="Other notes"] ul a').length,
+    foot: !!document.querySelector('article section[aria-label^="Other notes"] button'),
+  }))
+
+  assert.equal(expanded.rows, 11, `${label}: expander reveals every sibling`)
+  assert.equal(expanded.foot, false, `${label}: foot leaves once all siblings show`)
+  await assertNoPageOverflow(page, `${label} sibling section`)
+  await assertTouchTargets(page, `${label} sibling section`)
+}
+
+/**
  * Reads the open vault bottom sheet: frame geometry plus the current
  * row and ordered destination anchors. Null when no vault sheet is open
  * (the drawer sidebar renders its own sheet content without the
@@ -6267,6 +6491,9 @@ test("synthetic phone journey covers drawer, overflow, keyboard, and refresh", a
     })
     await withPhonePage(browser, "narrow", async (page) => {
       await runPhoneCardsDetail(page, built.baseUrl, expect, "narrow phone")
+    })
+    await withPhonePage(browser, "narrow", async (page) => {
+      await runPhoneNoteDetail(page, built.baseUrl, "narrow phone")
     })
     await withPhonePage(browser, "narrow", async (page) => {
       await runPhoneBreadcrumbsDetail(page, built.baseUrl, built.contentDir, "narrow phone")

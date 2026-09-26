@@ -685,6 +685,57 @@ body {
   text-decoration-color: #a3a3a3;
 }
 
+/**
+ * Phone-only body crumb trail for note pages (design screen pWNyV):
+ * 12px muted slash-separated crumbs above the body. The md:hidden utility
+ * in the markup hides it on desktop, so no display rule lives here (an
+ * unlayered display declaration would beat that layered utility). The
+ * hook exists because the unlayered .reader-article p/a rules beat
+ * utilities for margin and link color, so both genuinely need an
+ * unlayered override. Muted and hover colors use tokens so dark mode
+ * follows the shell.
+ */
+.reader-article .reader-note-crumbs {
+  margin: 0;
+  padding: 0 0 0.25rem;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+  overflow-wrap: anywhere;
+}
+
+.reader-article .reader-note-crumbs a {
+  color: var(--muted-foreground);
+  text-decoration: none;
+}
+
+.reader-article .reader-note-crumbs a:hover {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/**
+ * Other-notes sibling section (design screen pWNyV, all viewports).
+ *
+ * Separation reuses the reader-group hook and rows reuse the
+ * reader-group-list hook, so the section matches article sections and
+ * rows keep the plain-anchor read, hover, and dark variants. The single
+ * reader-other-notes hook scopes only what utilities cannot express
+ * against those unlayered list rules: 36px rows with 12px side padding,
+ * no dividers, and the 13px label. The head and foot are utilities-only
+ * in the component (no unlayered article rule targets them).
+ */
+.reader-article .reader-other-notes .reader-group-list a {
+  min-height: 2.25rem;
+  padding: 0.25rem 0.75rem;
+  gap: 0.5rem;
+  /* 13px label: --text-13 lives in @theme inline (never emitted as a
+     runtime variable), so the value is written out here. */
+  font-size: 13px;
+  border-bottom: 0;
+}
+
 :focus-visible {
   outline: 2px solid #171717;
   outline-offset: 2px;
@@ -718,11 +769,51 @@ body {
   }
 
   .reader-article h1 {
+    /* Note pages take the 24px/700 phone title from design screen pWNyV.
+       The homepage keeps its 26px value below via the card-list hook. */
+    font-size: 1.5rem;
+    font-weight: 700;
+  }
+
+  /* Homepage-only 26px phone h1 (item 5): the home article is the one
+     carrying the card list, so :has scopes the exception without a new
+     hook class. Desktop h1s are untouched. */
+  .reader-article:has(.reader-home-cards) h1 {
     font-size: 1.625rem;
   }
 
+  /* Phone type scale from design screen pWNyV: 14px body, 16px h2 with
+     16px space above and an 8px gap below, 12px code, 8px bullet gaps,
+     and a 12px muted meta line. Same cascade note as the shell padding
+     above: max-md utilities would lose to these unlayered rules. */
+  .reader-article {
+    font-size: 0.875rem;
+  }
+
   .reader-article h2 {
-    font-size: 1.2rem;
+    font-size: 1rem;
+    margin-top: 1rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .reader-article pre {
+    font-size: 0.75rem;
+  }
+
+  .reader-article ul:not(.reader-area-list):not(.reader-group-list) li + li,
+  .reader-article ol:not(.reader-area-list):not(.reader-group-list) li + li {
+    margin-top: 0.5rem;
+  }
+
+  .reader-last-edited {
+    font-size: 0.75rem;
+  }
+
+  /* Other-notes rows keep the 44px touch floor on phones through
+     min-height (the same pattern as the group lists), never a fixed
+     height. Desktop rows stay at the 36px design read. */
+  .reader-article .reader-other-notes .reader-group-list a {
+    min-height: 44px;
   }
 
   .reader-article h3 {

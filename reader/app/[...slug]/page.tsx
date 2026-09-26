@@ -1,14 +1,17 @@
 import type { Metadata } from "next"
 import { notFound } from "next/navigation"
+import { Fragment } from "react"
 import { source } from "../../lib/source"
 import { getSiteMetadata, canonicalUrl } from "../../lib/site"
 import { docTitle } from "../../lib/title"
 import LastEdited from "../../components/last-edited"
+import OtherNotes, { type SiblingNote } from "../../components/other-notes"
 import type { UpdatedAtSource } from "../../lib/last-edited"
 import {
   buildReaderNavigation,
   getDirectNotes,
   getChildFolders,
+  type Crumb,
   type NavigationNode,
 } from "../../lib/navigation"
 
@@ -47,6 +50,67 @@ function GroupSection({ title, nodes }: { title: string; nodes: NavigationNode[]
         ))}
       </ul>
     </section>
+  )
+}
+
+/**
+ * Nearest folder owning a node, found by walking the published roots (the
+ * tree carries no parent pointer). Root notes have no parent.
+ */
+function findParentNode(
+  roots: NavigationNode[],
+  target: NavigationNode,
+): NavigationNode | undefined {
+  for (const root of roots) {
+    if (root.children.includes(target)) return root
+    const found = findParentNode(root.children, target)
+
+    if (found) return found
+  }
+
+  return undefined
+}
+
+/** Sibling leaf notes under the same parent, excluding the current page. */
+interface SiblingNotes {
+  parent: NavigationNode | undefined
+  siblings: SiblingNote[]
+}
+
+function siblingNotes(roots: NavigationNode[], node: NavigationNode): SiblingNotes {
+  const parent = findParentNode(roots, node)
+  const siblings: SiblingNote[] = []
+
+  if (parent) {
+    for (const child of getDirectNotes(parent)) {
+      if (child.url !== node.url) siblings.push({ title: child.title, url: child.url })
+    }
+  }
+
+  return { parent, siblings }
+}
+
+/**
+ * Phone-only body crumb trail for note pages (design screen pWNyV):
+ * 12px muted slash-separated crumbs above the body. A plain paragraph,
+ * not a second Breadcrumb landmark, so the header keeps the single
+ * `Breadcrumb` landmark the static checks assert; md:hidden keeps every
+ * desktop viewport pixel-identical.
+ */
+function NoteCrumbs({ crumbs }: { crumbs: Crumb[] }) {
+  return (
+    <p className="reader-note-crumbs md:hidden">
+      {crumbs.map((crumb, index) => (
+        <Fragment key={`${crumb.title}-${index}`}>
+          {index > 0 ? <span aria-hidden="true"> / </span> : null}
+          {crumb.url && !crumb.isCurrent ? (
+            <a href={crumb.url}>{crumb.title}</a>
+          ) : (
+            <span>{crumb.title}</span>
+          )}
+        </Fragment>
+      ))}
+    </p>
   )
 }
 
@@ -131,6 +195,31 @@ export default async function FolderOrNotePage({ params }: { params: Promise<Not
     const directNotes = getDirectNotes(node)
     const childFolders = getChildFolders(node)
 
+    // Leaf notes carry the phone note treatment (design screen pWNyV):
+    // a phone-only slash trail, the LastEdited content duplicated into a
+    // phone-only slot above the title (the desktop slot hides on phones,
+    // so each viewport shows exactly one meta line with no flex reorder),
+    // and the shared Other notes sibling section on every viewport.
+    // Folder pages keep their generic Notes/Folders groups unchanged.
+    if (!node.isFolder) {
+      const crumbs = navigation.breadcrumbs(slug)
+      const { parent, siblings } = siblingNotes(navigation.roots, node)
+
+      return (
+        <article className="reader-article">
+          <NoteCrumbs crumbs={crumbs} />
+          <div className="md:hidden">
+            <LastEdited data={node.page.data} />
+          </div>
+          <Body />
+          <div className="max-md:hidden">
+            <LastEdited data={node.page.data} />
+          </div>
+          <OtherNotes parentTitle={parent?.title} siblings={siblings} />
+        </article>
+      )
+    }
+
     return (
       <article className="reader-article">
         <Body />
@@ -161,11 +250,30 @@ export default async function FolderOrNotePage({ params }: { params: Promise<Not
   const Body = (page.data as { body: React.ComponentType }).body
   // SAFETY: loader page data carries frontmatter fields; LastEdited reads only the named updated_at field.
   const editedSource = page.data as UpdatedAtSource
+  // Routes outside visible navigation still get the phone note treatment;
+  // the ancestor lookup simply finds no published parent, so the sibling
+  // section stays hidden while the trail and meta line still render.
+  const crumbs = navigation.breadcrumbs(slug)
+  const ancestor = slug.length > 1 ? navigation.find(slug.slice(0, -1)) : undefined
+  const siblings: SiblingNote[] = []
+
+  if (ancestor) {
+    for (const child of getDirectNotes(ancestor)) {
+      if (child.url !== page.url) siblings.push({ title: child.title, url: child.url })
+    }
+  }
 
   return (
     <article className="reader-article">
+      <NoteCrumbs crumbs={crumbs} />
+      <div className="md:hidden">
+        <LastEdited data={editedSource} />
+      </div>
       <Body />
-      <LastEdited data={editedSource} />
+      <div className="max-md:hidden">
+        <LastEdited data={editedSource} />
+      </div>
+      <OtherNotes parentTitle={ancestor?.title} siblings={siblings} />
     </article>
   )
 }
