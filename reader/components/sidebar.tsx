@@ -2,12 +2,22 @@
 
 import { useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
-import { ChevronRight, File, Folder } from "lucide-react"
+import { ChevronDown, File, Folder } from "lucide-react"
 import type { NavigationNode } from "../lib/navigation"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible"
-import { SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarMenuSub } from "./ui/sidebar"
+import {
+  SidebarGroupLabel,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarMenuSub,
+} from "./ui/sidebar"
 
 const STORAGE_KEY = "knowledge-reader-tree"
+
+const INITIAL_WINDOW = 4
+
+const PAGE_SIZE = 20
 
 function normalize(path: string | null): string {
   if (!path || path === "/") return "/"
@@ -85,15 +95,31 @@ interface TreeState {
  * One published row adapted from registry sidebar-11's collapsible file
  * tree. Block sample data is not used: rows come from the published
  * navigation tree in metadata order. A folder keeps two separate controls:
- * its name is a plain anchor to its own page and a disclosure button
- * expands children without navigating.
+ * its name is a plain anchor to its own page and a glyph-free disclosure
+ * hit target at the row's right edge expands children without navigating.
+ * The row itself shows only a leading cue plus label: the folder icon when
+ * collapsed, a chevron-down when expanded.
  */
 function TreeNode({ node, state }: { node: NavigationNode; state: TreeState }) {
   const url = normalize(node.url)
   const isExact = state.pathname === url
   const isAncestor = url !== "/" && !isExact && state.pathname.startsWith(`${url}/`)
   const isActive = isExact || isAncestor
-  const Icon = node.isFolder ? Folder : File
+  const open = state.isOpen(node.url)
+  // Collapsed folder rows keep the folder cue with a medium label; the
+  // expanded header swaps in a leading chevron-down with a semibold label
+  // instead. Note rows always keep the note cue with a truncated label.
+  const LeadingIcon = node.isFolder ? (open ? ChevronDown : Folder) : File
+
+  const labelClassName = node.isFolder
+    ? `reader-tree-label text-13 ${open ? "font-semibold" : "font-medium"} text-primary`
+    : "reader-tree-label text-xs font-normal text-muted-foreground truncate"
+
+  const [visibleCount, setVisibleCount] = useState(INITIAL_WINDOW)
+
+  useEffect(() => {
+    if (!open) setVisibleCount(INITIAL_WINDOW)
+  }, [open])
 
   const link = (
     <SidebarMenuButton
@@ -107,10 +133,10 @@ function TreeNode({ node, state }: { node: NavigationNode; state: TreeState }) {
         />
       }
       isActive={isActive}
-      className={isActive ? "is-active" : undefined}
+      className={isActive ? "is-active rounded-md bg-border" : "rounded-md"}
     >
-      <Icon aria-hidden="true" />
-      <span className="reader-tree-label">{node.title}</span>
+      <LeadingIcon aria-hidden="true" className="size-3.5 text-muted-foreground" />
+      <span className={labelClassName}>{node.title}</span>
     </SidebarMenuButton>
   )
 
@@ -122,7 +148,9 @@ function TreeNode({ node, state }: { node: NavigationNode; state: TreeState }) {
     )
   }
 
-  const open = state.isOpen(node.url)
+  const total = node.children.length
+  const visible = node.children.slice(0, visibleCount)
+  const hidden = total - visible.length
 
   return (
     <SidebarMenuItem data-tree-url={node.url}>
@@ -136,16 +164,28 @@ function TreeNode({ node, state }: { node: NavigationNode; state: TreeState }) {
           <CollapsibleTrigger
             className="reader-tree-toggle"
             aria-label={open ? `Collapse ${node.title}` : `Expand ${node.title}`}
-          >
-            <ChevronRight className="transition-transform" aria-hidden="true" />
-          </CollapsibleTrigger>
+          />
         </div>
         <CollapsibleContent keepMounted className="reader-tree-panel">
-          <SidebarMenuSub className="reader-tree-children">
-            {node.children.map((child) => (
-              <TreeNode key={child.url} node={child} state={state} />
-            ))}
-          </SidebarMenuSub>
+          <div className="pl-3.5">
+            <SidebarMenuSub className="reader-tree-children gap-0.5 border-l border-border py-1 pl-2.5">
+              {visible.map((child) => (
+                <TreeNode key={child.url} node={child} state={state} />
+              ))}
+              {hidden > 0 ? (
+                <SidebarMenuItem>
+                  <button
+                    type="button"
+                    data-tree-more
+                    onClick={() => setVisibleCount((count) => Math.min(count + PAGE_SIZE, total))}
+                    className="w-full rounded-md px-1.5 py-1 text-left font-mono text-2xs text-muted-foreground focus-visible:ring-2 focus-visible:outline-solid"
+                  >
+                    {`+ ${hidden} more in ${node.title}`}
+                  </button>
+                </SidebarMenuItem>
+              ) : null}
+            </SidebarMenuSub>
+          </div>
         </CollapsibleContent>
       </Collapsible>
     </SidebarMenuItem>
@@ -263,6 +303,9 @@ export default function Sidebar({ roots }: { roots: NavigationNode[] }) {
 
   return (
     <nav aria-label="Published sections" className="reader-sidebar-nav">
+      <SidebarGroupLabel className="text-2xs font-semibold tracking-label text-muted-foreground">
+        Published
+      </SidebarGroupLabel>
       <SidebarMenu className="reader-tree">
         {roots.map((root) => (
           <TreeNode key={root.url} node={root} state={state} />

@@ -1,6 +1,6 @@
 "use client"
 
-import { Check, ChevronsUpDown } from "lucide-react"
+import { Archive, Check, ChevronsUpDown } from "lucide-react"
 import type { ProjectionDestination } from "../lib/site"
 import {
   DropdownMenu,
@@ -40,8 +40,16 @@ export function ProjectionSwitcher({
             className="reader-projection-trigger"
             render={<SidebarMenuButton size="lg" />}
           >
-            <span className="reader-sidebar-brand reader-projection-name">{current}</span>
-            <ChevronsUpDown className="ml-auto" aria-hidden="true" />
+            <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary">
+              <Archive aria-hidden="true" className="size-4 text-card" />
+            </span>
+            <span className="reader-sidebar-brand reader-projection-name truncate text-sm font-medium text-primary">
+              {current}
+            </span>
+            <ChevronsUpDown
+              aria-hidden="true"
+              className="ml-auto size-4 shrink-0 text-muted-foreground"
+            />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" side="bottom" className="reader-projection-menu">
             <DropdownMenuGroup>

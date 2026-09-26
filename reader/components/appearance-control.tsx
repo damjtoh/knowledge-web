@@ -1,7 +1,8 @@
 "use client"
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react"
-import { Button } from "./ui/button"
+import { Monitor, Moon, Palette, Sun } from "lucide-react"
+import { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group"
 
 type Appearance = "light" | "dark" | "system"
 
@@ -30,70 +31,6 @@ function applyAppearance(choice: Appearance): void {
   const resolved = choice === "system" ? (deviceIsDark() ? "dark" : "light") : choice
   root.classList.toggle("dark", resolved === "dark")
   root.setAttribute("data-appearance", choice === "system" ? "system" : resolved)
-}
-
-function SunIcon() {
-  return (
-    <svg
-      aria-hidden="true"
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <circle cx="12" cy="12" r="4" />
-      <path d="M12 2v2" />
-      <path d="M12 20v2" />
-      <path d="m4.93 4.93 1.41 1.41" />
-      <path d="m17.66 17.66 1.41 1.41" />
-      <path d="M2 12h2" />
-      <path d="M20 12h2" />
-      <path d="m6.34 17.66-1.41 1.41" />
-      <path d="m19.07 4.93-1.41 1.41" />
-    </svg>
-  )
-}
-
-function MoonIcon() {
-  return (
-    <svg
-      aria-hidden="true"
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
-    </svg>
-  )
-}
-
-function MonitorIcon() {
-  return (
-    <svg
-      aria-hidden="true"
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <rect width="20" height="14" x="2" y="3" rx="2" />
-      <line x1="8" x2="16" y1="21" y2="21" />
-      <line x1="12" x2="12" y1="17" y2="21" />
-    </svg>
-  )
 }
 
 interface AppearanceValue {
@@ -162,50 +99,61 @@ export function AppearanceProvider({ children }: { children: React.ReactNode }) 
 /**
  * Appearance control: Light, Dark, System.
  *
- * Built on the official shadcn Button registry component. Icons are inline
- * SVG so the reader adds no icon runtime dependency. System is the initial
- * state when nothing is saved and follows later device changes via
- * matchMedia. An explicit Light/Dark/System choice is saved locally and
- * restored on later visits (plus the head inline script applies it before
- * first paint). Native buttons keep keyboard operation; aria-pressed
- * exposes the selected state under the "Appearance" group name.
+ * Segmented control built on the registry ToggleGroup (single-select) in a
+ * muted pill. Sun/moon/monitor icons are lucide only; each option keeps
+ * its readable name in a screen-reader label so keyboard and assistive
+ * operation stay explicit. System is the initial state when nothing is
+ * saved and follows later device changes via matchMedia. An explicit
+ * Light/Dark/System choice is saved locally and restored on later
+ * visits (plus the head inline script applies it before first paint).
+ * Theme switching behavior and persistence come from the existing
+ * AppearanceProvider logic, unchanged here.
  */
 export default function AppearanceControl() {
   const { appearance, choose } = useAppearance()
 
-  const options: { value: Appearance; label: string; Icon: () => React.JSX.Element }[] = [
-    { value: "light", label: "Light", Icon: SunIcon },
-    { value: "dark", label: "Dark", Icon: MoonIcon },
-    { value: "system", label: "System", Icon: MonitorIcon },
+  const options: { value: Appearance; label: string; Icon: typeof Sun }[] = [
+    { value: "light", label: "Light", Icon: Sun },
+    { value: "dark", label: "Dark", Icon: Moon },
+    { value: "system", label: "System", Icon: Monitor },
   ]
 
   return (
     <div
       role="group"
       aria-label="Appearance"
-      className="reader-appearance"
+      className="reader-appearance flex flex-col gap-2"
       data-appearance={appearance}
     >
-      {options.map(({ value, label, Icon }) => {
-        const selected = appearance === value
+      <div className="flex items-center gap-1.5">
+        <span className="text-2xs font-semibold tracking-label text-muted-foreground">
+          APPEARANCE
+        </span>
+        <Palette aria-hidden="true" className="size-3 text-muted-foreground ml-auto" />
+      </div>
+      <ToggleGroup
+        value={[appearance]}
+        onValueChange={(groupValue) => {
+          const next = groupValue[0]
 
-        return (
-          <Button
+          if (next === "light" || next === "dark" || next === "system") choose(next)
+        }}
+        aria-label="Appearance options"
+        className="bg-muted rounded-full p-0.5 gap-0.5 w-full"
+      >
+        {options.map(({ value, label, Icon }) => (
+          <ToggleGroupItem
             key={value}
-            type="button"
-            variant={selected ? "secondary" : "ghost"}
-            size="sm"
-            aria-pressed={selected}
-            data-selected={selected ? "true" : undefined}
+            value={value}
             title={`${label} appearance`}
-            onClick={() => choose(value)}
-            className="reader-appearance-option"
+            aria-label={`${label} appearance`}
+            className="reader-appearance-option flex-1 rounded-full border border-transparent p-1.5 justify-center text-muted-foreground aria-pressed:bg-card aria-pressed:border-border aria-pressed:text-primary"
           >
-            <Icon />
-            <span>{label}</span>
-          </Button>
-        )
-      })}
+            <Icon aria-hidden="true" className="size-3" />
+            <span className="sr-only">{label}</span>
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
     </div>
   )
 }

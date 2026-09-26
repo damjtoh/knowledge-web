@@ -22,6 +22,8 @@ jobs:
           cache: pnpm
       - name: Install root dependencies
         run: pnpm install --frozen-lockfile
+      - name: Install reader dependencies
+        run: pnpm --dir reader install --frozen-lockfile
       - name: Check (lint + format)
         run: pnpm run check
       - name: Lint
@@ -31,8 +33,6 @@ jobs:
           pnpm test tests/stage-content.test.mjs
           tests/knowledge-reader-contract.test.mjs tests/navigation.test.mjs
           tests/wiki-aliases.test.mjs
-      - name: Install reader dependencies
-        run: pnpm --dir reader install --frozen-lockfile
       - name: Install Playwright Chromium
         run: pnpm exec playwright install chromium --with-deps
       - name: Reader integrated suite (retry once)

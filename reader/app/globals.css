@@ -36,6 +36,16 @@ body {
   min-width: 0;
 }
 
+/* Desktop sidebar width: 320px at the lg breakpoint. The registry
+   SidebarProvider sets --sidebar-width: 16rem inline on the wrapper, so a
+   stylesheet var on that same element would lose. Setting the var on the
+   sidebar element instead wins by nearer-ancestor inheritance and flows to
+   the gap, the fixed container, and the offcanvas offsets together; the
+   registry primitive itself is untouched. */
+[data-slot="sidebar"] {
+  --sidebar-width: 20rem;
+}
+
 body {
   margin: 0;
   background: #fff;
@@ -76,25 +86,6 @@ body {
   flex: 1 1 auto;
   min-width: 0;
   max-width: 100%;
-}
-
-.reader-home {
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
-  min-width: 0;
-  font-weight: 700;
-  font-size: 1rem;
-  letter-spacing: -0.01em;
-  text-decoration: none;
-  color: #171717;
-  overflow-wrap: anywhere;
-}
-
-.reader-home:hover {
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  text-decoration-color: #a3a3a3;
 }
 
 /* Compact Browse control: phone-only. Desktop keeps the sidebar. */
@@ -306,7 +297,6 @@ body {
   text-decoration: none;
   color: #404040;
   border-radius: 6px;
-  border-left: 2px solid transparent;
   overflow-wrap: break-word;
 }
 
@@ -319,14 +309,13 @@ body {
   font-weight: 700;
   color: #171717;
   background: #f5f5f5;
-  border-left-color: #171717;
 }
 
 /* Folder-and-note tree: nested branches under each published root keep
    the sidebar link style. Root order follows generated metadata and
    child order follows the navigation tree. Each folder row holds its
-   page link plus a separate disclosure button, so visiting a folder
-   never collides with expanding it. */
+   page link plus a glyph-free disclosure hit target at the row's right
+   edge, so visiting a folder never collides with expanding it. */
 .reader-tree,
 .reader-tree-children {
   list-style: none;
@@ -348,6 +337,15 @@ body {
   min-width: 0;
 }
 
+/* Grid items default to min-width auto, which lets one unbroken
+   single-line label force its whole branch wider than the sidebar or
+   drawer. Zeroing it keeps every branch inside its container so labels
+   truncate instead of overflowing. */
+.reader-tree > li,
+.reader-tree-children > li {
+  min-width: 0;
+}
+
 .reader-tree-row {
   display: flex;
   align-items: stretch;
@@ -366,34 +364,22 @@ body {
   flex: 1 1 auto;
   min-width: 0;
   overflow-wrap: anywhere;
-  white-space: normal;
 }
 
+/* Glyph-free disclosure hit target at the row's right edge: a separate
+   flex sibling of the page link, so label clicks navigate while right-edge
+   clicks expand or collapse. It renders as the design's empty spacer slot;
+   stretch keeps the 44px touch target the journeys assert. */
 .reader-tree-toggle {
   flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
+  align-self: stretch;
+  width: 1.5rem;
   min-height: 44px;
-  color: #525252;
+  padding: 0;
   background: transparent;
   border: 1px solid transparent;
   border-radius: 6px;
   cursor: pointer;
-}
-
-.reader-tree-toggle:hover {
-  background: #f5f5f5;
-  color: #171717;
-}
-
-.reader-tree-toggle svg {
-  transition: transform 0.15s ease;
-}
-
-.reader-tree-toggle[aria-expanded="true"] svg {
-  transform: rotate(90deg);
 }
 
 .reader-main {
@@ -798,14 +784,6 @@ body {
   outline-offset: 2px;
 }
 
-.reader-footer {
-  border-top: 1px solid #e5e5e5;
-  background: #fafafa;
-  padding: 1rem;
-  color: #525252;
-  font-size: 0.85rem;
-}
-
 @media (max-width: 899px) {
   .reader-browse-toggle {
     display: inline-flex;
@@ -884,9 +862,9 @@ body {
   margin-bottom: 0.75rem;
 }
 
-/* The header control is phone-only: desktop readers use the sidebar one. */
+/* The header Search icon renders at all widths in the desktop inset header. */
 .reader-search-header {
-  display: none;
+  display: inline-flex;
 }
 
 .reader-search-body {
@@ -1022,12 +1000,6 @@ body {
   color: #fafafa;
 }
 
-@media (max-width: 899px) {
-  .reader-search-header {
-    display: inline-flex;
-  }
-}
-
 /**
  * Offline save control in the sidebar and drawer footers.
  *
@@ -1123,9 +1095,24 @@ body {
 /*---break---
  */
 
+/*
+ * tracking-label is declared as an explicit utility instead of a
+ * --tracking-* theme token. The @shadcn/lint no-unknown-classes rule
+ * falls back to a static scan that cannot expand theme namespaces when
+ * its Tailwind compiler oracle is unavailable (CI lints before reader
+ * dependencies are installed), so an explicit @utility keeps the class
+ * recognized in every environment. The generated CSS is identical.
+ */
+@utility tracking-label {
+  letter-spacing: 0.6px;
+}
+
 @theme inline {
   --font-heading: var(--font-sans);
   --font-sans: var(--font-sans);
+  --text-2xs: 11px;
+  --text-13: 13px;
+  --color-success: var(--success);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -1185,6 +1172,7 @@ body {
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
+  --success: #6b8f71;
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);
@@ -1223,6 +1211,7 @@ body {
   --accent: oklch(0.269 0 0);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
+  --success: #7da884;
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.556 0 0);
@@ -1306,14 +1295,6 @@ body {
   border-bottom-color: #262626;
 }
 
-.dark .reader-home {
-  color: #fafafa;
-}
-
-.dark .reader-home:hover {
-  text-decoration-color: #525252;
-}
-
 .dark .reader-browse-toggle {
   color: #fafafa;
   background: #171717;
@@ -1364,20 +1345,10 @@ body {
 .dark .reader-sidebar-nav a.is-active {
   color: #fff;
   background: #262626;
-  border-left-color: #fafafa;
 }
 
 .dark .reader-tree-children {
   border-left-color: #262626;
-}
-
-.dark .reader-tree-toggle {
-  color: #d4d4d4;
-}
-
-.dark .reader-tree-toggle:hover {
-  background: #262626;
-  color: #fafafa;
 }
 
 .dark .reader-breadcrumbs ol {
@@ -1481,12 +1452,6 @@ body {
 
 .dark .reader-appearance-option:focus-visible {
   outline-color: #fafafa;
-}
-
-.dark .reader-footer {
-  border-top-color: #262626;
-  background: #111;
-  color: #a3a3a3;
 }
 
 /**

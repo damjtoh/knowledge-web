@@ -77,16 +77,45 @@ const config: OxlintConfig = {
                   "reader-offline-retry",
                   "reader-offline-reload",
                   "reader-offline-remove",
+                  "flex-1",
+                  "rounded-full",
+                  "px-2.5",
+                  "py-1.5",
+                  "gap-1.5",
                 ],
               },
               // Registry sidebar-11 tree hooks: published root order and
               // active cues must stay on the menu elements the browser
               // journeys query; wrappers would break
               // .reader-sidebar-nav > ul > li and active selectors.
-              { pattern: "^SidebarMenu$", allow: ["reader-tree", "reader-projection-switcher"] },
-              { pattern: "^SidebarMenuSub$", allow: ["reader-tree-children"] },
+              {
+                pattern: "^SidebarMenu$",
+                allow: ["reader-tree", "reader-projection-switcher", "gap-1"],
+              },
+              // Published tree children indent and guide must stay on the
+              // menu sub itself; a wrapper would break the
+              // li > .reader-tree-collapsible > .reader-tree-panel selector.
+              {
+                pattern: "^SidebarMenuSub$",
+                allow: [
+                  "reader-tree-children",
+                  "gap-0.5",
+                  "border-l",
+                  "border-border",
+                  "py-1",
+                  "pl-2.5",
+                ],
+              },
+              // Published section label owns its muted 11px/600/0.6px
+              // tracking; the group owns layout padding.
+              {
+                pattern: "^SidebarGroupLabel$",
+                allow: ["text-2xs", "font-semibold", "tracking-label", "text-muted-foreground"],
+              },
               // Search and active hooks must live on the menu button itself;
               // a wrapper would break focus return and the 44px touch target.
+              // The tree selected wash lives on the button with the active
+              // hook so folder and note rows share one active-row element.
               {
                 pattern: "^SidebarMenuButton$",
                 allow: [
@@ -95,8 +124,20 @@ const config: OxlintConfig = {
                   "reader-sidebar-home",
                   "reader-projection-trigger",
                   "is-active",
+                  "rounded-md",
+                  "px-2.5",
+                  "py-2",
+                  "gap-2",
+                  "bg-border",
                 ],
               },
+              // Desktop top chrome owns its header spacing from design.pen:
+              // the header keeps the switcher-to-menu gap and padding, and
+              // the Home/Search menu keeps its vertical gap.
+              { pattern: "^SidebarHeader$", allow: ["gap-3", "px-3", "py-4"] },
+              // Search kbd pill aligns to the row end; the Kbd primitive
+              // owns its own surface.
+              { pattern: "^Kbd$", allow: ["ml-auto"] },
               // Projection switcher trigger owns its hook through the
               // dropdown trigger render composition; the menu button has
               // no other wrapper that can own it.
@@ -111,13 +152,40 @@ const config: OxlintConfig = {
                 pattern: "^DropdownMenuItem$",
                 allow: ["reader-projection-current", "reader-projection-choice"],
               },
-              // Registry shell layout: trigger offset and mobile visibility
-              // must stay on the trigger itself; the header has no wrapper
-              // that can own them without breaking the sample header row.
-              { pattern: "^SidebarTrigger$", allow: ["-ml-1", "max-md:hidden"] },
-              // Separator spacing and responsive visibility must stay on the
-              // separator; it renders no wrapper DOM.
-              { pattern: "^Separator$", allow: ["mr-2", "hidden", "md:block"] },
+              // Registry shell layout: trigger owns the design inset-header
+              // treatment (bordered 28px square) plus its sample offset and
+              // mobile visibility; the header has no wrapper that can own
+              // them without breaking the sample header row.
+              {
+                pattern: "^SidebarTrigger$",
+                allow: [
+                  "-ml-1",
+                  "max-md:hidden",
+                  "size-7",
+                  "rounded-md",
+                  "border",
+                  "border-border",
+                  "bg-card",
+                ],
+              },
+              // Separator spacing, responsive visibility, and design
+              // 1x16 size must stay on the separator; it renders no
+              // wrapper DOM.
+              {
+                pattern: "^Separator$",
+                allow: ["mr-2", "hidden", "md:block", "w-px", "h-4"],
+              },
+              // Reading-header trail keeps 13px/600 crumbs on the link
+              // and current-page elements; the Breadcrumb primitives own
+              // landmarks and aria, so utilities stay on the items.
+              {
+                pattern: "^BreadcrumbLink$",
+                allow: ["text-13", "font-semibold"],
+              },
+              {
+                pattern: "^BreadcrumbPage$",
+                allow: ["text-13", "font-semibold"],
+              },
               // Phone drawer dimensions must stay on the Sheet popup: Sheet
               // renders no wrapper DOM, so full-viewport width/height and
               // safe-area containment cannot move to a parent.
@@ -140,9 +208,45 @@ const config: OxlintConfig = {
               // registry Footer elements render no wrapper DOM, so the
               // hook must stay on the footer itself; a parent would scope
               // the wrong element and break the fixed-footer/tree-scroll
-              // split.
-              { pattern: "^SidebarFooter$", allow: ["reader-sidebar-footer"] },
-              { pattern: "^SheetFooter$", allow: ["reader-phone-drawer-footer"] },
+              // split. Design footer stack adds a top border with padded
+              // gaps; the divider between On Device and Appearance is the
+              // registry Separator with no wrapper.
+              {
+                pattern: "^SidebarFooter$",
+                allow: ["reader-sidebar-footer", "gap-4", "border-t", "p-4"],
+              },
+              {
+                pattern: "^SheetFooter$",
+                allow: ["reader-phone-drawer-footer", "gap-4", "border-t", "p-4"],
+              },
+              // Appearance segmented control owns its muted pill container;
+              // the ToggleGroup primitive renders no wrapper DOM, so the
+              // pill utilities must stay on the group itself.
+              {
+                pattern: "^ToggleGroup$",
+                allow: ["bg-muted", "rounded-full", "p-0.5", "gap-0.5", "w-full"],
+              },
+              // Appearance options keep the DOM hook for touch sizing plus
+              // the pill option layout; the toggle primitive renders the
+              // button itself, so flex and active-state utilities must stay
+              // on the item. Active state uses aria-pressed variants; the
+              // readable names live in screen-reader labels.
+              {
+                pattern: "^ToggleGroupItem$",
+                allow: [
+                  "reader-appearance-option",
+                  "flex-1",
+                  "rounded-full",
+                  "border",
+                  "border-transparent",
+                  "p-1.5",
+                  "justify-center",
+                  "text-muted-foreground",
+                  "aria-pressed:bg-card",
+                  "aria-pressed:border-border",
+                  "aria-pressed:text-primary",
+                ],
+              },
             ],
           },
         ],
