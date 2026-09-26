@@ -1324,26 +1324,8 @@ body {
   flex-wrap: wrap;
 }
 
-.reader-offline-cue {
-  display: none;
-  align-items: center;
-  min-height: 44px;
-  margin: 0;
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: #525252;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 32vw;
-}
-
 .dark .reader-sidebar-footer {
   border-top-color: #262626;
-}
-
-.dark .reader-offline-cue {
-  color: #d4d4d4;
 }
 
 @media (max-width: 767px) {
@@ -1353,9 +1335,5 @@ body {
 
   .reader-appearance-option span {
     font-size: 0.8rem;
-  }
-
-  .reader-offline-cue {
-    display: inline-flex;
   }
 }

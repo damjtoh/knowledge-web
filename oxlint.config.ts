@@ -240,6 +240,7 @@ const config: OxlintConfig = {
           {
             allow: [
               "reader-tree-panel",
+              "reader-offline-cue",
               "reader-offline-remove-error",
               "reader-tree-label",
               "reader-sidebar-home",

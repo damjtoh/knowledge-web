@@ -2437,6 +2437,7 @@ async function runOfflineAppearancePlacement(page, baseUrl) {
 
   assert.ok(cue, "offline cue exists for the phone header")
   assert.equal(cue.tag, "P", "cue never initiates a save")
+  assert.ok(cue.text.length > 0, "cue renders its label instead of disappearing")
   assert.equal(cue.visible, false, "cue stays hidden on desktop")
 
   const hasBoot = await page.evaluate(() =>
@@ -5254,9 +5255,63 @@ async function runPhoneOfflinePlacement(page, baseUrl, label) {
     await page.evaluate(
       () => document.querySelector(".reader-offline-cue")?.textContent?.trim() || "",
     ),
-    /Not saved offline/,
-    `${label}: idle cue is concise`,
+    /^Not saved$/,
+    `${label}: idle chip reads Not saved`,
   )
+
+  const chip = await page.evaluate(() => {
+    const el = document.querySelector(".reader-offline-cue")
+
+    if (!el) return null
+    const style = getComputedStyle(el)
+    const icon = el.querySelector("svg")
+    const iconRect = icon?.getBoundingClientRect()
+    const labelEl = el.querySelector("span")
+
+    return {
+      iconPresent: !!icon,
+      iconWidth: iconRect ? Math.round(iconRect.width) : 0,
+      iconSharesMutedColor: icon ? getComputedStyle(icon).color === style.color : false,
+      labelSize: labelEl ? getComputedStyle(labelEl).fontSize : "",
+      labelTruncates: labelEl ? getComputedStyle(labelEl).overflow === "hidden" : false,
+      radius: style.borderRadius,
+      background: style.backgroundColor,
+      height: Math.round(el.getBoundingClientRect().height),
+      textColor: style.color,
+      role: el.getAttribute("role"),
+      live: el.getAttribute("aria-live"),
+      online: el.getAttribute("data-online"),
+      update: el.getAttribute("data-update"),
+    }
+  })
+
+  assert.ok(chip?.iconPresent, `${label}: idle chip carries the Not saved icon`)
+  assert.equal(chip?.iconWidth, 12, `${label}: chip icon is 12px`)
+  assert.ok(chip?.iconSharesMutedColor, `${label}: Not saved icon shares the muted label color`)
+  assert.equal(chip?.labelSize, "11px", `${label}: chip label is 11px`)
+  assert.ok(chip?.labelTruncates, `${label}: chip label truncates`)
+  assert.ok(
+    Number.parseFloat(chip?.radius ?? "") > 1000,
+    `${label}: chip is a pill (got ${chip?.radius})`,
+  )
+  assert.match(
+    chip?.background ?? "",
+    /oklch\(0\.97 0 0\)|245,\s*245,\s*245/,
+    `${label}: chip sits on the muted pill`,
+  )
+  assert.ok(
+    (chip?.height ?? 0) >= 27 && (chip?.height ?? 0) <= 30,
+    `${label}: chip is ~28px tall (got ${chip?.height}px)`,
+  )
+  assert.match(
+    chip?.textColor ?? "",
+    /oklch\(0\.556 0 0\)|115,\s*115,\s*115/,
+    `${label}: Not saved chip is muted`,
+  )
+  assert.equal(chip?.role, "status", `${label}: idle chip announces politely`)
+  assert.equal(chip?.live, "polite", `${label}: idle chip live region is polite`)
+  assert.equal(chip?.online, null, `${label}: online chip carries no offline marker`)
+  assert.equal(chip?.update, null, `${label}: chip carries no update marker without an update`)
 
   await page.evaluate(() => document.querySelector(".reader-offline-cue")?.click())
   await new Promise((resolve) => setTimeout(resolve, 500))
@@ -5685,6 +5740,55 @@ function getSharedSyntheticBuild() {
 
   return sharedSyntheticPromise
 }
+
+/**
+ * Device status chip variant table (mobile port item 3): the phone
+ * header cue renders every offline state as a pill — including
+ * unsupported, which shows Not saved instead of disappearing. Static
+ * source assertions cover the states a live browser journey cannot
+ * reach (ready, saving, update, failures); the live phone journey
+ * covers the idle chip geometry, icon, and muted colors.
+ */
+test("device status chip renders every offline state without starting a save", async () => {
+  const source = fs.readFileSync(path.join(READER_ROOT, "components", "offline-save.tsx"), "utf8")
+  const cueStart = source.indexOf("export function OfflineCue")
+  const cueEnd = source.indexOf("export function OfflineProvider")
+  const cue = source.slice(cueStart, cueEnd)
+
+  assert.ok(!/status === "unsupported"\) return null/.test(cue), "unsupported renders the chip")
+  assert.match(cue, /Database/, "idle and unsupported share the database icon")
+  assert.match(cue, /Not saved/, "no local copy reads Not saved")
+  assert.match(cue, /Checking…/, "checking stays concise and muted")
+  assert.match(cue, /Saving…/, "saving reports progress")
+  assert.match(cue, /Update ready/, "an available update reads Update ready")
+  assert.match(cue, /Offline · /, "browser offline reads Offline with the saved count")
+  assert.match(cue, /saved`/, "the saved count comes from the manifest URL list")
+  assert.match(cue, /Save incomplete/, "an incomplete save keeps its alert")
+  assert.match(cue, /Couldn't remove offline copy/, "a failed removal keeps its alert")
+  assert.match(cue, /data-online/, "the chip marks the browser offline state")
+
+  for (const token of [
+    "rounded-full",
+    "bg-muted",
+    "h-7",
+    "text-2xs",
+    "size-3",
+    "truncate",
+    "reader-offline-cue",
+  ]) {
+    assert.ok(cue.includes(token), `chip carries ${token}`)
+  }
+
+  assert.match(cue, /window\.addEventListener\("online"/, "chip tracks browser online state")
+  assert.match(cue, /window\.addEventListener\("offline"/, "chip tracks browser offline state")
+  assert.match(cue, /removeEventListener\("online"/, "chip listeners clean up")
+  assert.match(cue, /removeEventListener\("offline"/, "chip listeners clean up")
+  assert.ok(!/save\(\)|removeCopy\(\)|reloadUpdate\(\)/.test(cue), "chip never starts a save")
+
+  const css = fs.readFileSync(path.join(READER_ROOT, "app", "globals.css"), "utf8")
+
+  assert.ok(!css.includes(".reader-offline-cue"), "chip styling lives in utilities, not CSS")
+})
 
 test("synthetic phone journey covers drawer, overflow, keyboard, and refresh", async () => {
   assert.ok(
