@@ -366,10 +366,12 @@ body {
   overflow-wrap: anywhere;
 }
 
-/* Glyph-free disclosure hit target at the row's right edge: a separate
+/* Disclosure hit target at the row's right edge: a separate
    flex sibling of the page link, so label clicks navigate while right-edge
-   clicks expand or collapse. It renders as the design's empty spacer slot;
-   stretch keeps the 44px touch target the journeys assert. */
+   clicks expand or collapse. Collapsed rows hold a chevron-right glyph
+   that stays hidden until row hover or focus; expanded rows keep the
+   slot empty (their caret leads). Stretch keeps the 44px touch target
+   the journeys assert. */
 .reader-tree-toggle {
   flex-shrink: 0;
   align-self: stretch;
@@ -380,6 +382,19 @@ body {
   border: 1px solid transparent;
   border-radius: 6px;
   cursor: pointer;
+}
+
+/* Collapsed-row hover caret: the chevron-right glyph stays in the DOM but
+   hidden at rest, and appears on row hover or keyboard focus. Expanded
+   rows render no svg child, so they keep their empty trailing zone. */
+.reader-tree-toggle svg {
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.reader-tree-row:hover .reader-tree-toggle svg,
+.reader-tree-row:focus-within .reader-tree-toggle svg {
+  opacity: 1;
 }
 
 .reader-main {
