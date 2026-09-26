@@ -158,15 +158,7 @@ const config: OxlintConfig = {
               // them without breaking the sample header row.
               {
                 pattern: "^SidebarTrigger$",
-                allow: [
-                  "-ml-1",
-                  "max-md:hidden",
-                  "size-7",
-                  "rounded-md",
-                  "border",
-                  "border-border",
-                  "bg-card",
-                ],
+                allow: ["-ml-1", "size-7", "rounded-md", "border", "border-border", "bg-card"],
               },
               // Separator spacing, responsive visibility, and design
               // 1x16 size must stay on the separator; it renders no
@@ -186,10 +178,6 @@ const config: OxlintConfig = {
                 pattern: "^BreadcrumbPage$",
                 allow: ["text-13", "font-semibold"],
               },
-              // Phone drawer dimensions must stay on the Sheet popup: Sheet
-              // renders no wrapper DOM, so full-viewport width/height and
-              // safe-area containment cannot move to a parent.
-              { pattern: "^SheetContent$", allow: ["reader-phone-drawer"] },
               // Home root cards use the registry Card surface (not a
               // hand-written CSS card). Hook classes carry only readable
               // long-title wrapping and folder/note meta layout; the Card
@@ -199,25 +187,17 @@ const config: OxlintConfig = {
               { pattern: "^CardHeader$", allow: ["reader-home-card-header"] },
               { pattern: "^CardTitle$", allow: ["reader-home-card-title"] },
               { pattern: "^CardDescription$", allow: ["reader-home-card-meta"] },
-              // Visible Close touch target must live on the Sheet close
-              // button itself; a wrapper would break focus return and the
-              // 44px touch target.
-              { pattern: "^SheetClose$", allow: ["reader-drawer-close"] },
-              // Sidebar and drawer footers own offline plus appearance
-              // layout (border, scroll cap, safe-area reachability). The
-              // registry Footer elements render no wrapper DOM, so the
-              // hook must stay on the footer itself; a parent would scope
-              // the wrong element and break the fixed-footer/tree-scroll
-              // split. Design footer stack adds a top border with padded
-              // gaps; the divider between On Device and Appearance is the
+              // Sidebar footer owns offline plus appearance layout
+              // (border, scroll cap, safe-area reachability). The registry
+              // Footer element renders no wrapper DOM, so the hook must
+              // stay on the footer itself; a parent would scope the wrong
+              // element and break the fixed-footer/tree-scroll split.
+              // Design footer stack adds a top border with padded gaps;
+              // the divider between On Device and Appearance is the
               // registry Separator with no wrapper.
               {
                 pattern: "^SidebarFooter$",
                 allow: ["reader-sidebar-footer", "gap-4", "border-t", "p-4"],
-              },
-              {
-                pattern: "^SheetFooter$",
-                allow: ["reader-phone-drawer-footer", "gap-4", "border-t", "p-4"],
               },
               // Appearance segmented control owns its muted pill container;
               // the ToggleGroup primitive renders no wrapper DOM, so the
