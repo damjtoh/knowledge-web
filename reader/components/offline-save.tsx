@@ -626,7 +626,40 @@ export default function OfflineSave() {
     )
   }
 
-  if (status === "unsupported" || !manifest) return null
+  if (status === "unsupported" || !manifest) {
+    return (
+      <section aria-label="Offline" className="reader-offline" data-offline-state="unsupported">
+        <div className="flex items-center gap-1.5">
+          <Check aria-hidden="true" className="size-3 text-success" />
+          <span className="text-2xs font-semibold tracking-label text-muted-foreground">
+            ON DEVICE
+          </span>
+          <WifiOff aria-hidden="true" className="size-3 text-muted-foreground ml-auto" />
+        </div>
+        <p className="text-xs font-semibold text-primary">Not saved on this device</p>
+        {manifest ? (
+          <p className="reader-offline-size text-2xs text-muted-foreground">
+            {formatBytes(manifest.totalBytes)} to download.
+          </p>
+        ) : null}
+        <p className="reader-offline-trust text-2xs text-muted-foreground">
+          Saved pages stay on this device. Only save on a device you trust.
+        </p>
+        <div className="flex items-center gap-1.5">
+          <Button
+            type="button"
+            variant="outline"
+            className="reader-offline-save flex-1 rounded-full px-2.5 py-1.5 gap-1.5"
+            disabled
+            title="Saving is not available in this browser"
+          >
+            <Download aria-hidden="true" className="size-3" />
+            <span className="text-2xs font-semibold">Save for offline use</span>
+          </Button>
+        </div>
+      </section>
+    )
+  }
 
   const total = manifest.urls.length
 
