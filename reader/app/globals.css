@@ -306,9 +306,9 @@ body {
 }
 
 .reader-sidebar-nav a.is-active {
-  font-weight: 700;
-  color: #171717;
-  background: #f5f5f5;
+  font-weight: 600;
+  color: var(--primary);
+  background: var(--border);
 }
 
 /* Folder-and-note tree: nested branches under each published root keep
@@ -353,6 +353,22 @@ body {
   min-width: 0;
 }
 
+/* Expanded folder header wash: full-row $--border fill with 6px radius,
+   matching the design's active row. The row container paints so the wash
+   covers the link plus the trailing toggle zone. The link inside an open
+   row stays transparent at rest and on hover so exactly one wash layer
+   paints (dark --border is translucent, so a link-level wash would stack
+   to a two-tone patch). Non-open a.is-active rows keep their own wash. */
+.reader-tree-row.reader-tree-open {
+  background: var(--border);
+  border-radius: 6px;
+}
+
+.reader-sidebar-nav .reader-tree-row.reader-tree-open a,
+.reader-sidebar-nav .reader-tree-row.reader-tree-open a:hover {
+  background: transparent;
+}
+
 .reader-tree-row a {
   flex: 1 1 auto;
   min-width: 0;
@@ -366,10 +382,12 @@ body {
   overflow-wrap: anywhere;
 }
 
-/* Glyph-free disclosure hit target at the row's right edge: a separate
+/* Disclosure hit target at the row's right edge: a separate
    flex sibling of the page link, so label clicks navigate while right-edge
-   clicks expand or collapse. It renders as the design's empty spacer slot;
-   stretch keeps the 44px touch target the journeys assert. */
+   clicks expand or collapse. Collapsed rows hold a chevron-right glyph
+   that stays hidden until row hover or focus; expanded rows keep the
+   slot empty (their caret leads). Stretch keeps the 44px touch target
+   the journeys assert. */
 .reader-tree-toggle {
   flex-shrink: 0;
   align-self: stretch;
@@ -380,6 +398,19 @@ body {
   border: 1px solid transparent;
   border-radius: 6px;
   cursor: pointer;
+}
+
+/* Collapsed-row hover caret: the chevron-right glyph stays in the DOM but
+   hidden at rest, and appears on row hover or keyboard focus. Expanded
+   rows render no svg child, so they keep their empty trailing zone. */
+.reader-tree-toggle svg {
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.reader-tree-row:hover .reader-tree-toggle svg,
+.reader-tree-row:focus-within .reader-tree-toggle svg {
+  opacity: 1;
 }
 
 .reader-main {
@@ -832,39 +863,32 @@ body {
   justify-content: center;
   gap: 0.5rem;
   min-height: 44px;
-  padding: 0.5rem 1rem;
+  padding: 0.5rem 0.625rem;
   font: inherit;
-  font-weight: 600;
-  color: #171717;
-  background: #fff;
-  border: 1px solid #d4d4d4;
-  border-radius: 8px;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
   cursor: pointer;
 }
 
 .reader-search-trigger:hover {
-  background: #f5f5f5;
-}
-
-.reader-search-trigger kbd {
-  font: inherit;
-  font-weight: 400;
-  font-size: 0.8rem;
-  color: #737373;
-  border: 1px solid #e5e5e5;
-  border-radius: 4px;
-  padding: 0.1rem 0.35rem;
-  background: #fafafa;
+  background: var(--muted);
 }
 
 .reader-search-sidebar {
   width: 100%;
-  margin-bottom: 0.75rem;
+  justify-content: flex-start;
+  padding: 0.5rem 0.625rem;
 }
 
 /* The header Search icon renders at all widths in the desktop inset header. */
 .reader-search-header {
   display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  min-width: 44px;
 }
 
 .reader-search-body {
@@ -949,19 +973,13 @@ body {
 }
 
 .dark .reader-search-trigger {
-  color: #fafafa;
-  background: #171717;
-  border-color: #404040;
+  color: inherit;
+  background: transparent;
+  border-color: transparent;
 }
 
 .dark .reader-search-trigger:hover {
-  background: #262626;
-}
-
-.dark .reader-search-trigger kbd {
-  color: #a3a3a3;
-  border-color: #404040;
-  background: #262626;
+  background: var(--muted);
 }
 
 .dark .reader-search-input {
@@ -1340,11 +1358,6 @@ body {
 .dark .reader-sidebar-nav a:hover {
   background: #262626;
   color: #fafafa;
-}
-
-.dark .reader-sidebar-nav a.is-active {
-  color: #fff;
-  background: #262626;
 }
 
 .dark .reader-tree-children {

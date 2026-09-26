@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
-import { ChevronDown, File, Folder } from "lucide-react"
+import { ChevronDown, ChevronRight, File, Folder } from "lucide-react"
 import type { NavigationNode } from "../lib/navigation"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible"
 import {
@@ -95,8 +95,10 @@ interface TreeState {
  * One published row adapted from registry sidebar-11's collapsible file
  * tree. Block sample data is not used: rows come from the published
  * navigation tree in metadata order. A folder keeps two separate controls:
- * its name is a plain anchor to its own page and a glyph-free disclosure
- * hit target at the row's right edge expands children without navigating.
+ * its name is a plain anchor to its own page and a disclosure hit target
+ * at the row's right edge expands children without navigating (collapsed
+ * rows reveal a chevron-right there on hover or focus; expanded rows
+ * leave it empty).
  * The row itself shows only a leading cue plus label: the folder icon when
  * collapsed, a chevron-down when expanded.
  */
@@ -159,12 +161,16 @@ function TreeNode({ node, state }: { node: NavigationNode; state: TreeState }) {
         open={open}
         onOpenChange={(next) => state.setOpen(node.url, next)}
       >
-        <div className="reader-tree-row">
+        <div className={open ? "reader-tree-row reader-tree-open" : "reader-tree-row"}>
           {link}
           <CollapsibleTrigger
             className="reader-tree-toggle"
             aria-label={open ? `Collapse ${node.title}` : `Expand ${node.title}`}
-          />
+          >
+            {open ? null : (
+              <ChevronRight aria-hidden="true" className="size-3.5 text-muted-foreground" />
+            )}
+          </CollapsibleTrigger>
         </div>
         <CollapsibleContent keepMounted className="reader-tree-panel">
           <div className="pl-3.5">
@@ -200,7 +206,9 @@ function TreeNode({ node, state }: { node: NavigationNode; state: TreeState }) {
  * Composition follows registry sidebar-11 (SidebarMenu with Collapsible
  * branches and lucide folder/note cues) but every row is published
  * content: a folder name links to its own page (authored or virtual) and
- * a disclosure button opens its children without navigating. Several
+ * a disclosure button opens its children without navigating. Collapsed
+ * rows hold a hover-revealed chevron-right in the trailing slot;
+ * expanded rows keep that slot empty (their caret leads). Several
  * branches stay expanded together. The current page's ancestor branches
  * open on arrival because visibility is derived from the URL during
  * render. A branch the reader deliberately closes stays closed only while
