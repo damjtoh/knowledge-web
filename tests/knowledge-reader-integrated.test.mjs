@@ -2793,6 +2793,26 @@ async function runStaticExportChecks({
   assert.ok(!home.includes("Hidden Draft"), "routes outside navigation never become cards")
   assert.ok(!/href="\/"/.test(section), "no Home self-link card")
 
+  // Mobile port home-phone: a phone-only Home crumb plus a phone-only card
+  // row (muted icon box, count-only meta, trailing chevron) render
+  // alongside the unchanged desktop card structure.
+  assert.match(
+    home,
+    /text-muted-foreground md:hidden">Home</,
+    "phone-only Home crumb renders above the cards",
+  )
+  assert.equal(
+    countOccurrences(section, "lucide-chevron-right"),
+    links.length,
+    "every home card carries a phone-only trailing chevron",
+  )
+  assert.match(section, />12 items</, "phone card meta is count-only for the flat folder")
+  assert.match(section, />2 items</, "phone card meta is count-only for the authored folder")
+  assert.ok(
+    section.includes("size-9") && section.includes("bg-muted"),
+    "phone card icons sit in a muted box",
+  )
+
   // Indexed folder owns its route and introduction; virtual folders supply titles.
   const garden = readOut(outDir, "garden.html")
   assert.match(garden, /Garden Plots/, "authored folder introduction renders")
@@ -3371,6 +3391,31 @@ async function runHomeCardsDetail(page, baseUrl, expect) {
   const cardText = cards.map((c) => c.text).join("\n")
   assert.match(cardText, /Folder · 12 items/, "flat folder count is accurate")
   assert.match(cardText, /Folder · 2 items/, "authored folder count is accurate")
+
+  // Mobile port home-phone: the phone-only Home crumb and phone-only card
+  // row stay hidden on desktop, so the desktop meta keeps its kind prefix.
+  const desktopCrumbDisplay = await page.evaluate(() => {
+    const el = Array.from(document.querySelectorAll(".reader-article > span")).find(
+      (node) => node.textContent?.trim() === "Home",
+    )
+
+    return el ? getComputedStyle(el).display : "missing"
+  })
+
+  assert.equal(desktopCrumbDisplay, "none", "phone-only Home crumb stays hidden on desktop")
+
+  const desktopPhoneRowDisplays = await page.evaluate(() =>
+    Array.from(
+      document.querySelectorAll(".reader-area-list a span.hidden"),
+      (el) => getComputedStyle(el).display,
+    ),
+  )
+
+  assert.ok(desktopPhoneRowDisplays.length > 0, "desktop cards carry the phone chevron node")
+  assert.ok(
+    desktopPhoneRowDisplays.every((display) => display === "none"),
+    "phone chevrons stay hidden on desktop",
+  )
 
   const overflow = await page.evaluate(() => ({
     doc: document.documentElement.scrollWidth,
@@ -5491,9 +5536,11 @@ async function runPhoneOfflinePlacement(page, baseUrl, label) {
 
 /**
  * Home card slice at phone width, folded from the retired home-cards
- * suite: ordered links, distinct folder/note cues, kind-only meta with
- * accurate counts, hidden-route exclusion, no Home self-link,
- * containment, touch targets, and real card navigation with Back.
+ * suite: ordered links, distinct folder/note cues, kind-prefixed desktop
+ * meta with accurate counts, count-only phone meta, hidden-route
+ * exclusion, no Home self-link, containment, touch targets, phone body
+ * measurements from design screen I1z3qM, and real card navigation with
+ * Back.
  */
 async function runPhoneCardsDetail(page, baseUrl, expect, label) {
   await goto(page, `${baseUrl}/`)
@@ -5555,6 +5602,118 @@ async function runPhoneCardsDetail(page, baseUrl, expect, label) {
   const cardText = cards.map((c) => c.text).join("\n")
   assert.match(cardText, /Folder · 12 items/, `${label}: flat folder count is accurate`)
   assert.match(cardText, /Folder · 2 items/, `${label}: authored folder count is accurate`)
+
+  // Mobile port home-phone: the phone body matches design screen I1z3qM —
+  // 12px muted Home crumb, 26px h1, [20, 16, 32, 16] body padding, and
+  // 60px-ish bordered rows with a 36px muted icon box, semibold 14px
+  // title, count-only 12px meta, trailing chevron, and 12px card gaps.
+  const phoneBody = await page.evaluate(() => {
+    const article = document.querySelector(".reader-article")
+
+    const crumb = Array.from(article?.querySelectorAll(":scope > span") ?? []).find(
+      (node) => node.textContent?.trim() === "Home",
+    )
+
+    const h1 = article?.querySelector("h1")
+
+    const shell = document.querySelector(".reader-shell")
+
+    const shellStyle = shell ? getComputedStyle(shell) : null
+
+    const items = Array.from(document.querySelectorAll(".reader-area-list > li")).map((li) =>
+      li.getBoundingClientRect().toJSON(),
+    )
+
+    return {
+      crumb: crumb
+        ? { display: getComputedStyle(crumb).display, fontSize: getComputedStyle(crumb).fontSize }
+        : null,
+      h1Size: h1 ? getComputedStyle(h1).fontSize : "",
+      shell: shellStyle
+        ? {
+            top: shellStyle.paddingTop,
+            right: shellStyle.paddingRight,
+            bottom: shellStyle.paddingBottom,
+            left: shellStyle.paddingLeft,
+          }
+        : null,
+      items,
+      cards: Array.from(document.querySelectorAll(".reader-area-list a")).map((a) => {
+        const visible = (selector) =>
+          Array.from(a.querySelectorAll(selector)).filter(
+            (el) => el.getBoundingClientRect().height > 0,
+          )
+
+        const [title] = visible('[data-slot="card-title"]')
+
+        const [meta] = visible('[data-slot="card-description"]')
+
+        const [box] = visible("span.size-9")
+
+        const [chevron] = visible("svg.lucide-chevron-right")
+
+        const titleStyle = title ? getComputedStyle(title) : null
+
+        const metaStyle = meta ? getComputedStyle(meta) : null
+
+        const boxRect = box?.getBoundingClientRect()
+
+        return {
+          title: title?.textContent?.trim() ?? "",
+          titleSize: titleStyle?.fontSize ?? "",
+          titleWeight: titleStyle?.fontWeight ?? "",
+          meta: meta?.textContent?.trim() ?? "",
+          metaSize: metaStyle?.fontSize ?? "",
+          box: boxRect ? { width: boxRect.width, height: boxRect.height } : null,
+          chevron: !!chevron,
+          height: a.getBoundingClientRect().height,
+        }
+      }),
+    }
+  })
+
+  assert.ok(phoneBody.crumb, `${label}: phone Home crumb renders`)
+  assert.notEqual(phoneBody.crumb.display, "none", `${label}: phone Home crumb is visible`)
+  assert.equal(phoneBody.crumb.fontSize, "12px", `${label}: phone Home crumb is 12px`)
+  assert.equal(phoneBody.h1Size, "26px", `${label}: phone h1 is 26px`)
+  assert.deepEqual(
+    phoneBody.shell,
+    { top: "20px", right: "16px", bottom: "32px", left: "16px" },
+    `${label}: phone body padding matches the design`,
+  )
+
+  for (const [index, card] of phoneBody.cards.entries()) {
+    assert.ok(card.chevron, `${label}: card keeps its trailing chevron: ${card.title}`)
+    assert.deepEqual(
+      card.box,
+      { width: 36, height: 36 },
+      `${label}: card icon sits in a 36px muted box: ${card.title}`,
+    )
+    assert.equal(card.titleSize, "14px", `${label}: card title is 14px: ${card.title}`)
+    assert.equal(card.titleWeight, "600", `${label}: card title is semibold: ${card.title}`)
+    assert.equal(card.metaSize, "12px", `${label}: card meta is 12px: ${card.title}`)
+
+    if (expect.kinds[index] === "folder") {
+      assert.match(
+        card.meta,
+        /^\d+ items?$/,
+        `${label}: phone card meta is count-only: ${card.title}`,
+      )
+    } else {
+      assert.equal(card.meta, "Note", `${label}: phone note card keeps kind meta: ${card.title}`)
+    }
+
+    assert.ok(
+      card.height >= 56 && card.height <= 72,
+      `${label}: card row is 60px-ish (got ${card.height}px): ${card.title}`,
+    )
+  }
+
+  if (phoneBody.items.length >= 2) {
+    const gap = phoneBody.items[1].top - phoneBody.items[0].bottom
+
+    assert.equal(gap, 12, `${label}: phone card gap is 12px (got ${gap}px)`)
+  }
 
   const titlesFit = await page.evaluate(() =>
     Array.from(document.querySelectorAll(".reader-area-list .reader-home-card-title")).map(

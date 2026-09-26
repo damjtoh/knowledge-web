@@ -694,6 +694,10 @@ body {
   .reader-shell {
     flex-direction: column;
     gap: 1rem;
+    /* Phone body padding from design screen I1z3qM: [20, 16, 32, 16].
+       A max-md utility cannot win here: this unlayered declaration beats
+       layered Tailwind utilities, so the responsive value lives here. */
+    padding: 1.25rem 1rem 2rem;
   }
 
   /* Narrow screens indent less so deep branches keep readable titles. */
@@ -705,8 +709,16 @@ body {
     max-width: 100%;
   }
 
+  /* Phone home cards are navigation rows, not prose links: the design
+     (I1z3qM) keeps card titles plain. The unlayered article-link rule
+     above has higher specificity than a bare class, so the exception
+     must match it. */
+  .reader-article .reader-home-card-link {
+    text-decoration: none;
+  }
+
   .reader-article h1 {
-    font-size: 1.5rem;
+    font-size: 1.625rem;
   }
 
   .reader-article h2 {
@@ -715,6 +727,14 @@ body {
 
   .reader-article h3 {
     font-size: 1.05rem;
+  }
+
+  /* Phone home card list keeps the 12px card gap from the base grid and
+     takes the 16px top gap before the list from design screen I1z3qM.
+     Same cascade note as the shell padding above: a max-md:mt-4 utility
+     would lose to the unlayered .reader-area-list margin. */
+  .reader-home-cards {
+    margin-top: 1rem;
   }
 }
 

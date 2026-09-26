@@ -182,11 +182,37 @@ const config: OxlintConfig = {
               // hand-written CSS card). Hook classes carry only readable
               // long-title wrapping and folder/note meta layout; the Card
               // primitive owns the surface and there is no wrapper that can
-              // own them without breaking the card composition.
-              { pattern: "^Card$", allow: ["reader-home-card"] },
-              { pattern: "^CardHeader$", allow: ["reader-home-card-header"] },
-              { pattern: "^CardTitle$", allow: ["reader-home-card-title"] },
-              { pattern: "^CardDescription$", allow: ["reader-home-card-meta"] },
+              // own them without breaking the card composition. The phone
+              // row (mobile port home-phone) reuses the same Card surface:
+              // max-md utilities switch padding and row layout below 768px,
+              // the desktop header hides there, and the phone-only row uses
+              // the slots below with token colors and scale type sizes.
+              {
+                pattern: "^Card$",
+                allow: [
+                  "reader-home-card",
+                  "max-md:flex-row",
+                  "max-md:items-center",
+                  "max-md:gap-3",
+                  "max-md:p-3",
+                ],
+              },
+              {
+                pattern: "^CardHeader$",
+                allow: ["reader-home-card-header", "max-md:hidden"],
+              },
+              // Phone-only home card row reuses the registry title and
+              // description slots without the desktop hook classes (hooks
+              // stay unique per card for the desktop selectors), carrying
+              // the phone title and count-only meta type sizes.
+              {
+                pattern: "^CardTitle$",
+                allow: ["reader-home-card-title", "truncate", "text-sm", "font-semibold"],
+              },
+              {
+                pattern: "^CardDescription$",
+                allow: ["reader-home-card-meta", "truncate", "text-xs", "text-muted-foreground"],
+              },
               // Sidebar footer owns offline plus appearance layout
               // (border, scroll cap, safe-area reachability). The registry
               // Footer element renders no wrapper DOM, so the hook must
