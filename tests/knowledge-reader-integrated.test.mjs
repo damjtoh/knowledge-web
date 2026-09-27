@@ -3969,6 +3969,131 @@ async function runDirectNoteDetail(page, baseUrl, expect) {
     Math.abs(note.otherNotesRowHeight - 36) <= 2,
     `desktop sibling rows are 36px-ish (got ${note.otherNotesRowHeight}px)`,
   )
+
+  // Article extras fidelity (parity item 4, design Zk8lN/pDRO9/code
+  // frame): quote wash/border/pad/type, bullet text/dots/gaps, and the
+  // inverted code block — computed on desktop light, same numbers as
+  // the phone journey above.
+  const extras = await page.evaluate(() => {
+    const article = document.querySelector("article.reader-article")
+    const pre = article?.querySelector("pre")
+    const preStyle = pre ? getComputedStyle(pre) : null
+    const code = pre?.querySelector("code")
+
+    return pre
+      ? {
+          size: preStyle.fontSize,
+          background: preStyle.backgroundColor,
+          padding: preStyle.paddingTop,
+          radius: preStyle.borderRadius,
+          codeSize: code ? getComputedStyle(code).fontSize : "",
+        }
+      : null
+  })
+
+  assert.ok(extras, "desktop code block renders")
+  assert.equal(extras.size, "12px", "desktop code block is 12px")
+  assert.equal(extras.background, "rgb(10, 10, 10)", "desktop code fill is inverted")
+  assert.equal(extras.padding, "12px", "desktop code pads 12")
+  assert.equal(extras.radius, "8px", "desktop code radius is 8")
+  assert.equal(extras.codeSize, "12px", "desktop code lines are 12px")
+
+  await page.goto(`${baseUrl}/notes/plain`, { waitUntil: "networkidle", timeout: 15000 })
+
+  const plainExtras = await page.evaluate(() => {
+    const article = document.querySelector("article.reader-article")
+
+    const items = Array.from(
+      article?.querySelectorAll("ul:not(.reader-area-list):not(.reader-group-list) li") ?? [],
+    )
+
+    const quote = article?.querySelector("blockquote")
+    const quoteStyle = quote ? getComputedStyle(quote) : null
+    const cite = quote?.querySelector("p + p:last-child") ?? null
+
+    const probe = document.createElement("span")
+
+    probe.style.position = "absolute"
+    probe.style.visibility = "hidden"
+    document.body.appendChild(probe)
+
+    const readToken = (prop, value) => {
+      probe.style.cssText = `position:absolute;visibility:hidden;${prop}:${value}`
+
+      return getComputedStyle(probe).getPropertyValue(prop)
+    }
+
+    const primary = readToken("color", "var(--primary)")
+    const mutedBg = readToken("background-color", "var(--muted)")
+    const border = readToken("border-top-color", "var(--border)")
+    const mutedFg = readToken("color", "var(--muted-foreground)")
+
+    probe.remove()
+
+    return {
+      bulletCount: items.length,
+      bulletSizes: items.map((li) => getComputedStyle(li).fontSize),
+      bulletGaps: items.slice(1).map((li) => getComputedStyle(li).marginTop),
+      bulletMarkers: items.map((li) => {
+        const dot = getComputedStyle(li, "::before")
+
+        return {
+          width: dot.width,
+          height: dot.height,
+          background: dot.getPropertyValue("background-color"),
+        }
+      }),
+      quote: quote
+        ? {
+            background: quoteStyle.getPropertyValue("background-color"),
+            borderWidth: quoteStyle.borderTopWidth,
+            borderColor: quoteStyle.getPropertyValue("border-top-color"),
+            padding: quoteStyle.paddingTop,
+            size: quoteStyle.fontSize,
+            color: quoteStyle.getPropertyValue("color"),
+          }
+        : null,
+      tokens: { primary, mutedBg, border },
+      cite: cite
+        ? {
+            size: getComputedStyle(cite).fontSize,
+            color: getComputedStyle(cite).getPropertyValue("color"),
+            text: cite.textContent?.trim() || "",
+          }
+        : null,
+      citeToken: mutedFg,
+    }
+  })
+
+  assert.ok(plainExtras.bulletCount >= 3, "desktop bullets render")
+
+  for (const size of plainExtras.bulletSizes) {
+    assert.equal(size, "13px", "desktop bullet text is 13px")
+  }
+
+  for (const gap of plainExtras.bulletGaps) {
+    assert.equal(gap, "8px", "desktop bullet gap is 8px")
+  }
+
+  for (const marker of plainExtras.bulletMarkers) {
+    assert.equal(marker.width, "6px", "desktop bullet dot is 6px wide")
+    assert.equal(marker.height, "6px", "desktop bullet dot is 6px tall")
+    assert.equal(marker.background, plainExtras.tokens.primary, "desktop dot uses primary")
+  }
+
+  assert.ok(plainExtras.quote, "desktop quote renders")
+  assert.equal(plainExtras.quote.background, plainExtras.tokens.mutedBg, "desktop quote wash")
+  assert.equal(plainExtras.quote.borderWidth, "1px", "desktop quote border is 1px")
+  assert.equal(plainExtras.quote.borderColor, plainExtras.tokens.border, "desktop quote edge")
+  assert.equal(plainExtras.quote.padding, "12px", "desktop quote pads 12")
+  assert.equal(plainExtras.quote.size, "13px", "desktop quote text is 13px")
+  assert.equal(plainExtras.quote.color, plainExtras.tokens.primary, "desktop quote ink")
+  assert.ok(plainExtras.cite, "desktop cite line renders")
+  assert.equal(plainExtras.cite.size, "11px", "desktop cite is 11px")
+  assert.equal(plainExtras.cite.color, plainExtras.citeToken, "desktop cite is muted")
+  assert.ok(plainExtras.cite.text.startsWith("↳"), "desktop cite keeps its authored prefix")
+
+  await page.goto(`${baseUrl}${expect.route}`, { waitUntil: "networkidle", timeout: 15000 })
   await page.reload({ waitUntil: "networkidle", timeout: 15000 })
 
   const afterReload = await page.evaluate(
@@ -6129,27 +6254,127 @@ async function runPhoneNoteDetail(page, baseUrl, label) {
     const article = document.querySelector(".reader-article")
     const h2 = article?.querySelector("h2")
 
-    const items = Array.from(article?.querySelectorAll("ul li") ?? []).map(
-      (li) => getComputedStyle(li).marginTop,
+    const items = Array.from(
+      article?.querySelectorAll("ul:not(.reader-area-list):not(.reader-group-list) li") ?? [],
     )
+
+    const quote = article?.querySelector("blockquote")
+    const quoteStyle = quote ? getComputedStyle(quote) : null
+    const cite = quote?.querySelector("p + p:last-child") ?? null
+    const dot = (li) => getComputedStyle(li, "::before")
+
+    // Token probes: the same tokens through an identical path, so
+    // equality holds whatever color serialization the browser uses.
+    const probe = document.createElement("span")
+
+    probe.style.position = "absolute"
+    probe.style.visibility = "hidden"
+    document.body.appendChild(probe)
+
+    const readToken = (prop, value) => {
+      probe.style.cssText = `position:absolute;visibility:hidden;${prop}:${value}`
+
+      return getComputedStyle(probe).getPropertyValue(prop)
+    }
+
+    const primary = readToken("color", "var(--primary)")
+    const mutedBg = readToken("background-color", "var(--muted)")
+    const border = readToken("border-top-color", "var(--border)")
+    const mutedFg = readToken("color", "var(--muted-foreground)")
+
+    probe.remove()
 
     return {
       h2Size: h2 ? getComputedStyle(h2).fontSize : "",
-      bulletGaps: items.slice(1),
+      bulletCount: items.length,
+      bulletSizes: items.map((li) => getComputedStyle(li).fontSize),
+      bulletGaps: items.slice(1).map((li) => getComputedStyle(li).marginTop),
+      bulletMarkers: items.map((li) => ({
+        width: dot(li).width,
+        height: dot(li).height,
+        radius: dot(li).borderRadius,
+        background: dot(li).getPropertyValue("background-color"),
+      })),
+      quote: quote
+        ? {
+            background: quoteStyle.getPropertyValue("background-color"),
+            borderWidth: quoteStyle.borderTopWidth,
+            borderColor: quoteStyle.getPropertyValue("border-top-color"),
+            padding: quoteStyle.paddingTop,
+            size: quoteStyle.fontSize,
+            color: quoteStyle.getPropertyValue("color"),
+          }
+        : null,
+      quoteTokens: { primary, mutedBg, border },
+      cite: cite
+        ? {
+            size: getComputedStyle(cite).fontSize,
+            color: getComputedStyle(cite).getPropertyValue("color"),
+            text: cite.textContent?.trim() || "",
+          }
+        : null,
+      citeToken: mutedFg,
     }
   })
 
   assert.equal(plainScale.h2Size, "16px", `${label}: phone h2 is 16px`)
+  assert.ok(plainScale.bulletCount >= 3, `${label}: phone bullets render`)
+
+  for (const size of plainScale.bulletSizes) {
+    assert.equal(size, "13px", `${label}: phone bullet text is 13px`)
+  }
+
+  for (const gap of plainScale.bulletGaps) {
+    assert.equal(gap, "8px", `${label}: phone bullet gap is 8px`)
+  }
+
+  for (const marker of plainScale.bulletMarkers) {
+    assert.equal(marker.width, "6px", `${label}: phone bullet dot is 6px wide`)
+    assert.equal(marker.height, "6px", `${label}: phone bullet dot is 6px tall`)
+    assert.ok(
+      marker.radius === "3px" || marker.radius === "50%" || Number.parseFloat(marker.radius) >= 3,
+      `${label}: phone bullet dot is round (got ${marker.radius})`,
+    )
+    assert.equal(marker.background, plainScale.quoteTokens.primary, `${label}: dot uses primary`)
+  }
+
+  assert.ok(plainScale.quote, `${label}: phone quote renders`)
+  assert.equal(plainScale.quote.background, plainScale.quoteTokens.mutedBg, `${label}: quote wash`)
+  assert.equal(plainScale.quote.borderWidth, "1px", `${label}: phone quote border is 1px`)
+  assert.equal(plainScale.quote.borderColor, plainScale.quoteTokens.border, `${label}: quote edge`)
+  assert.equal(plainScale.quote.padding, "12px", `${label}: phone quote pads 12`)
+  assert.equal(plainScale.quote.size, "13px", `${label}: phone quote text is 13px`)
+  assert.equal(plainScale.quote.color, plainScale.quoteTokens.primary, `${label}: quote ink`)
+  assert.ok(plainScale.cite, `${label}: phone cite line renders`)
+  assert.equal(plainScale.cite.size, "11px", `${label}: phone cite is 11px`)
+  assert.equal(plainScale.cite.color, plainScale.citeToken, `${label}: cite is muted`)
+  assert.ok(plainScale.cite.text.startsWith("↳"), `${label}: cite keeps its authored prefix`)
 
   await goto(page, `${baseUrl}/notes/guide`)
 
-  const codeSize = await page.evaluate(() => {
+  const codeDetail = await page.evaluate(() => {
     const pre = document.querySelector("article.reader-article pre")
+    const style = pre ? getComputedStyle(pre) : null
+    const code = pre?.querySelector("code")
 
-    return pre ? getComputedStyle(pre).fontSize : ""
+    return pre
+      ? {
+          size: style.fontSize,
+          background: style.backgroundColor,
+          padding: style.paddingTop,
+          radius: style.borderRadius,
+          color: style.color,
+          codeSize: code ? getComputedStyle(code).fontSize : "",
+        }
+      : null
   })
 
-  assert.equal(codeSize, "12px", `${label}: phone code block is 12px`)
+  assert.ok(codeDetail, `${label}: phone code block renders`)
+  assert.equal(codeDetail.size, "12px", `${label}: phone code block is 12px`)
+  assert.equal(codeDetail.background, "rgb(10, 10, 10)", `${label}: phone code fill is inverted`)
+  assert.equal(codeDetail.padding, "12px", `${label}: phone code pads 12`)
+  assert.equal(codeDetail.radius, "8px", `${label}: phone code radius is 8`)
+  assert.equal(codeDetail.codeSize, "12px", `${label}: phone code lines are 12px`)
 
   // Orchard note with eleven siblings: head, badge, six rows, expander.
   await goto(page, `${baseUrl}/orchard/note-01`)
@@ -6689,6 +6914,62 @@ test("vault sheet matches the xPZVw bottom-sheet design tokens", async () => {
   assert.match(chrome, /aria-haspopup="dialog"/, "brand button announces the sheet")
   assert.match(chrome, /aria-expanded=\{vaultOpen\}/, "brand button tracks the sheet")
   assert.match(chrome, /<VaultSheet/, "header mounts its own sheet instance")
+})
+
+/**
+ * Article extras fidelity static tokens (parity item 4, design Zk8lN /
+ * pDRO9 / code frame): the washed Quote, the inverted code block, and
+ * the dotted bullets stay in globals.css because MDX body markup
+ * arrives without classes, use tokens with dark variants alongside,
+ * and add no new hook classes or registry changes. No GFM-alert
+ * Callout ships: `> [!NOTE]` renders a plain blockquote with no
+ * styleable hook (see survey.md), so remark-gfm stays transitive-only.
+ */
+test("article extras match the quote/code/bullet design tokens", async () => {
+  const css = fs.readFileSync(path.join(READER_ROOT, "app", "globals.css"), "utf8")
+
+  const quote = css.slice(
+    css.indexOf(".reader-article blockquote"),
+    css.indexOf(".reader-article hr"),
+  )
+
+  assert.match(quote, /background:\s*var\(--muted\)/, "quote wash uses the muted token")
+  assert.match(quote, /border:\s*1px solid var\(--border\)/, "quote edge uses the border token")
+  assert.match(quote, /font-size:\s*13px/, "quote text is 13px from its own rule")
+  assert.match(quote, /p \+ p:last-child/, "cite styles only a trailing second paragraph")
+  assert.match(quote, /font-size:\s*11px/, "cite line is 11px")
+  assert.match(quote, /color:\s*var\(--muted-foreground\)/, "cite uses the muted token")
+
+  const pre = css.slice(css.indexOf(".reader-article pre {"), css.indexOf(".reader-article img"))
+
+  assert.match(pre, /background:\s*#0a0a0a/, "code fill is inverted dark in light mode")
+  assert.match(pre, /border-radius:\s*0\.5rem/, "code radius is 8")
+  assert.match(pre, /font-size:\s*0\.75rem/, "code block is 12px")
+  assert.match(pre, /font-size:\s*1em/, "code lines keep the 12px block size")
+
+  const lists = css.slice(css.indexOf("Bullet Row pDRO9"), css.indexOf(".reader-article a {"))
+
+  assert.match(lists, /list-style:\s*none/, "bullets paint their own dot")
+  assert.match(lists, /li::before/, "dot uses a positioned marker")
+  assert.match(lists, /width:\s*6px/, "dot is 6px wide")
+  assert.match(lists, /height:\s*6px/, "dot is 6px tall")
+  assert.match(lists, /background:\s*var\(--primary\)/, "dot uses the primary token")
+  assert.match(lists, /margin-top:\s*0\.5rem/, "list gaps are 8px on the base rule")
+  assert.match(lists, /li:has\(> input\[type="checkbox"\]\)::before/, "task rows keep no dot")
+
+  assert.match(css, /\.dark \.reader-article pre \{/, "dark code variant stays alongside")
+  assert.ok(
+    !/\.dark \.reader-article blockquote/.test(css),
+    "dark quote needs no override: the base rule is fully token-driven",
+  )
+  assert.ok(
+    !/\.reader-[a-z-]*callout/.test(css),
+    "no callout hook ships without a producing syntax",
+  )
+
+  const pkg = JSON.parse(fs.readFileSync(path.join(READER_ROOT, "package.json"), "utf8"))
+
+  assert.ok(!("remark-gfm" in (pkg.dependencies || {})), "reader adds no unused GFM dependency")
 })
 
 test("synthetic phone journey covers drawer, overflow, keyboard, and refresh", async () => {

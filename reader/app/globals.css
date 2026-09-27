@@ -410,18 +410,50 @@ body {
   margin-block: 1em;
 }
 
-/* Tailwind preflight removes list markers and indent globally. Restore
-   them for Markdown body lists only. Area and group navigation lists live
-   inside the article on home and folder pages, so they are excluded here
-   and re-asserted marker-free below with higher specificity. */
+/* Generated-markup hooks live here, not in utilities: MDX body
+   markup (ul/ol/li) arrives without classes, so no utility can target
+   it. Bullets follow design Bullet Row pDRO9: 13px text with a 6px
+   round dot. A native ::marker cannot hit the 6px geometry (its disc
+   scales with font size), so the lists go marker-free and paint the
+   dot via li::before instead. Gaps are 8px on both viewports per the
+   h2 section spec, set on the base rule itself (not the phone query).
+   Task items keep no dot. Area/group navigation lists are excluded:
+   they own their marker-free treatment below. */
 .reader-article ul:not(.reader-area-list):not(.reader-group-list) {
-  list-style: disc outside;
+  list-style: none;
   padding-left: 1.5rem;
 }
 
 .reader-article ol:not(.reader-area-list):not(.reader-group-list) {
   list-style: decimal outside;
   padding-left: 1.5rem;
+}
+
+.reader-article ul:not(.reader-area-list):not(.reader-group-list) li,
+.reader-article ol:not(.reader-area-list):not(.reader-group-list) li {
+  /* 13px on both viewports from this rule itself: the phone query
+     drops the article to 14px, so inheritance alone would miss. */
+  font-size: 13px;
+  position: relative;
+}
+
+/* 6px dot marker, #171717 via --primary so dark mode flips with the
+   token. Offset sits the dot inside the kept 1.5rem indent. */
+.reader-article ul:not(.reader-area-list):not(.reader-group-list) li::before {
+  content: "";
+  position: absolute;
+  left: -1rem;
+  top: 0.55em;
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: var(--primary);
+}
+
+.reader-article
+  ul:not(.reader-area-list):not(.reader-group-list)
+  li:has(> input[type="checkbox"])::before {
+  content: none;
 }
 
 .reader-article ul.reader-area-list,
@@ -438,7 +470,7 @@ body {
 
 .reader-article ul:not(.reader-area-list):not(.reader-group-list) li + li,
 .reader-article ol:not(.reader-area-list):not(.reader-group-list) li + li {
-  margin-top: 0.25rem;
+  margin-top: 0.5rem;
 }
 
 /* Article links stay clearly identifiable: dark text with a visible
@@ -485,14 +517,23 @@ body {
   vertical-align: top;
 }
 
+/* Generated-markup hook (same rationale as the list rules above):
+   MDX fenced code arrives as bare pre/code without classes. Code
+   follows the design frame: pad 12, radius 8, dark fill, 12px lines.
+   The fill is hardcoded #0a0a0a on purpose — no light token is
+   near-black (it matches the .dark body precedent below) because the
+   design block is inverted dark in LIGHT mode too. Code text stays
+   hardcoded #f5f5f5 in both modes for the same reason. Border and
+   12px size come from tokens/base so both viewports align. */
 .reader-article pre {
   max-width: 100%;
   overflow-x: auto;
   padding: 0.75rem;
-  background: #f5f5f5;
-  border: 1px solid #e5e5e5;
-  border-radius: 6px;
-  font-size: 0.875rem;
+  background: #0a0a0a;
+  color: #f5f5f5;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  font-size: 0.75rem;
   line-height: 1.55;
 }
 
@@ -513,6 +554,9 @@ body {
   background: transparent;
   border: 0;
   padding: 0;
+  /* 12px lines: the generic code rule below shrinks to 0.9em, which
+     would drop block lines to ~10.8px against the 12px pre. */
+  font-size: 1em;
 }
 
 .reader-article img {
@@ -521,11 +565,35 @@ body {
   border-radius: 6px;
 }
 
+/* Generated-markup hook (same rationale as the list rules above):
+   MDX blockquotes arrive without classes. Quote follows design
+   component Zk8lN: washed bordered block, pad 12, inner gap 6, 13px
+   text. Token map: wash #fafafa -> --muted (nearest grayscale wash;
+   no #fafafa token exists), border #e5e5e5 -> --border, text #171717
+   -> --primary, cite muted -> --muted-foreground. Tokens flip in dark
+   mode, so no separate dark palette is needed. 13px holds on phones
+   from this rule itself, not the phone query. The ↳ prefix is
+   authored content, never markup. The cite pattern styles a trailing
+   paragraph only when the quote holds two or more paragraphs
+   (p + p:last-child matches nothing on single-paragraph quotes). */
 .reader-article blockquote {
   margin: 1.5em 0;
-  padding: 0.25rem 0 0.25rem 1rem;
-  border-left: 3px solid #d4d4d4;
-  color: #525252;
+  padding: 0.75rem;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  color: var(--primary);
+  font-size: 13px;
+  display: grid;
+  gap: 0.375rem;
+}
+
+.reader-article blockquote p {
+  margin: 0;
+}
+
+.reader-article blockquote p + p:last-child {
+  font-size: 11px;
+  color: var(--muted-foreground);
 }
 
 .reader-article hr {
@@ -1359,9 +1427,11 @@ body {
 }
 
 .dark .reader-article pre {
-  background: #171717;
+  /* Inverted block stays near-black in dark mode too; only the edge
+     follows the dark surface line. */
+  background: #0a0a0a;
   border-color: #262626;
-  color: #e5e5e5;
+  color: #f5f5f5;
 }
 
 .dark .reader-article p code,
@@ -1369,11 +1439,6 @@ body {
   background: #262626;
   border-color: #404040;
   color: #f5f5f5;
-}
-
-.dark .reader-article blockquote {
-  border-left-color: #525252;
-  color: #d4d4d4;
 }
 
 .dark .reader-article hr {
