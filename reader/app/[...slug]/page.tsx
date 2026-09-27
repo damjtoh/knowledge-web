@@ -1,17 +1,16 @@
 import type { Metadata } from "next"
 import { notFound } from "next/navigation"
-import { Fragment } from "react"
 import { source } from "../../lib/source"
 import { getSiteMetadata, canonicalUrl } from "../../lib/site"
 import { docTitle } from "../../lib/title"
 import MetaLine, { type MetaLineData } from "../../components/last-edited"
+import { NoteCrumbs } from "../../components/breadcrumbs"
 import OtherNotes, { type SiblingNote } from "../../components/other-notes"
 import { readMinutesFromData } from "../../lib/reading-time"
 import {
   buildReaderNavigation,
   getDirectNotes,
   getChildFolders,
-  type Crumb,
   type NavigationNode,
 } from "../../lib/navigation"
 
@@ -88,30 +87,6 @@ function siblingNotes(roots: NavigationNode[], node: NavigationNode): SiblingNot
   }
 
   return { parent, siblings }
-}
-
-/**
- * Phone-only body crumb trail for note pages (design screen pWNyV):
- * 12px muted slash-separated crumbs above the body. A plain paragraph,
- * not a second Breadcrumb landmark, so the header keeps the single
- * `Breadcrumb` landmark the static checks assert; md:hidden keeps every
- * desktop viewport pixel-identical.
- */
-function NoteCrumbs({ crumbs }: { crumbs: Crumb[] }) {
-  return (
-    <p className="reader-note-crumbs md:hidden">
-      {crumbs.map((crumb, index) => (
-        <Fragment key={`${crumb.title}-${index}`}>
-          {index > 0 ? <span aria-hidden="true"> / </span> : null}
-          {crumb.url && !crumb.isCurrent ? (
-            <a href={crumb.url}>{crumb.title}</a>
-          ) : (
-            <span>{crumb.title}</span>
-          )}
-        </Fragment>
-      ))}
-    </p>
-  )
 }
 
 /**
