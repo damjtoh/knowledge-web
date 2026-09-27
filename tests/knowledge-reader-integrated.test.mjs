@@ -2749,7 +2749,7 @@ function metaLineFromHtml(html) {
   const article = html.slice(articleStart, html.indexOf("</article>", articleStart))
 
   const divMatch = article.match(
-    /<div[^>]*class="[^"]*text-2xs[^"]*text-muted-foreground[^"]*"[^>]*>([\s\S]*?)<\/div>/,
+    /<div[^>]*class="[^"]*items-center gap-1\.5 text-2xs text-muted-foreground[^"]*"[^>]*>([\s\S]*?)<\/div>/,
   )
 
   if (!divMatch) return null
@@ -2889,8 +2889,8 @@ async function runStaticExportChecks({
     ["note", "folder", "folder", "folder"],
     "folder and note cards carry distinct cues",
   )
-  assert.match(home, /Folder · 12 items/, "flat folder count is accurate")
-  assert.match(home, /Folder · 2 items/, "authored folder count is accurate")
+  assert.match(home, /12 items/, "flat folder count is accurate")
+  assert.match(home, /2 items/, "authored folder count is accurate")
 
   const section = areaListSection(home)
 
@@ -2898,15 +2898,15 @@ async function runStaticExportChecks({
     m[1].trim(),
   )
 
-  assert.ok(metas.length > 0, "folder/note cards carry a kind meta line")
+  assert.ok(metas.length > 0, "folder/note cards carry a count meta line")
 
   for (const meta of metas) {
-    assert.match(
-      meta,
-      /^(Folder|Note)( · \d+ items?)?$/,
-      `card meta stays kind plus count: ${meta}`,
-    )
+    // Parity item 7 (D3O3k6): the desktop meta is count-only and the phone
+    // row already was; only the phone note root keeps its kind word.
+    assert.match(meta, /^(\d+ items?|Note)$/, `card meta stays count-only: ${meta}`)
   }
+
+  assert.ok(!section.includes("Folder ·"), "no kind-prefixed card meta remains")
 
   assert.ok(!home.includes("Hidden Draft"), "routes outside navigation never become cards")
   assert.ok(!/href="\/"/.test(section), "no Home self-link card")
@@ -2921,9 +2921,25 @@ async function runStaticExportChecks({
   )
   assert.equal(
     countOccurrences(section, "lucide-chevron-right"),
-    links.length,
-    "every home card carries a phone-only trailing chevron",
+    links.length * 2,
+    "desktop and phone rows each carry a trailing chevron",
   )
+  assert.equal(
+    countOccurrences(section, ">Open<"),
+    links.length,
+    "every desktop card carries the Open action",
+  )
+  assert.equal(
+    countOccurrences(section, "size-10"),
+    links.length,
+    "every desktop card carries the 40px icon box",
+  )
+  assert.equal(
+    countOccurrences(section, "size-4.5"),
+    links.length,
+    "every desktop icon renders at 18px",
+  )
+  assert.ok(section.includes("text-2xs"), "desktop count meta uses the 11px token")
   assert.match(section, />12 items</, "phone card meta is count-only for the flat folder")
   assert.match(section, />2 items</, "phone card meta is count-only for the authored folder")
   assert.ok(
@@ -3391,12 +3407,35 @@ async function runStaticExportChecks({
     "eleven siblings page to six rows before expanding",
   )
   assert.ok(orchardSection.includes("Show all 11 notes"), "expander foot offers the rest")
+  // Parity item 7 (a4MmZf): orchard siblings carry no updated_at, so their
+  // rows render no relative-time meta.
+  assert.equal(
+    countOccurrences(orchardSection.split("</section>")[0], "<time"),
+    0,
+    "rows without updated_at omit the meta span",
+  )
 
   const guideNote = readOut(outDir, "notes/guide.html")
 
   assert.ok(guideNote.includes("reader-note-crumbs"), "guide carries the phone trail")
   assert.ok(guideNote.includes("Other notes in Notes"), "guide heads its siblings")
   assert.ok(!guideNote.includes("Show all"), "six siblings need no expander foot")
+
+  // Only the two timestamped siblings (Valid Zulu, Valid Offset) render a
+  // relative-time meta; date-only, impossible, and missing stamps omit it.
+  const guideSection = guideNote
+    .slice(guideNote.indexOf("Other notes in Notes"))
+    .split("</section>")[0]
+
+  const guideTimes = [...guideSection.matchAll(/<time[^>]*>([^<]*)</g)].map((m) => m[1].trim())
+
+  assert.equal(guideTimes.length, 2, "timestamped siblings render a relative meta")
+  assert.ok(guideSection.includes("text-2xs"), "sibling meta uses the 11px muted token")
+
+  for (const label of guideTimes) {
+    assert.match(label, /ago|just now/, `sibling meta stays relative: ${label}`)
+  }
+
   assert.ok(garden.includes('href="/"'), "folder trail links Home")
   assert.ok(standalone.includes("Lone Pine"), "root note shows its authored title")
 
@@ -3521,9 +3560,10 @@ async function runStaticExportChecks({
 
 /**
  * Home card slice on desktop, folded from the retired home-cards suite:
- * ordered links, distinct folder/note cues, accurate counts, kind-only
- * meta, hidden-route exclusion, Home self-link omission, containment,
- * and touch targets.
+ * ordered links, distinct folder/note cues, accurate count-only metas
+ * (parity item 7, D3O3k6: 40px box, 18px icon, 16px title, 11px count,
+ * Open plus chevron), hidden-route exclusion, Home self-link omission,
+ * containment, and touch targets.
  */
 async function runHomeCardsDetail(page, baseUrl, expect) {
   await page.goto(`${baseUrl}/`, { waitUntil: "networkidle", timeout: 15000 })
@@ -3569,22 +3609,73 @@ async function runHomeCardsDetail(page, baseUrl, expect) {
     ),
   )
 
-  assert.ok(metas.length > 0, "cards carry a kind meta line")
+  assert.ok(metas.length > 0, "cards carry a count meta line")
 
   for (const meta of metas) {
-    assert.match(
-      meta,
-      /^(Folder|Note)( · \d+ items?)?$/,
-      `card meta stays kind plus count: ${meta}`,
-    )
+    assert.match(meta, /^(\d+ items?|Note)$/, `card meta stays count-only: ${meta}`)
   }
 
   const cardText = cards.map((c) => c.text).join("\n")
-  assert.match(cardText, /Folder · 12 items/, "flat folder count is accurate")
-  assert.match(cardText, /Folder · 2 items/, "authored folder count is accurate")
+  assert.match(cardText, /12 items/, "flat folder count is accurate")
+  assert.match(cardText, /2 items/, "authored folder count is accurate")
+  assert.ok(!cardText.includes("Folder ·"), "no kind-prefixed card meta remains")
 
   // Mobile port home-phone: the phone-only Home crumb and phone-only card
-  // row stay hidden on desktop, so the desktop meta keeps its kind prefix.
+  // row stay hidden on desktop. Parity item 7 (D3O3k6): the visible desktop
+  // card keeps the 40px muted icon box with an 18px icon, the 16px title
+  // (no 15px scale token exists, so text-base stands in), the 11px
+  // count-only meta, and the trailing 12px Open plus 14px chevron. Note
+  // roots carry no count, so their desktop card renders no meta.
+  const desktopCards = await page.evaluate(() => {
+    const visible = (root, selector) =>
+      Array.from(root.querySelectorAll(selector)).filter(
+        (el) => el.getBoundingClientRect().height > 0,
+      )
+
+    return Array.from(document.querySelectorAll(".reader-area-list a")).map((a) => {
+      const header = a.querySelector(".reader-home-card-header")
+      const box = header?.querySelector("span.size-10") ?? null
+      const titles = visible(header ?? a, '[data-slot="card-title"]')
+      const metas = visible(header ?? a, '[data-slot="card-description"]')
+      const chevrons = visible(header ?? a, "svg.lucide-chevron-right")
+
+      const open = Array.from(header?.querySelectorAll("span") ?? []).find(
+        (el) =>
+          el.textContent?.trim() === "Open" && !el.querySelector("svg") && el.children.length === 0,
+      )
+
+      const boxRect = box?.getBoundingClientRect()
+
+      return {
+        kind: a.getAttribute("data-kind") || "",
+        box: boxRect ? { width: boxRect.width, height: boxRect.height } : null,
+        icon: box?.querySelector("svg")?.getBoundingClientRect().width ?? 0,
+        titleSize: titles[0] ? getComputedStyle(titles[0]).fontSize : "",
+        meta: metas[0]?.textContent?.trim() ?? null,
+        metaSize: metas[0] ? getComputedStyle(metas[0]).fontSize : "",
+        openSize: open ? getComputedStyle(open).fontSize : "",
+        chevron: chevrons.length,
+        chevronSize: chevrons[0]?.getBoundingClientRect().width ?? 0,
+      }
+    })
+  })
+
+  for (const card of desktopCards) {
+    assert.deepEqual(card.box, { width: 40, height: 40 }, "desktop icon box is 40px")
+    assert.equal(card.icon, 18, "desktop icon is 18px")
+    assert.equal(card.titleSize, "16px", "desktop title is 16px (no 15px token exists)")
+    assert.equal(card.openSize, "12px", "desktop Open action is 12px")
+    assert.equal(card.chevron, 1, "desktop card carries one trailing chevron")
+    assert.equal(card.chevronSize, 14, "desktop chevron is 14px")
+
+    if (card.kind === "folder") {
+      assert.match(card.meta ?? "", /^\d+ items?$/, "desktop folder meta is count-only")
+      assert.equal(card.metaSize, "11px", "desktop count meta is 11px")
+    } else {
+      assert.equal(card.meta, null, "desktop note card renders no guessed meta")
+    }
+  }
+
   const desktopCrumbDisplay = await page.evaluate(() => {
     const el = Array.from(document.querySelectorAll(".reader-article > span")).find(
       (node) => node.textContent?.trim() === "Home",
@@ -4007,6 +4098,14 @@ async function runDirectNoteDetail(page, baseUrl, expect) {
       otherNotesFoot: !!otherNotes?.querySelector("button"),
       otherNotesRowHeight:
         otherNotes?.querySelector(":scope ul a")?.getBoundingClientRect().height || 0,
+      // Parity item 7 (a4MmZf): rows for the two timestamped siblings carry
+      // an 11px relative-time meta; every other row omits the span.
+      otherNotesMetas: Array.from(otherNotes?.querySelectorAll(":scope ul a time") ?? []).map(
+        (t) => ({
+          text: t.textContent?.trim() || "",
+          size: getComputedStyle(t).fontSize,
+        }),
+      ),
     }
   })
 
@@ -4057,6 +4156,15 @@ async function runDirectNoteDetail(page, baseUrl, expect) {
     Math.abs(note.otherNotesRowHeight - 36) <= 2,
     `desktop sibling rows are 36px-ish (got ${note.otherNotesRowHeight}px)`,
   )
+  // The first row is the untimestamped long-title note, so it stays
+  // single-line at the 36px read above; only Valid Zulu and Valid Offset
+  // carry a relative meta.
+  assert.equal(note.otherNotesMetas.length, 2, "timestamped siblings render a relative meta")
+
+  for (const meta of note.otherNotesMetas) {
+    assert.match(meta.text, /ago|just now/, `sibling meta stays relative: ${meta.text}`)
+    assert.equal(meta.size, "11px", "sibling meta is 11px")
+  }
 
   // Article extras fidelity (parity item 4, design Zk8lN/pDRO9/code
   // frame): quote wash/border/pad/type, bullet text/dots/gaps, and the
@@ -5940,8 +6048,8 @@ async function runPhoneOfflinePlacement(page, baseUrl, label) {
 
 /**
  * Home card slice at phone width, folded from the retired home-cards
- * suite: ordered links, distinct folder/note cues, kind-prefixed desktop
- * meta with accurate counts, count-only phone meta, hidden-route
+ * suite: ordered links, distinct folder/note cues, count-only desktop and
+ * phone metas with accurate counts (parity item 7, D3O3k6), hidden-route
  * exclusion, no Home self-link, containment, touch targets, phone body
  * measurements from design screen I1z3qM, and real card navigation with
  * Back.
@@ -5993,19 +6101,18 @@ async function runPhoneCardsDetail(page, baseUrl, expect, label) {
     ),
   )
 
-  assert.ok(metas.length > 0, `${label}: cards carry a kind meta line`)
+  assert.ok(metas.length > 0, `${label}: cards carry a count meta line`)
 
   for (const meta of metas) {
-    assert.match(
-      meta,
-      /^(Folder|Note)( · \d+ items?)?$/,
-      `${label}: card meta stays kind plus count`,
-    )
+    // Parity item 7 (D3O3k6): desktop and phone metas are count-only; only
+    // the phone note root keeps its kind word.
+    assert.match(meta, /^(\d+ items?|Note)$/, `${label}: card meta stays count-only`)
   }
 
   const cardText = cards.map((c) => c.text).join("\n")
-  assert.match(cardText, /Folder · 12 items/, `${label}: flat folder count is accurate`)
-  assert.match(cardText, /Folder · 2 items/, `${label}: authored folder count is accurate`)
+  assert.match(cardText, /12 items/, `${label}: flat folder count is accurate`)
+  assert.match(cardText, /2 items/, `${label}: authored folder count is accurate`)
+  assert.ok(!cardText.includes("Folder ·"), `${label}: no kind-prefixed card meta remains`)
 
   // Mobile port home-phone: the phone body matches design screen I1z3qM —
   // 12px muted Home crumb, 26px h1, [20, 16, 32, 16] body padding, and
@@ -6492,6 +6599,9 @@ async function runPhoneNoteDetail(page, baseUrl, label) {
         icon: !!a.querySelector("svg"),
         iconSize: a.querySelector("svg")?.getBoundingClientRect().width || 0,
         height: a.getBoundingClientRect().height,
+        // Parity item 7 (a4MmZf): orchard siblings carry no updated_at, so
+        // no row renders a relative-time meta.
+        meta: !!a.querySelector("time"),
       })),
       footText: foot?.textContent?.trim() || null,
       footSize: foot ? getComputedStyle(foot).fontSize : "",
@@ -6514,6 +6624,7 @@ async function runPhoneNoteDetail(page, baseUrl, label) {
     assert.ok(row.icon, `${label}: row carries a file icon`)
     assert.equal(row.iconSize, 14, `${label}: file icon is 14px`)
     assert.ok(row.height >= 44, `${label}: phone row touch height is ${row.height}px`)
+    assert.equal(row.meta, false, `${label}: row without updated_at omits the meta`)
   }
 
   assert.equal(siblings.footText, "Show all 11 notes", `${label}: foot offers the rest`)
@@ -7197,6 +7308,57 @@ test("search dialog matches the MnMak design tokens", async () => {
   const kbd = fs.readFileSync(path.join(READER_ROOT, "components", "ui", "kbd.tsx"), "utf8")
 
   assert.ok(!kbd.includes("reader-search"), "registry kbd stays hook-free")
+})
+
+/**
+ * Home card and sibling-row fidelity static tokens (parity item 7, design
+ * D3O3k6 / a4MmZf): the desktop card row utilities, the count-only meta,
+ * the Open action, the serializable sibling stamp, and no arbitrary values
+ * or registry edits. The browser journeys prove the computed numbers; this
+ * test pins the source contract.
+ */
+test("home cards and sibling rows match the D3O3k6/a4MmZf design tokens", async () => {
+  const page = fs.readFileSync(path.join(READER_ROOT, "app", "page.tsx"), "utf8")
+
+  assert.match(page, /size-10/, "desktop icon box is 40px")
+  assert.match(page, /rounded-lg bg-muted/, "desktop box keeps the muted 8px read")
+  assert.match(page, /size-4\.5/, "desktop icon is 18px")
+  assert.match(
+    page,
+    /reader-home-card-meta text-2xs text-muted-foreground/,
+    "desktop count meta is 11px muted",
+  )
+  assert.match(page, />Open</, "desktop row carries the Open action")
+  assert.match(page, /text-xs text-muted-foreground/, "Open action is 12px muted")
+  assert.ok(!page.includes("Folder ·"), "desktop meta is count-only")
+  assert.ok(!/rounded-\[|min-h-\[|text-\[|w-\[|h-\[|p[xy]?-\[/.test(page), "no arbitrary values")
+  assert.match(page, /size-9/, "phone icon box stays 36px")
+  assert.match(page, /truncate text-sm font-semibold/, "phone title stays 14px semibold")
+
+  const notes = fs.readFileSync(path.join(READER_ROOT, "components", "other-notes.tsx"), "utf8")
+
+  assert.match(notes, /relativeUpdatedAt/, "sibling meta formats the serializable stamp")
+  assert.match(notes, /updatedAt\?: string/, "only ISO strings cross the client boundary")
+  assert.match(notes, /truncate text-13/, "sibling label is 13px")
+  assert.match(notes, /truncate text-2xs text-muted-foreground/, "sibling meta is 11px muted")
+  assert.ok(!/rounded-\[|min-h-\[|text-\[|w-\[|h-\[|p[xy]?-\[/.test(notes), "no arbitrary values")
+
+  const route = fs.readFileSync(path.join(READER_ROOT, "app", "[...slug]", "page.tsx"), "utf8")
+
+  assert.match(route, /siblingNoteFor/, "both sibling loops share the serializable mapping")
+  assert.match(route, /note\.updatedAt = updatedAt/, "sibling rows carry the edit stamp")
+  assert.match(route, /toISOString/, "Date stamps normalize to ISO server-side")
+
+  const config = fs.readFileSync(path.join(PUBLISHER_ROOT, "oxlint.config.ts"), "utf8")
+
+  assert.ok(config.includes("^CardDescription$"), "lint contracts the count-meta restyle")
+
+  const registryCard = fs.readFileSync(
+    path.join(READER_ROOT, "components", "ui", "card.tsx"),
+    "utf8",
+  )
+
+  assert.ok(!registryCard.includes("reader-home"), "registry card stays hook-free")
 })
 
 test("synthetic phone journey covers drawer, overflow, keyboard, and refresh", async () => {

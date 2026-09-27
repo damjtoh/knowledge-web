@@ -76,13 +76,50 @@ interface SiblingNotes {
   siblings: SiblingNote[]
 }
 
+/**
+ * Serializable sibling stamp: the child's frontmatter `updated_at`
+ * normalized to an ISO string (Date values become ISO). Missing,
+ * non-string, and invalid stamps stay absent here; the client omits the
+ * meta span for those rows instead of guessing a date. Only strings cross
+ * the server/client boundary, never page objects or functions.
+ */
+function siblingUpdatedAt(
+  data: { updated_at?: string | Date | null } | undefined,
+): string | undefined {
+  const raw = data?.updated_at
+
+  if (raw instanceof Date) return raw.toISOString()
+
+  if (raw === null || raw === undefined) return undefined
+
+  // String(x) is identical to x only for string primitives, so this
+  // narrows to string without a runtime typeof check (same idiom as
+  // parseUpdatedAt in lib/last-edited.ts).
+  const text = String(raw)
+
+  // SAFETY: the String-identity check above established raw is a string primitive.
+  if ((text as unknown) !== raw) return undefined
+
+  return text
+}
+
+/** Sibling row for a tree child: title, route, and optional edit stamp. */
+function siblingNoteFor(child: NavigationNode): SiblingNote {
+  const note: SiblingNote = { title: child.title, url: child.url }
+  const updatedAt = siblingUpdatedAt(child.page?.data)
+
+  if (updatedAt !== undefined) note.updatedAt = updatedAt
+
+  return note
+}
+
 function siblingNotes(roots: NavigationNode[], node: NavigationNode): SiblingNotes {
   const parent = findParentNode(roots, node)
   const siblings: SiblingNote[] = []
 
   if (parent) {
     for (const child of getDirectNotes(parent)) {
-      if (child.url !== node.url) siblings.push({ title: child.title, url: child.url })
+      if (child.url !== node.url) siblings.push(siblingNoteFor(child))
     }
   }
 
@@ -235,7 +272,7 @@ export default async function FolderOrNotePage({ params }: { params: Promise<Not
 
   if (ancestor) {
     for (const child of getDirectNotes(ancestor)) {
-      if (child.url !== page.url) siblings.push({ title: child.title, url: child.url })
+      if (child.url !== page.url) siblings.push(siblingNoteFor(child))
     }
   }
 

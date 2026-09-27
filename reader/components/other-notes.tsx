@@ -2,14 +2,23 @@
 
 import { useState } from "react"
 import { ChevronRight, File } from "lucide-react"
+import { relativeUpdatedAt } from "../lib/last-edited"
 
 /** Rows shown before the expander foot reveals the rest. */
 const INITIAL_NOTES = 6
 
-/** Serializable sibling fields: page objects carry functions and must not cross the server/client boundary. */
+/**
+ * Serializable sibling fields: page objects carry functions and must not
+ * cross the server/client boundary. `updatedAt` is the sibling's
+ * frontmatter stamp normalized server-side to an ISO string (Date values
+ * become ISO; missing or non-string values stay absent), so only strings
+ * cross; the client formats the relative label and omits the meta when the
+ * stamp is missing or invalid.
+ */
 export interface SiblingNote {
   title: string
   url: string
+  updatedAt?: string
 }
 
 /**
@@ -46,14 +55,31 @@ export default function OtherNotes({
         </span>
       </div>
       <ul className="reader-group-list">
-        {visible.map((sibling) => (
-          <li key={sibling.url}>
-            <a href={sibling.url}>
-              <File aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
-              <span className="min-w-0 flex-1 truncate">{sibling.title}</span>
-            </a>
-          </li>
-        ))}
+        {visible.map((sibling) => {
+          // Relative meta renders client-side from the serializable stamp
+          // (design a4MmZf: 11px muted under the 13px label); a missing or
+          // invalid stamp yields no meta span instead of a guessed date.
+          const relative = relativeUpdatedAt(sibling.updatedAt ?? undefined)
+
+          return (
+            <li key={sibling.url}>
+              <a href={sibling.url}>
+                <File aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
+                <span className="grid min-w-0 flex-1 gap-0.5">
+                  <span className="truncate text-13">{sibling.title}</span>
+                  {relative !== null ? (
+                    <time
+                      dateTime={relative.isoDatetime}
+                      className="truncate text-2xs text-muted-foreground"
+                    >
+                      {relative.label}
+                    </time>
+                  ) : null}
+                </span>
+              </a>
+            </li>
+          )
+        })}
       </ul>
       {hiddenCount > 0 ? (
         <button

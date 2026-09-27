@@ -214,14 +214,21 @@ const config: OxlintConfig = {
               // Phone-only home card row reuses the registry title and
               // description slots without the desktop hook classes (hooks
               // stay unique per card for the desktop selectors), carrying
-              // the phone title and count-only meta type sizes.
+              // the phone title and count-only meta type sizes. The desktop
+              // D3O3k6 row adds the 11px count-only meta token below.
               {
                 pattern: "^CardTitle$",
                 allow: ["reader-home-card-title", "truncate", "text-sm", "font-semibold"],
               },
               {
                 pattern: "^CardDescription$",
-                allow: ["reader-home-card-meta", "truncate", "text-xs", "text-muted-foreground"],
+                allow: [
+                  "reader-home-card-meta",
+                  "truncate",
+                  "text-xs",
+                  "text-2xs",
+                  "text-muted-foreground",
+                ],
               },
               // Sidebar footer owns offline plus appearance layout
               // (border, scroll cap, safe-area reachability). The registry

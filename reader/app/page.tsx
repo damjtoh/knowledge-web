@@ -24,8 +24,9 @@ function isHomeRoot(node: NavigationNode): boolean {
 }
 
 /**
- * Accurate immediate-child count for a folder card, shown only when
- * meaningful: folders with at least one direct child. Notes never carry
+ * Accurate immediate-child count for a folder card, shown as the only
+ * desktop meta (design D3O3k6 carries no kind prefix and no description
+ * data exists): folders with at least one direct child. Notes never carry
  * a count and no description is invented.
  */
 function childCountText(node: NavigationNode): string | null {
@@ -34,10 +35,6 @@ function childCountText(node: NavigationNode): string | null {
   if (node.children.length === 0) return null
 
   return node.children.length === 1 ? "1 item" : `${node.children.length} items`
-}
-
-function kindText(node: NavigationNode): string {
-  return node.isFolder ? "Folder" : "Note"
 }
 
 /**
@@ -93,7 +90,6 @@ export default async function HomePage() {
           {cards.map((root) => {
             const Icon = root.isFolder ? Folder : File
             const count = childCountText(root)
-            const kind = kindText(root)
 
             return (
               <li key={root.url} className="reader-home-card-item">
@@ -102,21 +98,38 @@ export default async function HomePage() {
                   className="reader-home-card-link"
                   data-kind={root.isFolder ? "folder" : "note"}
                 >
-                  {/* Desktop card structure is unchanged. The phone row is a
-                      separate span set (no unlayered CSS targets it, so the
-                      hidden/max-md toggle and every inner utility applies):
-                      36px muted icon box, stacked title plus count-only meta,
-                      and a trailing chevron. Card padding and row layout switch
-                      to the design row below 768px only. */}
+                  {/* Desktop card follows design D3O3k6 "Vault Area Row /
+                      Desktop": a row of 40px muted icon box, stacked title
+                      plus count-only meta, and a trailing Open plus chevron.
+                      Padding 16 comes from the registry Card/CardHeader
+                      tokens (no p-4: it would double the header inset); the
+                      title stays 16px via the CardTitle default (no 15px
+                      scale token exists). The phone row below is unchanged
+                      (36px box, 14px title, count-only 12px meta, chevron).
+                      Note roots carry no count, so the desktop meta omits
+                      itself there instead of guessing. */}
                   <Card className="reader-home-card max-md:flex-row max-md:items-center max-md:gap-3 max-md:p-3">
                     <CardHeader className="reader-home-card-header max-md:hidden">
                       <span className="reader-home-card-row">
-                        <Icon aria-hidden="true" />
-                        <CardTitle className="reader-home-card-title">{root.title}</CardTitle>
+                        <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted">
+                          <Icon aria-hidden="true" className="size-4.5" />
+                        </span>
+                        <span className="grid min-w-0 flex-1 gap-0.5">
+                          <CardTitle className="reader-home-card-title">{root.title}</CardTitle>
+                          {count ? (
+                            <CardDescription className="reader-home-card-meta text-2xs text-muted-foreground">
+                              {count}
+                            </CardDescription>
+                          ) : null}
+                        </span>
+                        <span className="flex shrink-0 items-center gap-1">
+                          <span className="text-xs text-muted-foreground">Open</span>
+                          <ChevronRight
+                            aria-hidden="true"
+                            className="size-3.5 shrink-0 text-muted-foreground"
+                          />
+                        </span>
                       </span>
-                      <CardDescription className="reader-home-card-meta">
-                        {count ? `${kind} · ${count}` : kind}
-                      </CardDescription>
                     </CardHeader>
                     <span className="hidden min-w-0 flex-1 items-center gap-3 max-md:flex">
                       <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted">
@@ -127,7 +140,7 @@ export default async function HomePage() {
                           {root.title}
                         </CardTitle>
                         <CardDescription className="truncate text-xs text-muted-foreground">
-                          {count ?? kind}
+                          {count ?? (root.isFolder ? "Folder" : "Note")}
                         </CardDescription>
                       </span>
                       <ChevronRight

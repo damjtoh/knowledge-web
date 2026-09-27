@@ -673,6 +673,14 @@ body {
   color: inherit;
 }
 
+/* Home cards are navigation rows, not prose links: the design keeps
+   card titles plain on both viewports (I1z3qM / D3O3k6). The unlayered
+   article-link rule above has higher specificity than a bare class,
+   so this exception must match it. */
+.reader-article .reader-home-card-link {
+  text-decoration: none;
+}
+
 .reader-home-card-link:hover .reader-home-card-title {
   text-decoration: underline;
   text-underline-offset: 3px;
@@ -690,19 +698,21 @@ body {
   max-width: 100%;
 }
 
+/**
+ * Desktop home card row (design D3O3k6 "Vault Area Row / Desktop"): 40px
+ * muted icon box, stacked title plus count-only meta, and a trailing Open
+ * plus chevron with 12px gaps. Icon, title, meta, and trailing sizes live
+ * in utilities on the markup (the unlayered svg rule that sized the old
+ * bare icon is gone: it would beat the size-4.5 utility). Padding 16
+ * comes from the registry Card/CardHeader tokens, so no padding lives
+ * here.
+ */
 .reader-home-card-row {
   display: flex;
-  align-items: flex-start;
-  gap: 0.5rem;
+  align-items: center;
+  gap: 0.75rem;
   min-width: 0;
   max-width: 100%;
-}
-
-.reader-home-card-row svg {
-  flex-shrink: 0;
-  width: 1.1rem;
-  height: 1.1rem;
-  margin-top: 0.15rem;
 }
 
 .reader-home-card-title {
@@ -828,14 +838,10 @@ body {
     max-width: 100%;
   }
 
-  /* Phone home cards are navigation rows, not prose links: the design
-     (I1z3qM) keeps card titles plain. The unlayered article-link rule
-     above has higher specificity than a bare class, so the exception
-     must match it. */
-  .reader-article .reader-home-card-link {
-    text-decoration: none;
-  }
-
+  /* Phone home cards are navigation rows, not prose links. The plain
+     read lives at the base .reader-home-card-link rule below: the same
+     specificity fight applies on desktop, where the design keeps the
+     card titles plain as well. */
   .reader-article h1 {
     /* Note pages take the 24px/700 phone title from design screen pWNyV.
        The homepage keeps its 26px value below via the card-list hook. */
