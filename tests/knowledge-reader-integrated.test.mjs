@@ -1353,22 +1353,74 @@ async function runSearchDialog(page, baseUrl, expect) {
   await page.evaluate(() => document.querySelector(".reader-search-sidebar")?.click())
   await dialogOpen(page)
 
-  const dialogMeta = await page.evaluate(() => ({
-    title:
-      document
-        .querySelector('[data-slot="dialog-content"] [data-slot="dialog-title"]')
-        ?.textContent?.trim() || "",
-    labelled: !!document.querySelector('label[for="reader-search-input"]'),
-    live: document.querySelector(".reader-search-status")?.getAttribute("aria-live") || "",
-    status: document.querySelector(".reader-search-status")?.textContent?.trim() || "",
-    combobox: document.getElementById("reader-search-input")?.getAttribute("role") || "",
-  }))
+  // Radix plays a short entrance (translate/scale) after the dialog answers;
+  // let it settle before measuring design geometry.
+  await page.waitForTimeout(400)
+
+  const dialogMeta = await page.evaluate(() => {
+    const content = document.querySelector('[data-slot="dialog-content"]')
+    const contentStyle = content ? getComputedStyle(content) : null
+    const input = document.getElementById("reader-search-input")
+    const inputStyle = input ? getComputedStyle(input) : null
+    const state = document.querySelector(".reader-search-status")
+    const stateStyle = state ? getComputedStyle(state) : null
+    const hints = document.querySelector(".reader-search-hints")
+    const hintsStyle = hints ? getComputedStyle(hints) : null
+    const chip = hints?.querySelector('[data-slot="kbd"]')
+    const chipStyle = chip ? getComputedStyle(chip) : null
+
+    return {
+      title:
+        document
+          .querySelector('[data-slot="dialog-content"] [data-slot="dialog-title"]')
+          ?.textContent?.trim() || "",
+      labelled: !!document.querySelector('label[for="reader-search-input"]'),
+      live: document.querySelector(".reader-search-status")?.getAttribute("aria-live") || "",
+      status: document.querySelector(".reader-search-status")?.textContent?.trim() || "",
+      combobox: document.getElementById("reader-search-input")?.getAttribute("role") || "",
+      inputIcon: !!input?.parentElement?.querySelector("svg"),
+      dialogWidth: content?.getBoundingClientRect().width || 0,
+      dialogPadding: contentStyle?.paddingLeft || "",
+      dialogRadius: contentStyle?.borderTopLeftRadius || "",
+      inputPaddingTop: inputStyle?.paddingTop || "",
+      inputPaddingRight: inputStyle?.paddingRight || "",
+      inputSize: inputStyle?.fontSize || "",
+      inputRadius: inputStyle?.borderTopLeftRadius || "",
+      statePadding: stateStyle?.paddingTop || "",
+      stateSize: stateStyle?.fontSize || "",
+      hintsSize: hintsStyle?.fontSize || "",
+      chipSize: chipStyle?.fontSize || "",
+    }
+  })
 
   assert.equal(dialogMeta.title, "Search", "dialog is labelled Search")
   assert.ok(dialogMeta.labelled, "search input is labeled")
   assert.equal(dialogMeta.live, "polite", "state changes announce politely")
   assert.ok(dialogMeta.status.includes("Type to find a note"), "empty state invites a query")
   assert.equal(dialogMeta.combobox, "combobox", "input exposes the combobox pattern")
+
+  // Design MnMak chrome on desktop: 512px width, 16px padding, 8px
+  // input radius with [10,12] padding and 14px query text, the padded
+  // 13px empty state, and the 12px hints with 11px kbd chips.
+  assert.ok(
+    Math.abs(dialogMeta.dialogWidth - 512) <= 1,
+    `dialog spans the 512px design width (got ${dialogMeta.dialogWidth}px)`,
+  )
+  assert.equal(dialogMeta.dialogPadding, "16px", "dialog keeps the 16px design padding")
+  assert.equal(
+    dialogMeta.dialogRadius,
+    "14px",
+    "dialog keeps the registry dialog radius (rounded-xl computes to 14px under the radius theme; design reads 12)",
+  )
+  assert.ok(dialogMeta.inputIcon, "input carries its leading search icon")
+  assert.equal(dialogMeta.inputPaddingTop, "10px", "input keeps the 10px vertical design padding")
+  assert.equal(dialogMeta.inputPaddingRight, "12px", "input keeps the 12px trailing design padding")
+  assert.equal(dialogMeta.inputSize, "14px", "query text is 14px")
+  assert.equal(dialogMeta.inputRadius, "8px", "input keeps the 8px design radius")
+  assert.equal(dialogMeta.statePadding, "12px", "empty state keeps the 12px design padding")
+  assert.equal(dialogMeta.stateSize, "13px", "empty state text is 13px")
+  assert.equal(dialogMeta.hintsSize, "12px", "keyboard hints are 12px")
+  assert.equal(dialogMeta.chipSize, "11px", "hint kbd chips are 11px")
 
   await setSearchQuery(page, "zzz-no-such-note-qqq9")
   await page.waitForFunction(
@@ -1431,6 +1483,42 @@ async function runSearchDialog(page, baseUrl, expect) {
   )
 
   assert.equal(highlighted, firstHref, "highlight tracks the first result")
+
+  // Design MnMak rows over results: the muted count line plus 14/12/13
+  // title/url/excerpt type with the active wash on the highlight.
+  const resultsMeta = await page.evaluate(() => {
+    const content = document.querySelector('[data-slot="dialog-content"]')
+    const first = document.querySelector(".reader-search-result")
+    const active = document.querySelector('.reader-search-option[data-active="true"]')
+    const px = (el, prop) => (el ? getComputedStyle(el)[prop] : "")
+
+    return {
+      status: document.querySelector(".reader-search-status")?.textContent?.trim() || "",
+      statusSize: px(document.querySelector(".reader-search-status"), "fontSize"),
+      titleSize: px(first?.querySelector(".reader-search-result-title"), "fontSize"),
+      urlSize: px(first?.querySelector(".reader-search-result-url"), "fontSize"),
+      excerptSize: px(first?.querySelector(".reader-search-result-excerpt"), "fontSize"),
+      activeWash: px(active, "backgroundColor"),
+      dialogWash: px(content, "backgroundColor"),
+    }
+  })
+
+  assert.match(resultsMeta.status, /^\d+ results?$/, "results show the count line")
+  assert.equal(resultsMeta.statusSize, "13px", "count line is 13px")
+  assert.equal(resultsMeta.titleSize, "14px", "row titles are 14px")
+  assert.equal(resultsMeta.urlSize, "12px", "row urls are 12px")
+  assert.equal(resultsMeta.excerptSize, "13px", "row excerpts are 13px")
+  assert.notEqual(
+    resultsMeta.activeWash,
+    "rgba(0, 0, 0, 0)",
+    "keyboard highlight carries the active wash",
+  )
+  assert.notEqual(
+    resultsMeta.activeWash,
+    resultsMeta.dialogWash,
+    "active wash reads against the dialog fill",
+  )
+
   await Promise.all([
     page.waitForURL((url) => url.href.includes(firstHref), {
       waitUntil: "networkidle",
@@ -6970,6 +7058,145 @@ test("article extras match the quote/code/bullet design tokens", async () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(READER_ROOT, "package.json"), "utf8"))
 
   assert.ok(!("remark-gfm" in (pkg.dependencies || {})), "reader adds no unused GFM dependency")
+})
+
+/**
+ * Search dialog fidelity static tokens (parity item 6, design MnMak):
+ * the dialog composes registry chrome plus scale utilities on the
+ * existing reader-search hooks, colors come from grayscale tokens, and
+ * no arbitrary values or registry edits ship. The browser journeys prove
+ * the computed numbers; this test pins the source contract.
+ */
+test("search dialog matches the MnMak design tokens", async () => {
+  const dialog = fs.readFileSync(path.join(READER_ROOT, "components", "search-dialog.tsx"), "utf8")
+
+  assert.match(dialog, /sm:max-w-lg/, "dialog keeps the 512px desktop width")
+  assert.match(
+    dialog,
+    /gap-3 bg-card p-4/,
+    "dialog chrome carries the 12px gap, card fill, and 16px padding",
+  )
+  assert.match(dialog, /flex-row items-center gap-2/, "header keeps the row read with an 8px gap")
+  assert.match(dialog, /pl-9/, "input clears the leading icon without arbitrary values")
+  assert.match(dialog, /py-2\.5 pr-3/, "input keeps the [10,12] design padding")
+  assert.match(
+    dialog,
+    /rounded-md border border-border bg-card/,
+    "input keeps the 8px radius with token edge and fill",
+  )
+  assert.match(dialog, /text-sm text-primary/, "query text is 14px primary")
+  assert.match(dialog, /placeholder:text-muted-foreground/, "placeholder uses the muted token")
+  assert.match(
+    dialog,
+    /results\.length === 1 \? "1 result" :/,
+    "count line singularizes the design copy",
+  )
+  assert.match(
+    dialog,
+    /reader-search-status rounded-md p-3 text-13 text-primary/,
+    "states strip keeps padding 12 with 13px primary text",
+  )
+  assert.match(
+    dialog,
+    /reader-search-status text-13 text-muted-foreground/,
+    "count line is 13px muted",
+  )
+  assert.match(dialog, /reader-search-list grid gap-1/, "results list keeps the 4px gap")
+  assert.match(
+    dialog,
+    /reader-search-result grid gap-0\.5 px-3 py-2\.5/,
+    "rows keep [10,12] padding with a 2px inner gap",
+  )
+  assert.match(
+    dialog,
+    /reader-search-result-title text-sm font-bold text-primary/,
+    "row titles are 14px primary",
+  )
+  assert.match(
+    dialog,
+    /reader-search-result-url text-xs text-muted-foreground/,
+    "row urls are 12px muted",
+  )
+  assert.match(
+    dialog,
+    /reader-search-result-excerpt text-13 text-muted-foreground/,
+    "row excerpts are 13px muted",
+  )
+  assert.match(
+    dialog,
+    /reader-search-hints flex items-center gap-3 text-xs/,
+    "hints row is 12px muted",
+  )
+  assert.match(
+    dialog,
+    /border border-border bg-card text-2xs/,
+    "hint chips are 11px on card fill with a border",
+  )
+
+  for (const hook of [
+    "reader-search-body",
+    "reader-search-input",
+    "reader-search-status",
+    "reader-search-list",
+    "reader-search-option",
+    "reader-search-result",
+    "reader-search-result-title",
+    "reader-search-result-url",
+    "reader-search-result-excerpt",
+    "reader-search-hints",
+  ]) {
+    assert.ok(dialog.includes(hook), `dialog keeps the ${hook} hook`)
+  }
+
+  assert.ok(
+    !/rounded-\[|min-h-\[|text-\[|w-\[|h-\[|p[xy]?-\[|max-w-\[/.test(dialog),
+    "no arbitrary values",
+  )
+
+  const css = fs.readFileSync(path.join(READER_ROOT, "app", "globals.css"), "utf8")
+
+  const search = css.slice(
+    css.indexOf("Search controls and dialog"),
+    css.indexOf("Offline save control"),
+  )
+
+  assert.match(search, /background:\s*var\(--muted\)/, "active wash uses the muted token")
+  assert.match(search, /\.reader-search-option:hover/, "hover shares the keyboard wash")
+  assert.match(
+    search,
+    /outline:\s*2px solid var\(--primary\)/,
+    "highlight edge uses the primary token",
+  )
+  assert.match(search, /\.reader-search-hints/, "hints hook ships a selector")
+  assert.ok(
+    !/#[0-9a-fA-F]{3,8}\b/.test(search),
+    "search rules carry no raw hex: tokens own every color",
+  )
+  assert.ok(
+    !/\.dark \.reader-search-input/.test(search),
+    "dark input needs no override: utilities adapt through tokens",
+  )
+  assert.ok(
+    !/\.dark \.reader-search-option/.test(search),
+    "dark wash needs no override: the muted token adapts",
+  )
+
+  const config = fs.readFileSync(path.join(PUBLISHER_ROOT, "oxlint.config.ts"), "utf8")
+
+  for (const part of ["^DialogContent$", "^DialogHeader$", "^Kbd$"]) {
+    assert.ok(config.includes(part), `lint contracts the ${part} restyle`)
+  }
+
+  const registryDialog = fs.readFileSync(
+    path.join(READER_ROOT, "components", "ui", "dialog.tsx"),
+    "utf8",
+  )
+
+  assert.ok(!registryDialog.includes("reader-search"), "registry dialog stays hook-free")
+
+  const kbd = fs.readFileSync(path.join(READER_ROOT, "components", "ui", "kbd.tsx"), "utf8")
+
+  assert.ok(!kbd.includes("reader-search"), "registry kbd stays hook-free")
 })
 
 test("synthetic phone journey covers drawer, overflow, keyboard, and refresh", async () => {

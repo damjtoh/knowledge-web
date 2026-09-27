@@ -898,14 +898,21 @@ body {
 }
 
 /**
- * Search controls and dialog.
+ * Search controls and dialog (design screen MnMak).
  *
  * Two trigger controls share one dialog: a full-width control above the
  * tree in the desktop sidebar and a compact control in the phone header.
- * Result rows and the input keep the 44px touch target used by
- * navigation. Surfaces stay grayscale only, with dark variants matching
- * the reader shell. The dialog panel itself comes from the registry
- * Dialog component; these classes only shape the search content.
+ * Dialog chrome comes from the registry Dialog primitive composed in
+ * search-dialog.tsx (max-w-lg for the 512px desktop width with the
+ * registry full-width-minus-margins phone fallback, p-4, gap-3 on card
+ * fill, row header with gap-2). Type sizes and spacing on the hooked
+ * elements below use the scale tokens (14px query and titles, 13px
+ * status/states and excerpts, 12px urls and hints, 11px kbd chips,
+ * [10,12] input and row padding, 8px row radius) and colors use the
+ * grayscale tokens, so both modes adapt without overrides except the
+ * excerpt mark. Unlayered declarations keep only what utilities cannot
+ * own: the trigger touch floors, list containment, and the data-active
+ * wash, which keyboard highlight and hover share.
  */
 .reader-search-trigger {
   display: inline-flex;
@@ -946,33 +953,28 @@ body {
   gap: 0.75rem;
 }
 
+/* Input chrome (radius, border, fill, type) lives in scale utilities on
+   the element; the touch floor stays here so no utility must own it. */
 .reader-search-input {
-  width: 100%;
   min-height: 44px;
-  padding: 0.6rem 0.75rem;
-  font: inherit;
-  color: #171717;
-  background: #fff;
-  border: 1px solid #d4d4d4;
-  border-radius: 8px;
 }
 
-.reader-search-input::placeholder {
-  color: #737373;
-}
-
+/* Status and state type/color live in utilities; the spacer floor stays. */
 .reader-search-status {
-  font-size: 0.9rem;
-  color: #525252;
   min-height: 1.5em;
 }
 
+/* Hints layout and type live in utilities; the hook keeps a containment
+   anchor so it stays a known selector without owning visuals. */
+.reader-search-hints {
+  min-width: 0;
+}
+
+/* List layout gap lives in utilities; containment and reset stay here. */
 .reader-search-list {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: grid;
-  gap: 0.25rem;
   max-height: min(50vh, 24rem);
   overflow-y: auto;
 }
@@ -981,42 +983,42 @@ body {
   border-radius: 8px;
 }
 
+/* Keyboard highlight and hover share the muted wash. Tokens adapt to
+   dark mode, so no dark override is needed. */
 .reader-search-option[data-active="true"] {
-  background: #f5f5f5;
-  outline: 2px solid #171717;
+  background: var(--muted);
+  outline: 2px solid var(--primary);
   outline-offset: -2px;
 }
 
+.reader-search-option:hover {
+  background: var(--muted);
+}
+
+/* Row padding, inner gap, and layout live in utilities; the touch
+   floor, plain-anchor read, and radius stay here. */
 .reader-search-result {
-  display: grid;
-  gap: 0.15rem;
-  padding: 0.6rem 0.75rem;
   min-height: 44px;
   text-decoration: none;
   color: inherit;
   border-radius: 8px;
 }
 
+/* Row type lives in utilities; long titles wrap instead of overflowing. */
 .reader-search-result-title {
-  font-weight: 700;
-  color: #171717;
   overflow-wrap: anywhere;
 }
 
 .reader-search-result-url {
-  font-size: 0.8rem;
-  color: #737373;
   overflow-wrap: anywhere;
 }
 
 .reader-search-result-excerpt {
-  font-size: 0.9rem;
-  color: #525252;
   overflow-wrap: anywhere;
 }
 
 .reader-search-result-excerpt mark {
-  background: #e5e5e5;
+  background: var(--border);
   color: inherit;
   border-radius: 2px;
   padding: 0 1px;
@@ -1032,40 +1034,9 @@ body {
   background: var(--muted);
 }
 
-.dark .reader-search-input {
-  color: #fafafa;
-  background: #171717;
-  border-color: #404040;
-}
-
-.dark .reader-search-input::placeholder {
-  color: #a3a3a3;
-}
-
-.dark .reader-search-status {
-  color: #d4d4d4;
-}
-
-.dark .reader-search-option[data-active="true"] {
-  background: #262626;
-  outline-color: #fafafa;
-}
-
-.dark .reader-search-result-title {
-  color: #fafafa;
-}
-
-.dark .reader-search-result-url {
-  color: #a3a3a3;
-}
-
-.dark .reader-search-result-excerpt {
-  color: #d4d4d4;
-}
-
 .dark .reader-search-result-excerpt mark {
-  background: #404040;
-  color: #fafafa;
+  background: var(--muted);
+  color: var(--primary);
 }
 
 /**
