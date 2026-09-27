@@ -19,7 +19,17 @@
 
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { parseUpdatedAt, updatedAtFromData } from "../reader/lib/last-edited.ts"
+import {
+  formatRelativeUpdatedAt,
+  parseUpdatedAt,
+  relativeUpdatedAt,
+  updatedAtFromData,
+} from "../reader/lib/last-edited.ts"
+import {
+  estimateReadMinutes,
+  readMinutesFromData,
+  default as remarkReadingTime,
+} from "../reader/lib/reading-time.ts"
 
 test("parseUpdatedAt accepts only timezone-aware instants with a stable zone display", () => {
   const offset = parseUpdatedAt("2026-09-20T14:30:00+02:00")
@@ -97,4 +107,73 @@ test("parseUpdatedAt accepts only timezone-aware instants with a stable zone dis
     updatedAtFromData({ updated_at: "2026-09-20T14:30:00+02:00" }),
     "2026-09-20T14:30:00+02:00",
   )
+})
+
+test("formatRelativeUpdatedAt renders design-relative labels with the same strictness", () => {
+  const instant = Date.parse("2026-09-20T12:30:00.000Z")
+
+  assert.equal(
+    formatRelativeUpdatedAt("2026-09-20T14:30:00+02:00", instant + 30 * 1000),
+    "just now",
+  )
+  assert.equal(
+    formatRelativeUpdatedAt("2026-09-20T14:30:00+02:00", instant + 2 * 60 * 1000),
+    "2 minutes ago",
+  )
+  assert.equal(
+    formatRelativeUpdatedAt("2026-09-20T14:30:00+02:00", instant + 60 * 60 * 1000),
+    "1 hour ago",
+  )
+  assert.equal(
+    formatRelativeUpdatedAt("2026-09-20T14:30:00+02:00", instant + 2 * 24 * 60 * 60 * 1000),
+    "2 days ago",
+  )
+  assert.equal(
+    formatRelativeUpdatedAt("2026-09-20T14:30:00+02:00", instant - 1000),
+    "just now",
+    "future instants clamp instead of rendering negative durations",
+  )
+
+  // Same strictness as the absolute display: date-only, naive, and
+  // impossible values never get a label.
+  for (const bad of ["2026-09-20", "2026-09-20T14:30:00", "2026-02-30T10:00:00Z"]) {
+    assert.equal(formatRelativeUpdatedAt(bad, instant), null, `rejects ${bad}`)
+  }
+
+  const relative = relativeUpdatedAt("2026-09-20T14:30:00+02:00", instant + 2 * 24 * 60 * 60 * 1000)
+
+  assert.equal(relative?.isoDatetime, "2026-09-20T12:30:00.000Z")
+  assert.equal(relative?.label, "2 days ago")
+  assert.equal(relativeUpdatedAt("2026-09-20", instant), null)
+})
+
+test("read-time heuristic counts words at 200wpm with a one-minute floor", () => {
+  assert.equal(estimateReadMinutes(0), 1, "empty pages read one minute")
+  assert.equal(estimateReadMinutes(7), 1, "short notes read one minute")
+  assert.equal(estimateReadMinutes(200), 1, "200 words read one minute")
+  assert.equal(estimateReadMinutes(300), 2, "300 words read two minutes")
+  assert.equal(estimateReadMinutes(2000), 10, "long pages scale linearly")
+
+  assert.equal(readMinutesFromData({ read_minutes: 3 }), 3)
+  assert.equal(readMinutesFromData({ read_minutes: "2" }), 2)
+  assert.equal(readMinutesFromData({ read_minutes: 0 }), 1, "zero clamps to the floor")
+  assert.equal(readMinutesFromData({}), undefined)
+  assert.equal(readMinutesFromData(null), undefined)
+  assert.equal(readMinutesFromData({ read_minutes: "lots" }), undefined)
+
+  // The remark plugin writes parsed frontmatter idempotently: reruns
+  // overwrite the same value instead of accumulating.
+  const tree = {
+    type: "root",
+    children: [{ type: "paragraph", children: [{ type: "text", value: "one two three" }] }],
+  }
+
+  const file = { data: { frontmatter: {} } }
+
+  const transform = remarkReadingTime()
+
+  transform(tree, file)
+  assert.equal(file.data.frontmatter.read_minutes, 1)
+  transform(tree, file)
+  assert.equal(file.data.frontmatter.read_minutes, 1, "rebuilds do not double-inject")
 })

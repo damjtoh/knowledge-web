@@ -2,7 +2,6 @@ import { ChevronRight, File, Folder } from "lucide-react"
 import { source } from "../lib/source"
 import { buildReaderNavigation, type NavigationNode } from "../lib/navigation"
 import { getSiteMetadata } from "../lib/site"
-import LastEdited from "../components/last-edited"
 import { Card, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 
 /** Staged root fields owned by the MDX pipeline. */
@@ -80,10 +79,7 @@ export default async function HomePage() {
           body; md:hidden keeps every desktop viewport pixel-identical. */}
       <span className="mb-1 block text-xs text-muted-foreground md:hidden">Home</span>
       {AuthoredBody ? (
-        <>
-          <AuthoredBody />
-          <LastEdited data={rootFields} />
-        </>
+        <AuthoredBody />
       ) : (
         <>
           <h1>{site.title}</h1>

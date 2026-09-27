@@ -2649,14 +2649,44 @@ function assertAbsentEverywhere(outDir, needle, label) {
   )
 }
 
-function lastEditedFromHtml(html) {
-  const match = html.match(
-    /<p class="reader-last-edited">Last edited <time date[Tt]ime="([^"]+)">([^<]+)<\/time><\/p>/,
+/**
+ * Shared article meta line (design HMIv8) in static HTML, scoped to the
+ * article so shell 11px utilities (offline cue, more-row) never match.
+ * Returns the first segment text, dot presence, and machine/visible date.
+ */
+function metaLineFromHtml(html) {
+  const articleStart = html.indexOf("<article")
+
+  if (articleStart === -1) return null
+  const article = html.slice(articleStart, html.indexOf("</article>", articleStart))
+
+  const divMatch = article.match(
+    /<div[^>]*class="[^"]*text-2xs[^"]*text-muted-foreground[^"]*"[^>]*>([\s\S]*?)<\/div>/,
   )
 
-  if (!match) return null
+  if (!divMatch) return null
+  const inner = divMatch[1]
+  const first = inner.match(/<span>([^<]*)<\/span>/)?.[1].trim() ?? null
+  const dot = /bg-border/.test(inner) && /rounded-full/.test(inner)
+  const time = inner.match(/<time[^>]*date[Tt]ime="([^"]+)"[^>]*>([^<]*)<\/time>/)
 
-  return { datetime: match[1], display: match[2] }
+  return {
+    div: divMatch[0],
+    first,
+    dot,
+    datetime: time ? time[1] : null,
+    updated: time ? time[2].trim() : null,
+  }
+}
+
+/** Article-scoped count of meta-line first segments (`min read`). */
+function metaLineCount(html) {
+  const articleStart = html.indexOf("<article")
+
+  if (articleStart === -1) return 0
+  const article = html.slice(articleStart, html.indexOf("</article>", articleStart))
+
+  return article.split("min read").length - 1
 }
 
 /** Search excerpts highlight matches with <mark>; strip it for text checks. */
@@ -2694,10 +2724,10 @@ function countOccurrences(hay, needle) {
 /**
  * Complete static-export inspection, folded from the retired static suite
  * and the static halves of the home-card, breadcrumb, projection,
- * last-edited, and note suites. Runs on the finished export before it is
+ * meta-line, and note suites. Runs on the finished export before it is
  * served: page-set equality, home cards, rich syntax, canonical metadata,
  * install manifest, output safety, runtime inspection, search coverage,
- * breadcrumb trails, last-edited lines, and the offline precache.
+ * breadcrumb trails, meta lines, and the offline precache.
  */
 async function runStaticExportChecks({
   outDir,
@@ -3295,35 +3325,75 @@ async function runStaticExportChecks({
   assert.ok(!home.includes("Unselected"), "unselected sentinel stays out of home")
   assert.ok(!deep.includes("Unselected"), "unselected sentinel stays out of deep pages")
 
-  // Last edited lines in static HTML: valid authored timestamps render
-  // date, hour, minute, zone, and machine time; missing, invalid, and
-  // date-only values never create a label; virtual folders never guess one.
-  const offset = lastEditedFromHtml(readOut(outDir, "notes/valid-offset.html"))
-  assert.ok(offset, "valid offset note renders Last edited")
-  assert.equal(offset.display, "2026-09-20 14:30 UTC+02:00")
+  // Meta lines in static HTML (design HMIv8): one shared row above the
+  // title with `{parent} • {N} min read`, a border-token dot, and a
+  // relative `Updated …` date with machine time. Notes without a valid
+  // timestamp keep the minutes segment but no date; root notes drop the
+  // category; folders and home render no meta line at all.
+  const offsetHtml = readOut(outDir, "notes/valid-offset.html")
+  const offset = metaLineFromHtml(offsetHtml)
+  assert.ok(offset, "valid offset note renders the meta line")
+  assert.equal(offset.first, "Notes • 1 min read")
+  assert.equal(offset.dot, true, "offset meta carries the dot separator")
   assert.equal(offset.datetime, "2026-09-20T12:30:00.000Z")
+  assert.match(offset.updated ?? "", /^Updated .+ ago$/, "offset date is relative")
+  assert.ok(offset.div.includes("text-2xs"), "offset meta is the 11px token")
+  assert.equal(metaLineCount(offsetHtml), 1, "offset note renders exactly one meta line")
+  assert.ok(
+    offsetHtml.indexOf(offset.div) < offsetHtml.indexOf("<h1"),
+    "offset meta sits above the title",
+  )
 
-  const zulu = lastEditedFromHtml(readOut(outDir, "notes/valid-z.html"))
-  assert.ok(zulu, "valid Zulu note renders Last edited")
-  assert.equal(zulu.display, "2026-08-27 05:49 UTC")
+  const zuluHtml = readOut(outDir, "notes/valid-z.html")
+  const zulu = metaLineFromHtml(zuluHtml)
+  assert.ok(zulu, "valid Zulu note renders the meta line")
+  assert.equal(zulu.first, "Notes • 1 min read")
+  assert.equal(zulu.dot, true, "zulu meta carries the dot separator")
   assert.equal(zulu.datetime, "2026-08-27T05:49:53.387Z")
+  assert.match(zulu.updated ?? "", /^Updated .+ ago$/, "zulu date is relative")
+  assert.equal(metaLineCount(zuluHtml), 1, "zulu note renders exactly one meta line")
+  assert.ok(zuluHtml.indexOf(zulu.div) < zuluHtml.indexOf("<h1"), "zulu meta sits above the title")
 
-  for (const rel of [
-    "notes/plain.html",
-    "notes/date-only.html",
-    "notes/feb-thirty.html",
-    "garden.html",
-    "index.html",
-  ]) {
+  // Invalid or missing timestamps keep minutes but never a date segment.
+  for (const rel of ["notes/plain.html", "notes/date-only.html", "notes/feb-thirty.html"]) {
     const html = readOut(outDir, rel)
-    assert.equal(lastEditedFromHtml(html), null, `${rel} omits Last edited`)
-    assert.ok(!html.includes("Last edited"), `${rel} shows no freshness claim`)
+    const meta = metaLineFromHtml(html)
+    assert.ok(meta, `${rel} keeps the minutes segment`)
+    assert.equal(meta.first, "Notes • 1 min read", `${rel} names its parent`)
+    assert.equal(meta.dot, false, `${rel} renders no date dot`)
+    assert.equal(meta.datetime, null, `${rel} renders no machine time`)
+    assert.equal(meta.updated, null, `${rel} renders no Updated date`)
+    assert.equal(metaLineCount(html), 1, `${rel} renders exactly one meta line`)
+    assert.ok(!html.includes("Last edited"), `${rel} shows no retired label`)
+  }
+
+  // Root notes drop the category segment and its dot.
+  const standaloneHtml = readOut(outDir, "standalone.html")
+  const standaloneMeta = metaLineFromHtml(standaloneHtml)
+  assert.ok(standaloneMeta, "root note renders the meta line")
+  assert.equal(standaloneMeta.first, "1 min read", "root note drops the category")
+  assert.equal(standaloneMeta.dot, false, "root note renders no category dot")
+  assert.equal(metaLineCount(standaloneHtml), 1, "root note renders exactly one meta line")
+
+  // Folder indexes and home render no meta line (design has no folder screen).
+  for (const rel of ["garden.html", "index.html"]) {
+    const html = readOut(outDir, rel)
+    assert.equal(metaLineFromHtml(html), null, `${rel} renders no meta line`)
+    assert.equal(metaLineCount(html), 0, `${rel} carries no minutes segment`)
+    assert.ok(!html.includes("Last edited"), `${rel} shows no retired label`)
   }
 
   for (const rel of ["notes.html", "notes/nest.html", "notes/nest/inner.html"]) {
     assert.ok(fs.existsSync(path.join(outDir, rel)), `virtual page emitted: ${rel}`)
-    assert.equal(lastEditedFromHtml(readOut(outDir, rel)), null, `${rel} omits a guessed label`)
+    assert.equal(metaLineFromHtml(readOut(outDir, rel)), null, `${rel} omits a guessed label`)
   }
+
+  // The retired responsive duplication is gone: no page carries two slots.
+  for (const rel of ["notes/valid-offset.html", "orchard/note-01.html", "standalone.html"]) {
+    assert.equal(metaLineCount(readOut(outDir, rel)), 1, `${rel} keeps a single meta slot`)
+  }
+
+  assertAbsentEverywhere(outDir, "Last edited", "retired Last edited label")
 
   for (const rel of ["notes/valid-offset.html", "notes/valid-z.html"]) {
     const html = readOut(outDir, rel)
@@ -3723,45 +3793,88 @@ async function runProjectionSwitcher(page, baseUrl, expect) {
 }
 
 /**
- * Last edited line in the browser, folded from the retired last-edited
- * suite (its parseUpdatedAt unit test stays in place): valid authored
- * timestamps render with machine time, missing and virtual pages omit.
+ * Meta line in the browser, folded from the retired last-edited suite
+ * (its parseUpdatedAt unit test stays in place): valid authored notes
+ * render one 11px row above the title with category, minutes, dot, and a
+ * relative Updated date with machine time; dateless notes keep minutes
+ * without a date; virtual folders render no meta line.
  */
-async function runLastEditedBrowser(page, baseUrl) {
+async function runMetaLineBrowser(page, baseUrl) {
   const errors = []
   page.on("pageerror", (error) => errors.push(String(error)))
   await page.goto(`${baseUrl}/notes/valid-offset`, { waitUntil: "networkidle", timeout: 15000 })
 
   const rendered = await page.evaluate(() => {
-    const line = document.querySelector("p.reader-last-edited")
+    const article = document.querySelector("article.reader-article")
+
+    const metas = Array.from(article?.querySelectorAll("div.text-2xs") ?? []).filter((el) =>
+      (el.textContent ?? "").includes("min read"),
+    )
+
+    const line = metas[0] ?? null
     const time = line?.querySelector("time")
+    const dot = line?.querySelector("span[aria-hidden='true']")
+    const h1 = article?.querySelector("h1")
+    const lineStyle = line ? getComputedStyle(line) : null
+    const dotRect = dot?.getBoundingClientRect()
 
     return {
+      count: metas.length,
       text: line?.textContent?.trim() || null,
       datetime: time?.getAttribute("datetime") || null,
-      display: time?.textContent?.trim() || null,
+      updated: time?.textContent?.trim() || null,
+      size: lineStyle?.fontSize || "",
+      dotWidth: dotRect?.width || 0,
+      dotHeight: dotRect?.height || 0,
+      dotClass: dot?.className || "",
+      metaTop: line?.getBoundingClientRect().top || 0,
+      h1Top: h1?.getBoundingClientRect().top || 0,
     }
   })
 
-  assert.ok(rendered.text?.startsWith("Last edited"), "browser shows Last edited")
+  assert.equal(rendered.count, 1, "browser renders exactly one meta line")
+  assert.match(rendered.text ?? "", /Notes • 1 min read/, "browser shows category plus minutes")
+  assert.match(rendered.updated ?? "", /^Updated .+ ago$/, "browser shows the relative date")
   assert.equal(rendered.datetime, "2026-09-20T12:30:00.000Z")
-  assert.equal(rendered.display, "2026-09-20 14:30 UTC+02:00")
+  assert.equal(rendered.size, "11px", "browser meta line is 11px")
+  assert.ok(Math.abs(rendered.dotWidth - 3) <= 1, `dot is 3px wide (got ${rendered.dotWidth})`)
+  assert.ok(Math.abs(rendered.dotHeight - 3) <= 1, `dot is 3px tall (got ${rendered.dotHeight})`)
+  assert.ok(rendered.dotClass.includes("bg-border"), "dot uses the border token")
+  assert.ok(rendered.metaTop <= rendered.h1Top, "desktop meta sits above the title")
 
   await page.goto(`${baseUrl}/notes/plain`, { waitUntil: "networkidle", timeout: 15000 })
-  assert.equal(
-    await page.evaluate(() => document.querySelector("p.reader-last-edited")),
-    null,
-    "browser omits the label without a valid timestamp",
-  )
+
+  const plain = await page.evaluate(() => {
+    const article = document.querySelector("article.reader-article")
+
+    const metas = Array.from(article?.querySelectorAll("div.text-2xs") ?? []).filter((el) =>
+      (el.textContent ?? "").includes("min read"),
+    )
+
+    return {
+      count: metas.length,
+      text: metas[0]?.textContent?.trim() || null,
+      time: !!metas[0]?.querySelector("time"),
+    }
+  })
+
+  assert.equal(plain.count, 1, "dateless note keeps one meta line")
+  assert.match(plain.text ?? "", /Notes • 1 min read/, "dateless meta keeps minutes")
+  assert.equal(plain.time, false, "dateless meta renders no Updated date")
 
   await page.goto(`${baseUrl}/notes`, { waitUntil: "networkidle", timeout: 15000 })
   assert.equal(
-    await page.evaluate(() => document.querySelector("p.reader-last-edited")),
-    null,
-    "browser omits a guessed virtual-folder label",
+    await page.evaluate(
+      () =>
+        Array.from(document.querySelectorAll("article.reader-article div.text-2xs") ?? []).filter(
+          (el) => (el.textContent ?? "").includes("min read"),
+        ).length,
+    ),
+    0,
+    "browser omits a guessed virtual-folder meta line",
   )
 
-  assert.deepEqual(errors, [], "no hydration or page errors on timestamp routes")
+  assert.deepEqual(errors, [], "no hydration or page errors on meta routes")
 }
 
 /**
@@ -3778,6 +3891,13 @@ async function runDirectNoteDetail(page, baseUrl, expect) {
     const canonical = document.querySelector('link[rel="canonical"]')
     const otherNotes = article?.querySelector('section[aria-label^="Other notes"]')
 
+    const metas = Array.from(article?.querySelectorAll("div.text-2xs") ?? []).filter((el) =>
+      (el.textContent ?? "").includes("min read"),
+    )
+
+    const meta = metas[0] ?? null
+    const metaStyle = meta ? getComputedStyle(meta) : null
+
     return {
       title: document.title,
       mainCount: document.querySelectorAll("main").length,
@@ -3787,6 +3907,11 @@ async function runDirectNoteDetail(page, baseUrl, expect) {
       tableCount: article ? article.querySelectorAll("table").length : 0,
       hasExternalLink: !!article?.querySelector('a[href^="https://"]'),
       canonicalHref: canonical?.getAttribute("href") || null,
+      metaCount: metas.length,
+      metaText: meta?.textContent?.trim() || null,
+      metaSize: metaStyle?.fontSize || "",
+      metaTop: meta?.getBoundingClientRect().top || 0,
+      h1Top: article?.querySelector("h1")?.getBoundingClientRect().top || 0,
       otherNotesLabel: otherNotes?.getAttribute("aria-label") || null,
       otherNotesRows: Array.from(otherNotes?.querySelectorAll(":scope ul a") ?? []).map(
         (a) => a.getAttribute("href") || "",
@@ -3819,6 +3944,17 @@ async function runDirectNoteDetail(page, baseUrl, expect) {
     `https://${expect.hostname}${expect.route}`,
     "canonical hostname metadata",
   )
+  // Shared meta line on desktop too: one 11px row above the title with
+  // the parent category plus minutes (the guide carries no timestamp, so
+  // no Updated date), and nothing below the body.
+  assert.equal(note.metaCount, 1, "desktop renders exactly one meta line")
+  assert.match(
+    note.metaText ?? "",
+    /Notes • \d+ min read/,
+    "desktop meta names parent plus minutes",
+  )
+  assert.equal(note.metaSize, "11px", "desktop meta line is 11px")
+  assert.ok(note.metaTop <= note.h1Top, "desktop meta sits above the title")
   // Mobile port note-phone: the shared Other notes sibling section
   // renders on desktop too. The guide keeps six siblings, so all rows
   // show at the 36px design read with no expander foot.
@@ -5894,7 +6030,8 @@ async function runPhoneBreadcrumbsDetail(page, baseUrl, contentDir, label) {
 
 /**
  * Phone note page (mobile port item 6, design screen pWNyV): the body
- * carries a 12px muted slash trail, then the 12px muted meta line, then
+ * carries a 12px muted slash trail, then the shared 11px muted meta line
+ * (`{parent} • {N} min read` plus dot plus relative Updated date), then
  * the 24px/700 title, with the 14px body / 16px h2 / 12px code phone
  * scale; the shared Other notes section shows its 13px/600 head with a
  * count pill, file-icon rows, and a "Show all N notes" foot that expands
@@ -5907,14 +6044,21 @@ async function runPhoneNoteDetail(page, baseUrl, label) {
   const note = await page.evaluate(() => {
     const article = document.querySelector(".reader-article")
     const trail = article?.querySelector(".reader-note-crumbs")
-    const metas = Array.from(article?.querySelectorAll("p.reader-last-edited") ?? [])
+
+    const metas = Array.from(article?.querySelectorAll("div.text-2xs") ?? []).filter((el) =>
+      (el.textContent ?? "").includes("min read"),
+    )
+
     const visibleMeta = metas.find((el) => el.getBoundingClientRect().height > 0)
+    const dot = visibleMeta?.querySelector("span[aria-hidden='true']")
+    const time = visibleMeta?.querySelector("time")
     const h1 = article?.querySelector("h1")
     const h1Style = h1 ? getComputedStyle(h1) : null
     const trailStyle = trail ? getComputedStyle(trail) : null
     const metaStyle = visibleMeta ? getComputedStyle(visibleMeta) : null
-    const firstPara = article?.querySelector("p:not(.reader-last-edited):not(.reader-note-crumbs)")
+    const firstPara = article?.querySelector("p:not(.reader-note-crumbs)")
     const pre = article?.querySelector("pre")
+    const dotRect = dot?.getBoundingClientRect()
 
     return {
       trailVisible:
@@ -5926,8 +6070,15 @@ async function runPhoneNoteDetail(page, baseUrl, label) {
       trailTop: trail?.getBoundingClientRect().top || 0,
       metaText: visibleMeta?.textContent?.trim() || null,
       metaSize: metaStyle?.fontSize || "",
+      metaColor: metaStyle?.color || "",
       metaTop: visibleMeta?.getBoundingClientRect().top || 0,
       metaCount: metas.length,
+      metaDot: !!dot,
+      metaDotClass: dot?.className || "",
+      metaDotWidth: dotRect?.width || 0,
+      metaDotHeight: dotRect?.height || 0,
+      metaDatetime: time?.getAttribute("datetime") || null,
+      metaUpdated: time?.textContent?.trim() || null,
       h1Size: h1Style?.fontSize || "",
       h1Weight: h1Style?.fontWeight || "",
       h1Top: h1?.getBoundingClientRect().top || 0,
@@ -5942,9 +6093,26 @@ async function runPhoneNoteDetail(page, baseUrl, label) {
   assert.equal(note.trailSize, "12px", `${label}: trail is 12px`)
   assert.match(note.trailColor, /115,\s*115,\s*115|oklch\(0\.556 0 0\)/, `${label}: trail is muted`)
   assert.equal(note.trailPadding, "4px", `${label}: trail keeps 4px bottom padding`)
-  assert.ok(note.metaText?.startsWith("Last edited"), `${label}: meta line renders`)
-  assert.equal(note.metaSize, "12px", `${label}: meta line is 12px`)
-  assert.equal(note.metaCount, 2, `${label}: both responsive meta slots render`)
+  assert.match(
+    note.metaText ?? "",
+    /Notes • 1 min read/,
+    `${label}: meta names parent plus minutes`,
+  )
+  assert.match(note.metaUpdated ?? "", /^Updated .+ ago$/, `${label}: meta date is relative`)
+  assert.equal(note.metaDatetime, "2026-09-20T12:30:00.000Z", `${label}: meta keeps machine time`)
+  assert.equal(note.metaSize, "11px", `${label}: meta line is 11px`)
+  assert.match(note.metaColor, /115,\s*115,\s*115|oklch\(0\.556 0 0\)/, `${label}: meta is muted`)
+  assert.equal(note.metaCount, 1, `${label}: exactly one meta line renders`)
+  assert.ok(note.metaDot, `${label}: meta carries the dot separator`)
+  assert.ok(note.metaDotClass.includes("bg-border"), `${label}: dot uses the border token`)
+  assert.ok(
+    Math.abs(note.metaDotWidth - 3) <= 1,
+    `${label}: dot is 3px wide (got ${note.metaDotWidth})`,
+  )
+  assert.ok(
+    Math.abs(note.metaDotHeight - 3) <= 1,
+    `${label}: dot is 3px tall (got ${note.metaDotHeight})`,
+  )
   assert.ok(
     note.trailTop <= note.metaTop && note.metaTop <= note.h1Top,
     `${label}: trail -> meta -> title order`,
@@ -6666,7 +6834,7 @@ test("synthetic browse journey covers home → folder → nested note → Back",
       hiddenRoute,
       hiddenTitle,
     })
-    await runLastEditedBrowser(page, baseUrl)
+    await runMetaLineBrowser(page, baseUrl)
     await page.close()
     const projectionPage = await context.newPage()
     await projectionPage.setViewportSize({ width: 1280, height: 800 })
