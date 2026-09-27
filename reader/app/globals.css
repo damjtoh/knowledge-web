@@ -24,6 +24,7 @@
  * site identity comes from generated metadata at build time.
  */
 
+/* Page never scrolls sideways: overflow probes assert zero horizontal overflow. */
 html,
 body {
   overflow-x: hidden;
@@ -46,6 +47,7 @@ body {
   --sidebar-width: 20rem;
 }
 
+/* Base reader surface: grayscale body type on white; the .dark override below flips it. */
 body {
   margin: 0;
   background: #fff;
@@ -63,6 +65,7 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/* Shell header layout: unlayered flex/border/padding must beat layered header utilities. */
 .reader-header {
   display: flex;
   align-items: center;
@@ -93,6 +96,7 @@ body {
   min-width: 0;
 }
 
+/* Reading shell: centered 1100px column; the phone padding variant below beats utilities unlayered. */
 .reader-shell {
   display: flex;
   gap: 2rem;
@@ -154,6 +158,7 @@ body {
   overflow-wrap: anywhere;
 }
 
+/* Sidebar links: pinned hooks the tree journeys query (ul/a/hover/active). */
 .reader-sidebar-nav ul {
   list-style: none;
   margin: 0;
@@ -288,6 +293,7 @@ body {
   opacity: 1;
 }
 
+/* Reading column: flex share with clip containment so wide tables never push the viewport. */
 .reader-main {
   flex: 1;
   min-width: 0;
@@ -296,6 +302,7 @@ body {
   overflow-x: clip;
 }
 
+/* Breadcrumb trail: pinned hook the journeys click; descendants reach registry slots. */
 .reader-breadcrumbs {
   flex: 1 1 auto;
   min-width: 0;
@@ -365,6 +372,7 @@ body {
   text-decoration-color: #a3a3a3;
 }
 
+/* Generated-markup root + bare MDX elements below (h1-h3/p/a/table/img/hr/checkbox): no TSX hosts utilities; dark variants below. */
 .reader-article {
   max-width: 68ch;
   margin: 0;
@@ -610,26 +618,6 @@ body {
 }
 
 /**
- * Trustworthy Last edited line.
- *
- * Bespoke article typography only: a subdued muted note directly under
- * the article content. Display-only semantic HTML (paragraph plus time);
- * no UI control or shadcn primitive is involved. The text names an edit
- * time only, never synchronization or drift.
- */
-.reader-last-edited {
-  margin: 1.25rem 0 0;
-  font-size: 0.85rem;
-  line-height: 1.5;
-  color: #737373;
-  overflow-wrap: anywhere;
-}
-
-.dark .reader-last-edited {
-  color: #a3a3a3;
-}
-
-/**
  * Home root cards: one responsive registry Card per published root.
  *
  * The grid fits desktop and phone widths: cards share a row when room
@@ -730,6 +718,7 @@ body {
   word-break: break-word;
 }
 
+/* Sibling/group sections: pinned hooks shared by folder pages and OtherNotes; rows keep the plain-anchor read. */
 .reader-group {
   margin-top: 2.5rem;
   border-top: 1px solid #e5e5e5;
@@ -814,6 +803,7 @@ body {
   border-bottom: 0;
 }
 
+/* Visible keyboard focus everywhere: unlayered outline must beat layered utilities and primitives. */
 :focus-visible {
   outline: 2px solid #171717;
   outline-offset: 2px;
@@ -877,10 +867,6 @@ body {
   .reader-article ul:not(.reader-area-list):not(.reader-group-list) li + li,
   .reader-article ol:not(.reader-area-list):not(.reader-group-list) li + li {
     margin-top: 0.5rem;
-  }
-
-  .reader-last-edited {
-    font-size: 0.75rem;
   }
 
   /* Other-notes rows keep the 44px touch floor on phones through
