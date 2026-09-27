@@ -1779,7 +1779,7 @@ async function runOfflineSave(context, baseUrl, server, expect) {
       expect.offlineLeafRoute,
     )
 
-    assert.ok(treeHasLeaf, "Browse tree works offline")
+    assert.ok(treeHasLeaf, "sidebar tree works offline")
 
     await offline.goto(`${baseUrl}${expect.offlineLeafRoute}`, {
       waitUntil: "domcontentloaded",
@@ -2437,6 +2437,7 @@ async function runOfflineAppearancePlacement(page, baseUrl) {
 
   assert.ok(cue, "offline cue exists for the phone header")
   assert.equal(cue.tag, "P", "cue never initiates a save")
+  assert.ok(cue.text.length > 0, "cue renders its label instead of disappearing")
   assert.equal(cue.visible, false, "cue stays hidden on desktop")
 
   const hasBoot = await page.evaluate(() =>
@@ -2792,6 +2793,26 @@ async function runStaticExportChecks({
   assert.ok(!home.includes("Hidden Draft"), "routes outside navigation never become cards")
   assert.ok(!/href="\/"/.test(section), "no Home self-link card")
 
+  // Mobile port home-phone: a phone-only Home crumb plus a phone-only card
+  // row (muted icon box, count-only meta, trailing chevron) render
+  // alongside the unchanged desktop card structure.
+  assert.match(
+    home,
+    /text-muted-foreground md:hidden">Home</,
+    "phone-only Home crumb renders above the cards",
+  )
+  assert.equal(
+    countOccurrences(section, "lucide-chevron-right"),
+    links.length,
+    "every home card carries a phone-only trailing chevron",
+  )
+  assert.match(section, />12 items</, "phone card meta is count-only for the flat folder")
+  assert.match(section, />2 items</, "phone card meta is count-only for the authored folder")
+  assert.ok(
+    section.includes("size-9") && section.includes("bg-muted"),
+    "phone card icons sit in a muted box",
+  )
+
   // Indexed folder owns its route and introduction; virtual folders supply titles.
   const garden = readOut(outDir, "garden.html")
   assert.match(garden, /Garden Plots/, "authored folder introduction renders")
@@ -3055,7 +3076,9 @@ async function runStaticExportChecks({
   let manifestBytes = 0
 
   for (const url of offlineManifest.urls) {
-    const rel = url.replace(/^\//, "")
+    // Publication URLs are browser-normalized (brackets percent-encoded), so
+    // filesystem lookups decode them back to the emitted file names.
+    const rel = decodeURIComponent(url.replace(/^\//, ""))
     manifestBytes += fs.statSync(path.join(outDir, rel)).size
   }
 
@@ -3225,6 +3248,37 @@ async function runStaticExportChecks({
   assert.ok(deep.includes('href="/notes/nest/inner"'), "deep static trail links Inner parent")
   assert.ok(deep.includes('href="/"'), "deep static trail links Home")
   assert.equal(countOccurrences(deep, 'aria-label="Breadcrumb"'), 1, "deep page keeps one trail")
+  // Mobile port note-phone: leaf notes carry a phone-only slash trail
+  // (no second Breadcrumb landmark) plus the shared Other notes sibling
+  // section with its count, initial six rows, and expander foot.
+  const orchardNote = readOut(outDir, "orchard/note-01.html")
+
+  assert.ok(orchardNote.includes("reader-note-crumbs"), "leaf note carries the phone trail hook")
+  assert.ok(orchardNote.includes("md:hidden"), "phone trail stays hidden on desktop")
+  assert.ok(orchardNote.includes(" / "), "phone trail is slash-separated")
+  assert.ok(orchardNote.includes('href="/orchard"'), "phone trail links the parent")
+  assert.equal(
+    countOccurrences(orchardNote, 'aria-label="Breadcrumb"'),
+    1,
+    "phone trail adds no second breadcrumb landmark",
+  )
+  assert.ok(orchardNote.includes("Other notes in Orchard"), "leaf note heads its siblings")
+
+  const orchardSection = orchardNote.slice(orchardNote.indexOf("Other notes in Orchard"))
+
+  assert.match(orchardSection, />11</, "sibling count pill carries the total")
+  assert.equal(
+    countOccurrences(orchardSection.split("</section>")[0], "/orchard/note-"),
+    6,
+    "eleven siblings page to six rows before expanding",
+  )
+  assert.ok(orchardSection.includes("Show all 11 notes"), "expander foot offers the rest")
+
+  const guideNote = readOut(outDir, "notes/guide.html")
+
+  assert.ok(guideNote.includes("reader-note-crumbs"), "guide carries the phone trail")
+  assert.ok(guideNote.includes("Other notes in Notes"), "guide heads its siblings")
+  assert.ok(!guideNote.includes("Show all"), "six siblings need no expander foot")
   assert.ok(garden.includes('href="/"'), "folder trail links Home")
   assert.ok(standalone.includes("Lone Pine"), "root note shows its authored title")
 
@@ -3370,6 +3424,31 @@ async function runHomeCardsDetail(page, baseUrl, expect) {
   const cardText = cards.map((c) => c.text).join("\n")
   assert.match(cardText, /Folder · 12 items/, "flat folder count is accurate")
   assert.match(cardText, /Folder · 2 items/, "authored folder count is accurate")
+
+  // Mobile port home-phone: the phone-only Home crumb and phone-only card
+  // row stay hidden on desktop, so the desktop meta keeps its kind prefix.
+  const desktopCrumbDisplay = await page.evaluate(() => {
+    const el = Array.from(document.querySelectorAll(".reader-article > span")).find(
+      (node) => node.textContent?.trim() === "Home",
+    )
+
+    return el ? getComputedStyle(el).display : "missing"
+  })
+
+  assert.equal(desktopCrumbDisplay, "none", "phone-only Home crumb stays hidden on desktop")
+
+  const desktopPhoneRowDisplays = await page.evaluate(() =>
+    Array.from(
+      document.querySelectorAll(".reader-area-list a span.hidden"),
+      (el) => getComputedStyle(el).display,
+    ),
+  )
+
+  assert.ok(desktopPhoneRowDisplays.length > 0, "desktop cards carry the phone chevron node")
+  assert.ok(
+    desktopPhoneRowDisplays.every((display) => display === "none"),
+    "phone chevrons stay hidden on desktop",
+  )
 
   const overflow = await page.evaluate(() => ({
     doc: document.documentElement.scrollWidth,
@@ -3697,6 +3776,7 @@ async function runDirectNoteDetail(page, baseUrl, expect) {
     const article = document.querySelector("article.reader-article")
     const h1s = Array.from(document.querySelectorAll("article.reader-article h1"))
     const canonical = document.querySelector('link[rel="canonical"]')
+    const otherNotes = article?.querySelector('section[aria-label^="Other notes"]')
 
     return {
       title: document.title,
@@ -3707,6 +3787,13 @@ async function runDirectNoteDetail(page, baseUrl, expect) {
       tableCount: article ? article.querySelectorAll("table").length : 0,
       hasExternalLink: !!article?.querySelector('a[href^="https://"]'),
       canonicalHref: canonical?.getAttribute("href") || null,
+      otherNotesLabel: otherNotes?.getAttribute("aria-label") || null,
+      otherNotesRows: Array.from(otherNotes?.querySelectorAll(":scope ul a") ?? []).map(
+        (a) => a.getAttribute("href") || "",
+      ),
+      otherNotesFoot: !!otherNotes?.querySelector("button"),
+      otherNotesRowHeight:
+        otherNotes?.querySelector(":scope ul a")?.getBoundingClientRect().height || 0,
     }
   })
 
@@ -3731,6 +3818,20 @@ async function runDirectNoteDetail(page, baseUrl, expect) {
     note.canonicalHref,
     `https://${expect.hostname}${expect.route}`,
     "canonical hostname metadata",
+  )
+  // Mobile port note-phone: the shared Other notes sibling section
+  // renders on desktop too. The guide keeps six siblings, so all rows
+  // show at the 36px design read with no expander foot.
+  assert.equal(note.otherNotesLabel, "Other notes in Notes", "desktop sibling section head")
+  assert.equal(note.otherNotesRows.length, 6, "six siblings render without paging")
+  assert.ok(
+    note.otherNotesRows.every((href) => href.startsWith("/notes/")),
+    "sibling rows link published note routes",
+  )
+  assert.equal(note.otherNotesFoot, false, "six siblings need no expander foot")
+  assert.ok(
+    Math.abs(note.otherNotesRowHeight - 36) <= 2,
+    `desktop sibling rows are 36px-ish (got ${note.otherNotesRowHeight}px)`,
   )
   await page.reload({ waitUntil: "networkidle", timeout: 15000 })
 
@@ -3874,12 +3975,9 @@ async function visibleHeights(page, selector) {
 
 async function assertTouchTargets(page, label) {
   for (const selector of [
-    ".reader-browse-toggle",
     ".reader-search-trigger",
     ".reader-search-result",
     ".reader-home",
-    ".reader-drawer-close",
-    ".reader-drawer-home",
     ".reader-area-list a",
     ".reader-group-list a",
     ".reader-breadcrumbs a",
@@ -3909,7 +4007,7 @@ async function assertNoPageOverflow(page, label) {
   )
 }
 
-async function assertLandmarks(page, label, { breadcrumb = true } = {}) {
+async function assertLandmarks(page, label, { breadcrumb = true, areasNav = true } = {}) {
   const landmarks = await page.evaluate(() => ({
     mainCount: document.querySelectorAll("main").length,
     h1s: Array.from(document.querySelectorAll("article h1")).map((h) => h.textContent?.trim()),
@@ -3919,7 +4017,10 @@ async function assertLandmarks(page, label, { breadcrumb = true } = {}) {
 
   assert.equal(landmarks.mainCount, 1, `${label}: one main landmark`)
   assert.equal(landmarks.h1s.length, 1, `${label}: one primary heading`)
-  assert.ok(landmarks.areasNav, `${label}: Published sections navigation landmark`)
+
+  // The Published sections tree lives in the registry sidebar: always
+  // mounted on desktop, but on phones only while the mobile sheet is open.
+  if (areasNav) assert.ok(landmarks.areasNav, `${label}: Published sections navigation landmark`)
 
   if (breadcrumb) assert.ok(landmarks.breadcrumbNav, `${label}: breadcrumb navigation landmark`)
 }
@@ -3928,7 +4029,7 @@ async function assertLandmarks(page, label, { breadcrumb = true } = {}) {
 async function browseRoots(page) {
   return await page.evaluate(() => {
     const scope =
-      document.querySelector("#reader-browse-panel .reader-sidebar-nav") ||
+      document.querySelector('[data-sidebar="sidebar"][data-mobile="true"] .reader-sidebar-nav') ||
       document.querySelector(".reader-sidebar-nav")
 
     if (!scope) return []
@@ -3950,7 +4051,10 @@ async function browseRoots(page) {
 
 async function treeDisclosure(page, route) {
   return await page.evaluate((target) => {
-    const scope = document.querySelector("#reader-browse-panel .reader-sidebar-nav") || document
+    const scope =
+      document.querySelector('[data-sidebar="sidebar"][data-mobile="true"] .reader-sidebar-nav') ||
+      document
+
     const li = scope.querySelector(`li[data-tree-url="${target}"]`)
 
     const button = li
@@ -3969,7 +4073,11 @@ async function ensureTreeOpen(page, route) {
   if (state !== "true") {
     assert.equal(state, "false", `tree branch ${route} has a disclosure control`)
     await page.evaluate((target) => {
-      const scope = document.querySelector("#reader-browse-panel .reader-sidebar-nav") || document
+      const scope =
+        document.querySelector(
+          '[data-sidebar="sidebar"][data-mobile="true"] .reader-sidebar-nav',
+        ) || document
+
       const li = scope.querySelector(`li[data-tree-url="${target}"]`)
       li?.querySelector(
         ":scope > .reader-tree-collapsible > .reader-tree-row > .reader-tree-toggle",
@@ -3977,7 +4085,11 @@ async function ensureTreeOpen(page, route) {
     }, route)
     await page.waitForFunction(
       (target) => {
-        const scope = document.querySelector("#reader-browse-panel .reader-sidebar-nav") || document
+        const scope =
+          document.querySelector(
+            '[data-sidebar="sidebar"][data-mobile="true"] .reader-sidebar-nav',
+          ) || document
+
         const li = scope.querySelector(`li[data-tree-url="${target}"]`)
 
         const button = li
@@ -4000,7 +4112,10 @@ async function ensureTreeOpen(page, route) {
 async function expandAllPhoneRows(page, route) {
   for (let i = 0; i < 10; i++) {
     const hasMore = await page.evaluate((target) => {
-      const scope = document.querySelector("#reader-browse-panel .reader-sidebar-nav") || document
+      const scope =
+        document.querySelector(
+          '[data-sidebar="sidebar"][data-mobile="true"] .reader-sidebar-nav',
+        ) || document
 
       const li = scope.querySelector(`li[data-tree-url="${target}"]`)
 
@@ -4012,7 +4127,10 @@ async function expandAllPhoneRows(page, route) {
     if (!hasMore) break
 
     const before = await page.evaluate((target) => {
-      const scope = document.querySelector("#reader-browse-panel .reader-sidebar-nav") || document
+      const scope =
+        document.querySelector(
+          '[data-sidebar="sidebar"][data-mobile="true"] .reader-sidebar-nav',
+        ) || document
 
       const li = scope.querySelector(`li[data-tree-url="${target}"]`)
 
@@ -4032,7 +4150,10 @@ async function expandAllPhoneRows(page, route) {
     }, route)
 
     await page.evaluate((target) => {
-      const scope = document.querySelector("#reader-browse-panel .reader-sidebar-nav") || document
+      const scope =
+        document.querySelector(
+          '[data-sidebar="sidebar"][data-mobile="true"] .reader-sidebar-nav',
+        ) || document
 
       const li = scope.querySelector(`li[data-tree-url="${target}"]`)
 
@@ -4042,7 +4163,10 @@ async function expandAllPhoneRows(page, route) {
     }, route)
     await page.waitForFunction(
       ([target, prev]) => {
-        const scope = document.querySelector("#reader-browse-panel .reader-sidebar-nav") || document
+        const scope =
+          document.querySelector(
+            '[data-sidebar="sidebar"][data-mobile="true"] .reader-sidebar-nav',
+          ) || document
 
         const li = scope.querySelector(`li[data-tree-url="${target}"]`)
 
@@ -4085,103 +4209,101 @@ async function revealPhoneRoute(page, targetRoute) {
   }
 }
 
-async function openBrowse(page) {
+async function openDrawer(page) {
   await page.evaluate(() => {
-    document.querySelector(".reader-browse-toggle")?.click()
+    // Focus-then-activate mirrors keyboard and assistive-tech use: the
+    // registry sheet restores focus to whatever held it before opening.
+    const trigger = document.querySelector('[data-sidebar="trigger"]')
+
+    if (trigger instanceof HTMLElement) trigger.focus()
+    trigger?.click()
   })
   await page.waitForFunction(
-    () => document.querySelector(".reader-chrome")?.getAttribute("data-browse") === "open",
+    () => !!document.querySelector('[data-sidebar="sidebar"][data-mobile="true"]'),
     null,
     { timeout: 5000 },
   )
-  await page.waitForSelector("#reader-browse-panel", { state: "visible", timeout: 5000 })
+  await page.waitForSelector('[data-sidebar="sidebar"][data-mobile="true"]', {
+    state: "visible",
+    timeout: 5000,
+  })
 }
 
-async function closeBrowseViaClose(page) {
-  await page.evaluate(() => {
-    document.querySelector('#reader-browse-panel [data-slot="sheet-close"]')?.click()
-  })
+// The registry mobile sheet has no visible Close: Escape dismisses it
+// and Radix returns focus to the trigger.
+async function closeDrawer(page) {
+  await page.keyboard.press("Escape")
   await page.waitForFunction(
-    () => document.querySelector(".reader-chrome")?.getAttribute("data-browse") === "closed",
+    () => !document.querySelector('[data-sidebar="sidebar"][data-mobile="true"]'),
     null,
     { timeout: 5000 },
   )
-  // The Sheet exit transition keeps the panel visible briefly; wait for
-  // it to hide before asserting dismissal.
-  await page.waitForSelector("#reader-browse-panel", { state: "hidden", timeout: 5000 })
 }
 
-/** Phone drawer fills the usable viewport, respects safe areas, and scrolls the tree independently. */
+/** Phone drawer is the registry mobile sidebar sheet: the real AppSidebar slides in from the left over a dimmed overlay. */
 async function assertPhoneDrawerViewport(page, label) {
   const drawer = await page.evaluate(() => {
-    const el = document.querySelector("#reader-browse-panel")
+    const el = document.querySelector('[data-sidebar="sidebar"][data-mobile="true"]')
 
     if (!el) return null
     const rect = el.getBoundingClientRect()
-    const style = getComputedStyle(el)
-    const tree = document.querySelector(".reader-phone-drawer-tree")
-    const treeStyle = tree ? getComputedStyle(tree) : null
+    const content = el.querySelector('[data-sidebar="content"]')
+    const contentStyle = content ? getComputedStyle(content) : null
+    const overlay = document.querySelector('[data-slot="sheet-overlay"]')
+    const overlayRect = overlay ? overlay.getBoundingClientRect() : null
+    const close = el.querySelector('[data-slot="sheet-close"]')
+    const closeRect = close ? close.getBoundingClientRect() : null
+    const home = el.querySelector(".reader-sidebar-home")
+    const homeRect = home ? home.getBoundingClientRect() : null
+    const search = el.querySelector(".reader-search-sidebar")
+    const searchRect = search ? search.getBoundingClientRect() : null
+    const switcher = el.querySelector(".reader-projection-trigger")
+    const switcherRect = switcher ? switcher.getBoundingClientRect() : null
 
     return {
+      left: rect.left,
       width: rect.width,
       height: rect.height,
       innerWidth: window.innerWidth,
       innerHeight: window.innerHeight,
-      overflowX: style.overflowX,
-      treeOverflowY: treeStyle ? treeStyle.overflowY : "",
-      treeScrollHeight: tree ? tree.scrollHeight : 0,
-      treeClientHeight: tree ? tree.clientHeight : 0,
-      closeText:
-        document
-          .querySelector('#reader-browse-panel [data-slot="sheet-close"]')
-          ?.textContent?.trim() || "",
-      closeHeight:
-        document
-          .querySelector('#reader-browse-panel [data-slot="sheet-close"]')
-          ?.getBoundingClientRect().height || 0,
-      homeVisible: (() => {
-        const home = document.querySelector("#reader-browse-panel .reader-drawer-home")
-
-        if (!home) return false
-        const rect = home.getBoundingClientRect()
-
-        return rect.width > 0 && rect.height > 0
-      })(),
-      drawerSearchText:
-        document
-          .querySelector("#reader-browse-panel .reader-search-trigger")
-          ?.textContent?.trim() || "",
-      drawerSearchHeight:
-        document
-          .querySelector("#reader-browse-panel .reader-search-trigger")
-          ?.getBoundingClientRect().height || 0,
-      dialogRole: document.querySelector("#reader-browse-panel")?.getAttribute("role") || "",
-      labelledBy:
-        document.querySelector("#reader-browse-panel")?.getAttribute("aria-labelledby") || "",
+      overlayCovers:
+        !!overlay &&
+        !!overlayRect &&
+        overlayRect.width >= window.innerWidth - 1 &&
+        overlayRect.height >= window.innerHeight - 1,
+      contentOverflowY: contentStyle ? contentStyle.overflowY : "",
+      closeVisible: !!closeRect && closeRect.width > 0 && closeRect.height > 0,
+      homeVisible: !!homeRect && homeRect.width > 0 && homeRect.height > 0,
+      drawerSearchText: search?.textContent?.trim() || "",
+      drawerSearchHeight: searchRect ? searchRect.height : 0,
+      switcherVisible: !!switcherRect && switcherRect.width > 0 && switcherRect.height > 0,
+      dialogRole: el.getAttribute("role") || "",
     }
   })
 
   assert.ok(drawer, `${label}: phone drawer is in the document`)
+  assert.ok(drawer.left <= 1, `${label}: drawer slides in from the left (left ${drawer.left}px)`)
   assert.ok(
-    drawer.width >= drawer.innerWidth - 2,
-    `${label}: drawer fills viewport width (${drawer.width}px vs ${drawer.innerWidth}px)`,
+    drawer.width >= 200 && drawer.width <= drawer.innerWidth - 16,
+    `${label}: drawer is a nav panel over a dimmed body (${drawer.width}px vs ${drawer.innerWidth}px)`,
   )
   assert.ok(
     drawer.height >= drawer.innerHeight - 2,
     `${label}: drawer fills viewport height (${drawer.height}px vs ${drawer.innerHeight}px)`,
   )
+  assert.ok(drawer.overlayCovers, `${label}: overlay dims the body behind the drawer`)
   assert.ok(
-    drawer.treeOverflowY === "auto" || drawer.treeOverflowY === "scroll",
-    `${label}: tree scrolls independently (overflow-y ${drawer.treeOverflowY})`,
+    drawer.contentOverflowY === "auto" || drawer.contentOverflowY === "scroll",
+    `${label}: tree scrolls independently (overflow-y ${drawer.contentOverflowY})`,
   )
-  assert.equal(drawer.closeText, "Close", `${label}: drawer has a visible named Close`)
-  assert.ok(drawer.closeHeight >= 44, `${label}: Close is ${drawer.closeHeight}px (expected >= 44)`)
+  assert.equal(drawer.closeVisible, false, `${label}: drawer has no visible Close`)
   assert.ok(drawer.homeVisible, `${label}: drawer Home stays reachable`)
-  assert.equal(drawer.drawerSearchText, "Search", `${label}: drawer Search stays reachable`)
+  assert.ok(drawer.drawerSearchText.includes("Search"), `${label}: drawer Search stays reachable`)
   assert.ok(
     drawer.drawerSearchHeight >= 44,
     `${label}: drawer Search is ${drawer.drawerSearchHeight}px (expected >= 44)`,
   )
+  assert.ok(drawer.switcherVisible, `${label}: drawer switcher stays reachable`)
   assert.ok(
     drawer.dialogRole === "dialog" || drawer.dialogRole === "alertdialog",
     `${label}: drawer is a dialog (role ${drawer.dialogRole})`,
@@ -4205,36 +4327,146 @@ async function assertBackgroundScrollLock(page, label) {
   )
 }
 
-/** Phone assertions: drawer hidden until Browse opens, then home -> folder -> note. */
-async function runPhoneJourney(page, baseUrl, expect, label) {
+/**
+ * Phone header composition (mobile port items 2+4): 64px header with
+ * hamburger plus a truncated brand button on the left (opens the vault
+ * bottom sheet) and the status cue plus search on the right. The desktop
+ * separator and breadcrumb trail stay mounted for desktop parity but
+ * hidden on phones.
+ */
+async function runPhoneHeaderComposition(page, baseUrl, expect, label) {
   await goto(page, `${baseUrl}/`)
+
+  const header = await page.evaluate(() => {
+    const el = document.querySelector(".reader-header")
+
+    if (!el) return null
+    const rect = el.getBoundingClientRect()
+    const style = getComputedStyle(el)
+    const brandSpan = document.querySelector(".reader-header-trail span.truncate")
+    const brandRect = brandSpan?.getBoundingClientRect() || null
+    const brandControl = brandSpan?.closest("button") || brandSpan?.closest("div") || null
+    const icon = brandControl?.querySelector("svg") || null
+    const iconRect = icon?.getBoundingClientRect() || null
+    const crumbs = document.querySelector(".reader-header-trail .reader-breadcrumbs")
+    const crumbsStyle = crumbs ? getComputedStyle(crumbs) : null
+    const crumbsRect = crumbs?.getBoundingClientRect() || null
+    const separator = document.querySelector('.reader-header-trail [data-slot="separator"]')
+    const separatorStyle = separator ? getComputedStyle(separator) : null
+    const separatorRect = separator?.getBoundingClientRect() || null
+    const cue = document.querySelector(".reader-offline-cue")
+    const cueRect = cue?.getBoundingClientRect() || null
+    const cueStyle = cue ? getComputedStyle(cue) : null
+    const search = document.querySelector(".reader-search-header")
+    const searchRect = search?.getBoundingClientRect() || null
+    const trigger = document.querySelector('[data-sidebar="trigger"]')
+    const triggerRect = trigger?.getBoundingClientRect() || null
+
+    return {
+      height: rect.height,
+      borderWidth: style.borderBottomWidth,
+      borderStyle: style.borderBottomStyle,
+      brandText: brandSpan?.textContent?.trim() || "",
+      brandVisible:
+        !!brandSpan &&
+        !!brandRect &&
+        brandRect.width > 0 &&
+        brandRect.height > 0 &&
+        getComputedStyle(brandSpan).display !== "none",
+      brandTag: brandControl?.tagName || "",
+      brandIsButton: (brandControl?.tagName || "") === "BUTTON",
+      brandType: brandControl?.getAttribute("type") || "",
+      brandHaspopup: brandControl?.getAttribute("aria-haspopup") || "",
+      brandExpanded: brandControl?.getAttribute("aria-expanded") || "",
+      brandWeight: brandSpan ? getComputedStyle(brandSpan).fontWeight : "",
+      iconVisible: !!iconRect && iconRect.width > 0 && iconRect.height > 0,
+      iconWidth: iconRect ? iconRect.width : 0,
+      crumbsVisible:
+        !!crumbs &&
+        !!crumbsRect &&
+        crumbsStyle.display !== "none" &&
+        crumbsRect.width > 0 &&
+        crumbsRect.height > 0,
+      separatorVisible:
+        !!separator &&
+        !!separatorRect &&
+        separatorStyle.display !== "none" &&
+        separatorRect.width > 0 &&
+        separatorRect.height > 0,
+      cueVisible:
+        !!cue &&
+        !!cueRect &&
+        cueStyle.display !== "none" &&
+        cueRect.width > 0 &&
+        cueRect.height > 0,
+      searchVisible: !!searchRect && searchRect.width > 0 && searchRect.height > 0,
+      triggerVisible: !!triggerRect && triggerRect.width > 0 && triggerRect.height > 0,
+    }
+  })
+
+  assert.ok(header, `${label}: phone header is present`)
+  assert.ok(
+    Math.abs(header.height - 64) <= 1,
+    `${label}: phone header is 64px tall (got ${header.height}px)`,
+  )
+  assert.ok(header.triggerVisible, `${label}: hamburger stays visible`)
+  assert.ok(header.brandVisible, `${label}: brand row is visible`)
+  assert.ok(
+    header.brandText.includes(expect.projection),
+    `${label}: brand text is the site title (got ${header.brandText})`,
+  )
+  assert.equal(header.brandTag, "BUTTON", `${label}: brand row is a button`)
+  assert.equal(header.brandIsButton, true, `${label}: brand row opens the vault sheet`)
+  assert.equal(header.brandType, "button", `${label}: brand row is a plain button`)
+  assert.equal(header.brandHaspopup, "dialog", `${label}: brand row announces the vault dialog`)
+  assert.equal(header.brandExpanded, "false", `${label}: vault sheet starts closed`)
+  assert.ok(
+    Number(header.brandWeight) >= 700 || header.brandWeight === "bold",
+    `${label}: brand text is bold (got ${header.brandWeight})`,
+  )
+  assert.ok(header.iconVisible, `${label}: brand swap icon is visible`)
+  assert.ok(
+    Math.abs(header.iconWidth - 14) <= 1,
+    `${label}: brand swap icon is 14px (got ${header.iconWidth}px)`,
+  )
+  assert.equal(header.crumbsVisible, false, `${label}: breadcrumbs leave the phone header`)
+  assert.equal(header.separatorVisible, false, `${label}: separator leaves the phone header`)
+  assert.ok(header.cueVisible, `${label}: status cue stays right`)
+  assert.ok(header.searchVisible, `${label}: search stays right`)
+  assert.ok(
+    header.borderWidth !== "0px" && header.borderStyle !== "none",
+    `${label}: phone header keeps its bottom border`,
+  )
+}
+
+/** Phone assertions: drawer hidden until the trigger opens it, then home -> folder -> note. */
+async function runPhoneJourney(page, baseUrl, expect, label) {
+  await runPhoneHeaderComposition(page, baseUrl, expect, `${label} header`)
   assert.equal(
-    await isVisible(page, "#reader-browse-panel"),
+    await isVisible(page, '[data-sidebar="sidebar"][data-mobile="true"]'),
     false,
-    `${label}: phone drawer stays hidden until Browse opens`,
+    `${label}: phone drawer stays hidden until the trigger opens it`,
   )
-  assert.ok(await isVisible(page, ".reader-browse-toggle"), `${label}: Browse control is visible`)
-
-  const toggleHeight = await page.evaluate(
-    () => document.querySelector(".reader-browse-toggle")?.getBoundingClientRect().height,
+  assert.ok(
+    await isVisible(page, '[data-sidebar="trigger"]'),
+    `${label}: sidebar trigger is visible`,
   )
-
-  assert.ok(toggleHeight >= 44, `${label}: Browse control is ${toggleHeight}px (expected >= 44)`)
   await assertNoPageOverflow(page, `${label} home`)
-  await assertLandmarks(page, `${label} home`)
+  await assertLandmarks(page, `${label} home`, { areasNav: false })
 
-  await openBrowse(page)
+  await openDrawer(page)
   assert.equal(
-    await isVisible(page, "#reader-browse-panel"),
+    await isVisible(page, '[data-sidebar="sidebar"][data-mobile="true"]'),
     true,
-    `${label}: Browse opens the drawer`,
+    `${label}: trigger opens the drawer`,
   )
   await assertPhoneDrawerViewport(page, `${label} drawer`)
   await assertBackgroundScrollLock(page, `${label} drawer`)
+  await assertLandmarks(page, `${label} drawer`)
 
   // Focus moves into the drawer while it is open.
   const focusInDrawer = await page.evaluate(() => {
-    const panel = document.querySelector("#reader-browse-panel")
+    const panel = document.querySelector('[data-sidebar="sidebar"][data-mobile="true"]')
     const active = document.activeElement
 
     return !!panel && !!active && panel.contains(active)
@@ -4245,7 +4477,9 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
   // Drawer Search opens the one shared dialog; dismissing it returns
   // focus into the still-open drawer without a second dialog.
   await page.evaluate(() => {
-    document.querySelector("#reader-browse-panel .reader-search-trigger")?.click()
+    document
+      .querySelector('[data-sidebar="sidebar"][data-mobile="true"] .reader-search-trigger')
+      ?.click()
   })
   await searchDialogOpen(page)
   assert.equal(
@@ -4257,7 +4491,7 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
   await searchDialogClosed(page)
 
   const focusBackInDrawer = await page.evaluate(() => {
-    const panel = document.querySelector("#reader-browse-panel")
+    const panel = document.querySelector('[data-sidebar="sidebar"][data-mobile="true"]')
     const active = document.activeElement
 
     return !!panel && !!active && panel.contains(active)
@@ -4265,34 +4499,37 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
 
   assert.ok(focusBackInDrawer, `${label}: Search close returns focus into the drawer`)
   assert.equal(
-    await isVisible(page, "#reader-browse-panel"),
+    await isVisible(page, '[data-sidebar="sidebar"][data-mobile="true"]'),
     true,
     `${label}: drawer stays open after Search closes`,
   )
 
-  const expanded = await page.evaluate(() =>
-    document.querySelector(".reader-browse-toggle")?.getAttribute("aria-expanded"),
+  const sheetOpen = await page.evaluate(
+    () => !!document.querySelector('[data-sidebar="sidebar"][data-mobile="true"]'),
   )
 
-  assert.equal(expanded, "true", `${label}: Browse reports its open state`)
+  assert.equal(sheetOpen, true, `${label}: sheet reports its open state`)
   const roots = await browseRoots(page)
   assert.deepEqual(
     roots.map((a) => a.text),
     expect.areas,
-    `${label}: Browse shows the same tree roots in published order`,
+    `${label}: drawer shows the same tree roots in published order`,
   )
 
-  await closeBrowseViaClose(page)
+  await closeDrawer(page)
   assert.equal(
-    await isVisible(page, "#reader-browse-panel"),
+    await isVisible(page, '[data-sidebar="sidebar"][data-mobile="true"]'),
     false,
-    `${label}: Close dismisses the drawer`,
+    `${label}: Escape dismisses the drawer`,
   )
-  const focusReturned = await page.evaluate(() => document.activeElement?.className || "")
+
+  const focusReturned = await page.evaluate(
+    () => document.activeElement?.getAttribute("data-sidebar") || "",
+  )
 
   assert.ok(
-    String(focusReturned).includes("reader-browse-toggle"),
-    `${label}: dismissing returns focus to Browse`,
+    String(focusReturned).includes("trigger"),
+    `${label}: dismissing returns focus to the trigger`,
   )
 
   const folderHref = (
@@ -4318,11 +4555,11 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
   await assertNoPageOverflow(page, `${label} folder`)
   await assertTouchTargets(page, `${label} folder`)
 
-  await openBrowse(page)
+  await openDrawer(page)
   assert.equal(
-    await isVisible(page, "#reader-browse-panel"),
+    await isVisible(page, '[data-sidebar="sidebar"][data-mobile="true"]'),
     true,
-    `${label}: Browse opens the tree`,
+    `${label}: trigger opens the tree`,
   )
 
   // Long folders page behind the more-row: reach the leaf through paging.
@@ -4330,23 +4567,29 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
 
   // The phone tree carries the nested note with its static route.
   const leafInTree = await page.evaluate((route) => {
-    const scope = document.querySelector("#reader-browse-panel .reader-sidebar-nav") || document
+    const scope =
+      document.querySelector('[data-sidebar="sidebar"][data-mobile="true"] .reader-sidebar-nav') ||
+      document
+
     const a = scope.querySelector(`a[href="${route}"]`)
 
     return a ? a.textContent?.trim() || "" : null
   }, expect.leafRoute)
 
-  assert.equal(leafInTree, expect.leafTitle, `${label}: Browse tree reaches the nested note`)
+  assert.equal(leafInTree, expect.leafTitle, `${label}: drawer tree reaches the nested note`)
 
   // Deep branches and long titles stay readable while browsing.
   const panelReadable = await page.evaluate(() => {
-    const scope = document.querySelector("#reader-browse-panel .reader-sidebar-nav") || document
+    const scope =
+      document.querySelector('[data-sidebar="sidebar"][data-mobile="true"] .reader-sidebar-nav') ||
+      document
+
     const links = Array.from(scope.querySelectorAll("a"))
 
     const toggles = Array.from(
-      (document.querySelector("#reader-browse-panel") || document).querySelectorAll(
-        ".reader-tree-toggle",
-      ),
+      (
+        document.querySelector('[data-sidebar="sidebar"][data-mobile="true"]') || document
+      ).querySelectorAll(".reader-tree-toggle"),
     )
 
     return {
@@ -4367,7 +4610,7 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
     assert.ok(height >= 44, `${label}: tree disclosure is ${height}px (expected >= 44)`)
   }
 
-  // Open the nested branches, then select the note: Browse closes and
+  // Open the nested branches, then select the note: the drawer closes and
   // reading starts on the note route.
   const segments = expect.leafRoute.split("/").filter(Boolean)
 
@@ -4381,7 +4624,11 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
       timeout: 15000,
     }),
     page.evaluate((route) => {
-      const scope = document.querySelector("#reader-browse-panel .reader-sidebar-nav") || document
+      const scope =
+        document.querySelector(
+          '[data-sidebar="sidebar"][data-mobile="true"] .reader-sidebar-nav',
+        ) || document
+
       scope.querySelector(`a[href="${route}"]`)?.click()
     }, expect.leafRoute),
   ])
@@ -4390,12 +4637,12 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
     `${label}: nested note route ${expect.leafRoute}`,
   )
   await page.waitForFunction(
-    () => document.querySelector(".reader-chrome")?.getAttribute("data-browse") === "closed",
+    () => !document.querySelector('[data-sidebar="sidebar"][data-mobile="true"]'),
     null,
     { timeout: 5000 },
   )
   assert.equal(
-    await isVisible(page, "#reader-browse-panel"),
+    await isVisible(page, '[data-sidebar="sidebar"][data-mobile="true"]'),
     false,
     `${label}: selecting a tree page closes the drawer`,
   )
@@ -4408,50 +4655,45 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
   assert.equal(drawerUrlState.hash, "", `${label}: drawer adds no URL hash state`)
   assert.ok(!drawerUrlState.search.includes("browse"), `${label}: drawer adds no URL query state`)
 
-  const note = await page.evaluate(() => ({
-    h1: document.querySelector("article h1")?.textContent?.trim() || "",
-    crumbs: Array.from(
-      document.querySelectorAll(".reader-breadcrumbs [data-slot='breadcrumb-item']"),
-    ).map((li) => ({
-      text: li.textContent?.trim() || "",
-      href: li.querySelector("a")?.getAttribute("href") || null,
-    })),
-    h1Rect: document.querySelector("article h1")?.getBoundingClientRect().toJSON() || null,
-    media: { viewport: window.innerWidth },
-  }))
+  const note = await page.evaluate(() => {
+    const crumbs = document.querySelector(".reader-header-trail .reader-breadcrumbs")
+    const crumbsRect = crumbs?.getBoundingClientRect() || null
+    const brandSpan = document.querySelector(".reader-header-trail span.truncate")
+
+    return {
+      h1: document.querySelector("article h1")?.textContent?.trim() || "",
+      crumbsVisible:
+        !!crumbs &&
+        !!crumbsRect &&
+        getComputedStyle(crumbs).display !== "none" &&
+        crumbsRect.width > 0 &&
+        crumbsRect.height > 0,
+      brandText: brandSpan?.textContent?.trim() || "",
+      h1Rect: document.querySelector("article h1")?.getBoundingClientRect().toJSON() || null,
+      media: { viewport: window.innerWidth },
+    }
+  })
 
   assert.equal(note.h1, expect.leafTitle, `${label}: nested note title`)
-  assert.ok(note.crumbs.length >= 3, `${label}: breadcrumbs expose folder ancestry`)
+  // Phone header item 2: the breadcrumb trail leaves the phone header
+  // (it returns inside the body in item 6); the brand row stays instead.
+  assert.equal(note.crumbsVisible, false, `${label}: phone header hides breadcrumbs on the note`)
+  assert.ok(
+    note.brandText.includes(expect.projection),
+    `${label}: phone header keeps the site title on the note`,
+  )
   assert.ok(
     note.h1Rect && note.h1Rect.width <= note.media.viewport + 1,
     `${label}: long title stays inside the viewport`,
   )
   await assertNoPageOverflow(page, `${label} note`)
   await assertTouchTargets(page, `${label} note`)
-  await assertLandmarks(page, `${label} note`)
+  await assertLandmarks(page, `${label} note`, { areasNav: false })
 
-  const crumbHref = note.crumbs.length > 1 ? note.crumbs[1].href : null
-  assert.ok(crumbHref, `${label}: breadcrumbs link a parent`)
-  await Promise.all([
-    page.waitForFunction(
-      (href) => window.location.pathname === href || window.location.pathname === `${href}/`,
-      crumbHref,
-      { timeout: 15000 },
-    ),
-    page.evaluate((href) => {
-      document.querySelector(`.reader-breadcrumbs a[href="${href}"]`)?.click()
-    }, crumbHref),
-  ])
-  await page.waitForLoadState("networkidle", { timeout: 15000 })
   // Timing-only stabilization: history traversals between static pages
   // can resolve while already idle, so each Back awaits its observable
-  // route before the next traversal. Same three traversals, same expected
-  // URLs, no fixed sleeps.
-  await page.goBack({ waitUntil: "networkidle", timeout: 15000 })
-  await page.waitForFunction((route) => window.location.href.includes(route), expect.leafRoute, {
-    timeout: 15000,
-  })
-  assert.ok(page.url().includes(expect.leafRoute), `${label}: Back returns to the note`)
+  // route before the next traversal. No crumb click on phones: the header
+  // trail is hidden, so Back alone walks the note -> folder -> home stack.
   await page.goBack({ waitUntil: "networkidle", timeout: 15000 })
   await page.waitForFunction(
     (route) => window.location.pathname === route || window.location.pathname === `${route}/`,
@@ -4595,6 +4837,17 @@ async function runDerivedOverflowProbes(
     crumbWidths.list <= crumbWidths.inner + 1,
     `${label}: breadcrumbs wrap inside the viewport`,
   )
+
+  // Phone header item 2: the trail stays mounted for desktop parity but
+  // hidden on phones (it returns inside the body in item 6).
+  if (crumbWidths.inner < 768) {
+    assert.equal(
+      await isVisible(page, ".reader-header-trail .reader-breadcrumbs"),
+      false,
+      `${label}: phone header hides the trail on the deep note`,
+    )
+  }
+
   await assertNoPageOverflow(page, `${label} deep note`)
 
   await goto(page, `${baseUrl}${probes.longTitle.route}`)
@@ -4671,21 +4924,35 @@ async function runDerivedOverflowProbes(
   }
 }
 
-/** Keyboard: Tab reaches Browse, Enter opens it, Escape closes it. */
+/** Keyboard: Tab reaches the trigger, Enter opens it, Escape closes it. */
 async function runKeyboardChecks(page, baseUrl, label) {
   await goto(page, `${baseUrl}/`)
   let focused = null
 
   for (let i = 0; i < 10; i++) {
     await page.keyboard.press("Tab")
-    focused = await page.evaluate(() => document.activeElement?.className || "")
+    focused = await page.evaluate(() => document.activeElement?.getAttribute("data-sidebar") || "")
 
-    if (String(focused).includes("reader-browse-toggle")) break
+    if (String(focused).includes("trigger")) break
   }
 
   assert.ok(
-    String(focused).includes("reader-browse-toggle"),
-    `${label}: keyboard Tab reaches the Browse control`,
+    String(focused).includes("trigger"),
+    `${label}: keyboard Tab reaches the sidebar trigger`,
+  )
+
+  // The registry trigger transitions all properties: wait for the focus
+  // outline to settle before asserting its ring.
+  await page.waitForFunction(
+    () => {
+      const el = document.activeElement
+
+      if (!el) return false
+
+      return getComputedStyle(el).outlineWidth === "2px"
+    },
+    null,
+    { timeout: 5000 },
   )
 
   const outline = await page.evaluate(() => {
@@ -4697,34 +4964,43 @@ async function runKeyboardChecks(page, baseUrl, label) {
     return { width: style.outlineWidth, style: style.outlineStyle }
   })
 
-  assert.equal(outline?.style, "solid", `${label}: keyboard focus is visible on Browse`)
-  assert.equal(outline?.width, "2px", `${label}: keyboard focus ring is 2px on Browse`)
+  assert.equal(outline?.style, "solid", `${label}: keyboard focus is visible on the trigger`)
+
+  assert.equal(outline?.style, "solid", `${label}: keyboard focus is visible on the trigger`)
+  assert.equal(outline?.width, "2px", `${label}: keyboard focus ring is 2px on the trigger`)
   await page.keyboard.press("Enter")
   await page.waitForFunction(
-    () => document.querySelector(".reader-chrome")?.getAttribute("data-browse") === "open",
+    () => !!document.querySelector('[data-sidebar="sidebar"][data-mobile="true"]'),
     null,
     { timeout: 5000 },
   )
-  await page.waitForSelector("#reader-browse-panel", { state: "visible", timeout: 5000 })
+  await page.waitForSelector('[data-sidebar="sidebar"][data-mobile="true"]', {
+    state: "visible",
+    timeout: 5000,
+  })
   assert.equal(
-    await isVisible(page, "#reader-browse-panel"),
+    await isVisible(page, '[data-sidebar="sidebar"][data-mobile="true"]'),
     true,
     `${label}: Enter opens the drawer`,
   )
   await page.keyboard.press("Escape")
   await page.waitForFunction(
-    () => document.querySelector(".reader-chrome")?.getAttribute("data-browse") === "closed",
+    () => !document.querySelector('[data-sidebar="sidebar"][data-mobile="true"]'),
     null,
     { timeout: 5000 },
   )
-  const returned = await page.evaluate(() => document.activeElement?.className || "")
+
+  const returned = await page.evaluate(
+    () => document.activeElement?.getAttribute("data-sidebar") || "",
+  )
+
   assert.ok(
-    String(returned).includes("reader-browse-toggle"),
-    `${label}: Escape closes Browse and returns focus`,
+    String(returned).includes("trigger"),
+    `${label}: Escape closes the drawer and returns focus`,
   )
 }
 
-/** Desktop keeps the persistent registry sidebar and hides the Browse control. */
+/** Desktop keeps the persistent registry sidebar with its trigger. */
 async function runDesktopChecks(page, baseUrl, expect, label) {
   await goto(page, `${baseUrl}/`)
   assert.equal(
@@ -4733,9 +5009,14 @@ async function runDesktopChecks(page, baseUrl, expect, label) {
     `${label}: registry sidebar stays visible`,
   )
   assert.equal(
-    await isVisible(page, ".reader-browse-toggle"),
+    await isVisible(page, '[data-sidebar="trigger"]'),
+    true,
+    `${label}: sidebar trigger stays visible`,
+  )
+  assert.equal(
+    await isVisible(page, '.reader-header-trail > button:not([data-sidebar="trigger"])'),
     false,
-    `${label}: Browse control stays hidden`,
+    `${label}: phone brand button stays off desktop`,
   )
   assert.deepEqual(
     (await browseRoots(page)).map((a) => a.text),
@@ -5086,9 +5367,63 @@ async function runPhoneOfflinePlacement(page, baseUrl, label) {
     await page.evaluate(
       () => document.querySelector(".reader-offline-cue")?.textContent?.trim() || "",
     ),
-    /Not saved offline/,
-    `${label}: idle cue is concise`,
+    /^Not saved$/,
+    `${label}: idle chip reads Not saved`,
   )
+
+  const chip = await page.evaluate(() => {
+    const el = document.querySelector(".reader-offline-cue")
+
+    if (!el) return null
+    const style = getComputedStyle(el)
+    const icon = el.querySelector("svg")
+    const iconRect = icon?.getBoundingClientRect()
+    const labelEl = el.querySelector("span")
+
+    return {
+      iconPresent: !!icon,
+      iconWidth: iconRect ? Math.round(iconRect.width) : 0,
+      iconSharesMutedColor: icon ? getComputedStyle(icon).color === style.color : false,
+      labelSize: labelEl ? getComputedStyle(labelEl).fontSize : "",
+      labelTruncates: labelEl ? getComputedStyle(labelEl).overflow === "hidden" : false,
+      radius: style.borderRadius,
+      background: style.backgroundColor,
+      height: Math.round(el.getBoundingClientRect().height),
+      textColor: style.color,
+      role: el.getAttribute("role"),
+      live: el.getAttribute("aria-live"),
+      online: el.getAttribute("data-online"),
+      update: el.getAttribute("data-update"),
+    }
+  })
+
+  assert.ok(chip?.iconPresent, `${label}: idle chip carries the Not saved icon`)
+  assert.equal(chip?.iconWidth, 12, `${label}: chip icon is 12px`)
+  assert.ok(chip?.iconSharesMutedColor, `${label}: Not saved icon shares the muted label color`)
+  assert.equal(chip?.labelSize, "11px", `${label}: chip label is 11px`)
+  assert.ok(chip?.labelTruncates, `${label}: chip label truncates`)
+  assert.ok(
+    Number.parseFloat(chip?.radius ?? "") > 1000,
+    `${label}: chip is a pill (got ${chip?.radius})`,
+  )
+  assert.match(
+    chip?.background ?? "",
+    /oklch\(0\.97 0 0\)|245,\s*245,\s*245/,
+    `${label}: chip sits on the muted pill`,
+  )
+  assert.ok(
+    (chip?.height ?? 0) >= 27 && (chip?.height ?? 0) <= 30,
+    `${label}: chip is ~28px tall (got ${chip?.height}px)`,
+  )
+  assert.match(
+    chip?.textColor ?? "",
+    /oklch\(0\.556 0 0\)|115,\s*115,\s*115/,
+    `${label}: Not saved chip is muted`,
+  )
+  assert.equal(chip?.role, "status", `${label}: idle chip announces politely`)
+  assert.equal(chip?.live, "polite", `${label}: idle chip live region is polite`)
+  assert.equal(chip?.online, null, `${label}: online chip carries no offline marker`)
+  assert.equal(chip?.update, null, `${label}: chip carries no update marker without an update`)
 
   await page.evaluate(() => document.querySelector(".reader-offline-cue")?.click())
   await new Promise((resolve) => setTimeout(resolve, 500))
@@ -5111,7 +5446,7 @@ async function runPhoneOfflinePlacement(page, baseUrl, label) {
   assert.equal(afterCue.hasReg, false, `${label}: cue does not start a save`)
   assert.equal(afterCue.count, 0, `${label}: cue downloads nothing`)
 
-  await openBrowse(page)
+  await openDrawer(page)
 
   const afterOpen = await page.evaluate(async () => {
     let hasReg = false
@@ -5132,7 +5467,9 @@ async function runPhoneOfflinePlacement(page, baseUrl, label) {
   assert.equal(afterOpen.count, 0, `${label}: opening the drawer downloads nothing`)
 
   const footer = await page.evaluate(() => {
-    const el = document.querySelector(".reader-phone-drawer-footer")
+    const el = document.querySelector(
+      '[data-sidebar="sidebar"][data-mobile="true"] .reader-sidebar-footer',
+    )
 
     if (!el) return null
     const rect = el.getBoundingClientRect()
@@ -5152,20 +5489,15 @@ async function runPhoneOfflinePlacement(page, baseUrl, label) {
   )
 
   const drawer = await page.evaluate(() => {
-    const group = document.querySelector(
-      '.reader-phone-drawer-footer [role="group"][aria-label="Appearance"]',
-    )
+    const scope = '[data-sidebar="sidebar"][data-mobile="true"] .reader-sidebar-footer'
+    const group = document.querySelector(`${scope} [role="group"][aria-label="Appearance"]`)
 
     return {
       hasAppearance: !!group,
       appearanceText: group?.textContent?.trim() || "",
-      hasSave: !!document.querySelector(".reader-phone-drawer-footer .reader-offline-save"),
-      size:
-        document.querySelector(".reader-phone-drawer-footer .reader-offline-size")?.textContent ||
-        "",
-      trust:
-        document.querySelector(".reader-phone-drawer-footer .reader-offline-trust")?.textContent ||
-        "",
+      hasSave: !!document.querySelector(`${scope} .reader-offline-save`),
+      size: document.querySelector(`${scope} .reader-offline-size`)?.textContent || "",
+      trust: document.querySelector(`${scope} .reader-offline-trust`)?.textContent || "",
     }
   })
 
@@ -5184,7 +5516,7 @@ async function runPhoneOfflinePlacement(page, baseUrl, label) {
     cue: document.querySelector(".reader-offline-cue")?.getAttribute("data-offline-state") || "",
     detail:
       document
-        .querySelector(".reader-phone-drawer-footer .reader-offline")
+        .querySelector('[data-sidebar="sidebar"][data-mobile="true"] .reader-offline')
         ?.getAttribute("data-offline-state") || "",
   }))
 
@@ -5192,7 +5524,10 @@ async function runPhoneOfflinePlacement(page, baseUrl, label) {
   assert.equal(shared.detail, "idle", `${label}: drawer details share the mounted offline state`)
 
   const scroll = await page.evaluate(() => {
-    const tree = document.querySelector(".reader-phone-drawer-tree")
+    const tree = document.querySelector(
+      '[data-sidebar="sidebar"][data-mobile="true"] [data-sidebar="content"]',
+    )
+
     const style = tree ? getComputedStyle(tree) : null
 
     return {
@@ -5209,7 +5544,7 @@ async function runPhoneOfflinePlacement(page, baseUrl, label) {
   await page.evaluate(() => {
     const buttons = Array.from(
       document.querySelectorAll(
-        '.reader-phone-drawer-footer [role="group"][aria-label="Appearance"] button',
+        '[data-sidebar="sidebar"][data-mobile="true"] .reader-sidebar-footer [role="group"][aria-label="Appearance"] button',
       ),
     )
 
@@ -5240,13 +5575,13 @@ async function runPhoneOfflinePlacement(page, baseUrl, label) {
   await page.evaluate(() => {
     const buttons = Array.from(
       document.querySelectorAll(
-        '.reader-phone-drawer-footer [role="group"][aria-label="Appearance"] button',
+        '[data-sidebar="sidebar"][data-mobile="true"] .reader-sidebar-footer [role="group"][aria-label="Appearance"] button',
       ),
     )
 
     buttons.find((button) => (button.textContent || "").includes("System"))?.click()
   })
-  await closeBrowseViaClose(page)
+  await closeDrawer(page)
   assert.equal(
     await isVisible(page, ".reader-offline-cue"),
     true,
@@ -5256,9 +5591,11 @@ async function runPhoneOfflinePlacement(page, baseUrl, label) {
 
 /**
  * Home card slice at phone width, folded from the retired home-cards
- * suite: ordered links, distinct folder/note cues, kind-only meta with
- * accurate counts, hidden-route exclusion, no Home self-link,
- * containment, touch targets, and real card navigation with Back.
+ * suite: ordered links, distinct folder/note cues, kind-prefixed desktop
+ * meta with accurate counts, count-only phone meta, hidden-route
+ * exclusion, no Home self-link, containment, touch targets, phone body
+ * measurements from design screen I1z3qM, and real card navigation with
+ * Back.
  */
 async function runPhoneCardsDetail(page, baseUrl, expect, label) {
   await goto(page, `${baseUrl}/`)
@@ -5321,6 +5658,118 @@ async function runPhoneCardsDetail(page, baseUrl, expect, label) {
   assert.match(cardText, /Folder · 12 items/, `${label}: flat folder count is accurate`)
   assert.match(cardText, /Folder · 2 items/, `${label}: authored folder count is accurate`)
 
+  // Mobile port home-phone: the phone body matches design screen I1z3qM —
+  // 12px muted Home crumb, 26px h1, [20, 16, 32, 16] body padding, and
+  // 60px-ish bordered rows with a 36px muted icon box, semibold 14px
+  // title, count-only 12px meta, trailing chevron, and 12px card gaps.
+  const phoneBody = await page.evaluate(() => {
+    const article = document.querySelector(".reader-article")
+
+    const crumb = Array.from(article?.querySelectorAll(":scope > span") ?? []).find(
+      (node) => node.textContent?.trim() === "Home",
+    )
+
+    const h1 = article?.querySelector("h1")
+
+    const shell = document.querySelector(".reader-shell")
+
+    const shellStyle = shell ? getComputedStyle(shell) : null
+
+    const items = Array.from(document.querySelectorAll(".reader-area-list > li")).map((li) =>
+      li.getBoundingClientRect().toJSON(),
+    )
+
+    return {
+      crumb: crumb
+        ? { display: getComputedStyle(crumb).display, fontSize: getComputedStyle(crumb).fontSize }
+        : null,
+      h1Size: h1 ? getComputedStyle(h1).fontSize : "",
+      shell: shellStyle
+        ? {
+            top: shellStyle.paddingTop,
+            right: shellStyle.paddingRight,
+            bottom: shellStyle.paddingBottom,
+            left: shellStyle.paddingLeft,
+          }
+        : null,
+      items,
+      cards: Array.from(document.querySelectorAll(".reader-area-list a")).map((a) => {
+        const visible = (selector) =>
+          Array.from(a.querySelectorAll(selector)).filter(
+            (el) => el.getBoundingClientRect().height > 0,
+          )
+
+        const [title] = visible('[data-slot="card-title"]')
+
+        const [meta] = visible('[data-slot="card-description"]')
+
+        const [box] = visible("span.size-9")
+
+        const [chevron] = visible("svg.lucide-chevron-right")
+
+        const titleStyle = title ? getComputedStyle(title) : null
+
+        const metaStyle = meta ? getComputedStyle(meta) : null
+
+        const boxRect = box?.getBoundingClientRect()
+
+        return {
+          title: title?.textContent?.trim() ?? "",
+          titleSize: titleStyle?.fontSize ?? "",
+          titleWeight: titleStyle?.fontWeight ?? "",
+          meta: meta?.textContent?.trim() ?? "",
+          metaSize: metaStyle?.fontSize ?? "",
+          box: boxRect ? { width: boxRect.width, height: boxRect.height } : null,
+          chevron: !!chevron,
+          height: a.getBoundingClientRect().height,
+        }
+      }),
+    }
+  })
+
+  assert.ok(phoneBody.crumb, `${label}: phone Home crumb renders`)
+  assert.notEqual(phoneBody.crumb.display, "none", `${label}: phone Home crumb is visible`)
+  assert.equal(phoneBody.crumb.fontSize, "12px", `${label}: phone Home crumb is 12px`)
+  assert.equal(phoneBody.h1Size, "26px", `${label}: phone h1 is 26px`)
+  assert.deepEqual(
+    phoneBody.shell,
+    { top: "20px", right: "16px", bottom: "32px", left: "16px" },
+    `${label}: phone body padding matches the design`,
+  )
+
+  for (const [index, card] of phoneBody.cards.entries()) {
+    assert.ok(card.chevron, `${label}: card keeps its trailing chevron: ${card.title}`)
+    assert.deepEqual(
+      card.box,
+      { width: 36, height: 36 },
+      `${label}: card icon sits in a 36px muted box: ${card.title}`,
+    )
+    assert.equal(card.titleSize, "14px", `${label}: card title is 14px: ${card.title}`)
+    assert.equal(card.titleWeight, "600", `${label}: card title is semibold: ${card.title}`)
+    assert.equal(card.metaSize, "12px", `${label}: card meta is 12px: ${card.title}`)
+
+    if (expect.kinds[index] === "folder") {
+      assert.match(
+        card.meta,
+        /^\d+ items?$/,
+        `${label}: phone card meta is count-only: ${card.title}`,
+      )
+    } else {
+      assert.equal(card.meta, "Note", `${label}: phone note card keeps kind meta: ${card.title}`)
+    }
+
+    assert.ok(
+      card.height >= 56 && card.height <= 72,
+      `${label}: card row is 60px-ish (got ${card.height}px): ${card.title}`,
+    )
+  }
+
+  if (phoneBody.items.length >= 2) {
+    const gap = phoneBody.items[1].top - phoneBody.items[0].bottom
+
+    assert.equal(gap, 12, `${label}: phone card gap is 12px (got ${gap}px)`)
+  }
+
   const titlesFit = await page.evaluate(() =>
     Array.from(document.querySelectorAll(".reader-area-list .reader-home-card-title")).map(
       (el) => ({
@@ -5358,51 +5807,78 @@ async function runPhoneCardsDetail(page, baseUrl, expect, label) {
 }
 
 /**
- * Phone breadcrumb variants, folded from the retired breadcrumbs suite:
- * the current page stays readable inside the viewport on deep and long
- * routes, and the trail stays keyboard reachable.
+ * Phone header trail (mobile port item 2): the desktop breadcrumb trail
+ * leaves the phone header — deep and long routes keep a 64px header with
+ * the brand row visible while the trail and separator stay hidden. The
+ * trail returns inside the body in item 6; desktop assertions stay in
+ * runBreadcrumbsDetail.
  */
 async function runPhoneBreadcrumbsDetail(page, baseUrl, contentDir, label) {
   const probes = deriveProbes(contentDir, { requireImage: true })
+
+  for (const [route, tag] of [
+    [probes.deep.route, "deep"],
+    [probes.longTitle.route, "long"],
+  ]) {
+    await goto(page, `${baseUrl}${route}`)
+
+    const header = await page.evaluate(() => {
+      const headerEl = document.querySelector(".reader-header")
+      const crumbs = document.querySelector(".reader-header-trail .reader-breadcrumbs")
+      const crumbsRect = crumbs?.getBoundingClientRect() || null
+      const separator = document.querySelector('.reader-header-trail [data-slot="separator"]')
+      const separatorRect = separator?.getBoundingClientRect() || null
+      const brandSpan = document.querySelector(".reader-header-trail span.truncate")
+      const brandRect = brandSpan?.getBoundingClientRect() || null
+
+      return {
+        height: headerEl?.getBoundingClientRect().height || 0,
+        brandText: brandSpan?.textContent?.trim() || "",
+        brandVisible:
+          !!brandSpan &&
+          !!brandRect &&
+          brandRect.width > 0 &&
+          brandRect.height > 0 &&
+          getComputedStyle(brandSpan).display !== "none",
+        crumbsVisible:
+          !!crumbs &&
+          !!crumbsRect &&
+          getComputedStyle(crumbs).display !== "none" &&
+          crumbsRect.width > 0 &&
+          crumbsRect.height > 0,
+        separatorVisible:
+          !!separator &&
+          !!separatorRect &&
+          getComputedStyle(separator).display !== "none" &&
+          separatorRect.width > 0 &&
+          separatorRect.height > 0,
+      }
+    })
+
+    assert.ok(
+      Math.abs(header.height - 64) <= 1,
+      `${label}: ${tag} header is 64px tall (got ${header.height}px)`,
+    )
+    assert.ok(header.brandVisible, `${label}: ${tag} header shows the brand row`)
+    assert.ok(header.brandText.length > 0, `${label}: ${tag} brand row keeps its title`)
+    assert.equal(header.crumbsVisible, false, `${label}: ${tag} trail leaves the phone header`)
+    assert.equal(
+      header.separatorVisible,
+      false,
+      `${label}: ${tag} separator leaves the phone header`,
+    )
+    await assertNoPageOverflow(page, `${label} ${tag} header`)
+  }
+
+  // Phone keyboard: the hidden trail is not focusable, so Tab never lands
+  // inside it. Trigger reachability stays covered by runKeyboardChecks.
   await goto(page, `${baseUrl}${probes.deep.route}`)
-
-  const deep = await page.evaluate(() => ({
-    current: document.querySelector('[data-slot="breadcrumb-page"]')?.textContent?.trim() || "",
-    rect:
-      document.querySelector('[data-slot="breadcrumb-page"]')?.getBoundingClientRect().toJSON() ||
-      null,
-    inner: window.innerWidth,
-  }))
-
-  assert.ok(deep.current.length > 0, `${label}: deep trail shows the current page`)
-  assert.ok(
-    deep.rect && deep.rect.width <= deep.inner + 1,
-    `${label}: deep current page stays inside the viewport`,
-  )
-  await assertNoPageOverflow(page, `${label} deep breadcrumbs`)
-
-  await goto(page, `${baseUrl}${probes.longTitle.route}`)
-
-  const long = await page.evaluate(() => ({
-    current: document.querySelector('[data-slot="breadcrumb-page"]')?.textContent?.trim() || "",
-    rect:
-      document.querySelector('[data-slot="breadcrumb-page"]')?.getBoundingClientRect().toJSON() ||
-      null,
-    inner: window.innerWidth,
-  }))
-
-  assert.ok(long.current.length > 0, `${label}: long trail keeps its title`)
-  assert.ok(
-    long.rect && long.rect.width <= long.inner + 1,
-    `${label}: long current page stays inside the viewport`,
-  )
-  await assertNoPageOverflow(page, `${label} long breadcrumbs`)
-
-  // Phone keyboard: breadcrumb links stay reachable.
-  await page.keyboard.press("Tab")
+  await page.evaluate(() => document.querySelector('[data-sidebar="trigger"]')?.blur())
   let foundCrumb = false
 
   for (let i = 0; i < 15; i++) {
+    await page.keyboard.press("Tab")
+
     const inTrail = await page.evaluate(
       () => !!document.activeElement?.closest(".reader-breadcrumbs"),
     )
@@ -5411,23 +5887,335 @@ async function runPhoneBreadcrumbsDetail(page, baseUrl, contentDir, label) {
       foundCrumb = true
       break
     }
-
-    await page.keyboard.press("Tab")
   }
 
-  assert.ok(foundCrumb, `${label}: trail stays keyboard reachable`)
+  assert.equal(foundCrumb, false, `${label}: hidden trail stays out of the tab order`)
 }
 
 /**
- * Phone drawer carries the projection switcher with the current
- * projection, folded from the retired projection suite.
+ * Phone note page (mobile port item 6, design screen pWNyV): the body
+ * carries a 12px muted slash trail, then the 12px muted meta line, then
+ * the 24px/700 title, with the 14px body / 16px h2 / 12px code phone
+ * scale; the shared Other notes section shows its 13px/600 head with a
+ * count pill, file-icon rows, and a "Show all N notes" foot that expands
+ * client-side when more than six siblings exist.
+ */
+async function runPhoneNoteDetail(page, baseUrl, label) {
+  // Timestamped note with siblings: trail -> meta -> title order plus type scale.
+  await goto(page, `${baseUrl}/notes/valid-offset`)
+
+  const note = await page.evaluate(() => {
+    const article = document.querySelector(".reader-article")
+    const trail = article?.querySelector(".reader-note-crumbs")
+    const metas = Array.from(article?.querySelectorAll("p.reader-last-edited") ?? [])
+    const visibleMeta = metas.find((el) => el.getBoundingClientRect().height > 0)
+    const h1 = article?.querySelector("h1")
+    const h1Style = h1 ? getComputedStyle(h1) : null
+    const trailStyle = trail ? getComputedStyle(trail) : null
+    const metaStyle = visibleMeta ? getComputedStyle(visibleMeta) : null
+    const firstPara = article?.querySelector("p:not(.reader-last-edited):not(.reader-note-crumbs)")
+    const pre = article?.querySelector("pre")
+
+    return {
+      trailVisible:
+        !!trail && trailStyle.display !== "none" && trail.getBoundingClientRect().height > 0,
+      trailText: trail?.textContent?.trim() || "",
+      trailSize: trailStyle?.fontSize || "",
+      trailColor: trailStyle?.color || "",
+      trailPadding: trailStyle?.paddingBottom || "",
+      trailTop: trail?.getBoundingClientRect().top || 0,
+      metaText: visibleMeta?.textContent?.trim() || null,
+      metaSize: metaStyle?.fontSize || "",
+      metaTop: visibleMeta?.getBoundingClientRect().top || 0,
+      metaCount: metas.length,
+      h1Size: h1Style?.fontSize || "",
+      h1Weight: h1Style?.fontWeight || "",
+      h1Top: h1?.getBoundingClientRect().top || 0,
+      bodySize: firstPara ? getComputedStyle(firstPara).fontSize : "",
+      preSize: pre ? getComputedStyle(pre).fontSize : "",
+    }
+  })
+
+  assert.ok(note.trailVisible, `${label}: phone body shows the slash crumb trail`)
+  assert.ok(note.trailText.includes(" / "), `${label}: trail is slash-separated`)
+  assert.ok(note.trailText.includes("Home"), `${label}: trail starts at Home`)
+  assert.equal(note.trailSize, "12px", `${label}: trail is 12px`)
+  assert.match(note.trailColor, /115,\s*115,\s*115|oklch\(0\.556 0 0\)/, `${label}: trail is muted`)
+  assert.equal(note.trailPadding, "4px", `${label}: trail keeps 4px bottom padding`)
+  assert.ok(note.metaText?.startsWith("Last edited"), `${label}: meta line renders`)
+  assert.equal(note.metaSize, "12px", `${label}: meta line is 12px`)
+  assert.equal(note.metaCount, 2, `${label}: both responsive meta slots render`)
+  assert.ok(
+    note.trailTop <= note.metaTop && note.metaTop <= note.h1Top,
+    `${label}: trail -> meta -> title order`,
+  )
+  assert.equal(note.h1Size, "24px", `${label}: phone note title is 24px`)
+  assert.equal(note.h1Weight, "700", `${label}: phone note title is bold`)
+  assert.equal(note.bodySize, "14px", `${label}: phone body copy is 14px`)
+  await assertNoPageOverflow(page, `${label} note type scale`)
+
+  // Body scale probes on notes carrying those elements.
+  await goto(page, `${baseUrl}/notes/plain`)
+
+  const plainScale = await page.evaluate(() => {
+    const article = document.querySelector(".reader-article")
+    const h2 = article?.querySelector("h2")
+
+    const items = Array.from(article?.querySelectorAll("ul li") ?? []).map(
+      (li) => getComputedStyle(li).marginTop,
+    )
+
+    return {
+      h2Size: h2 ? getComputedStyle(h2).fontSize : "",
+      bulletGaps: items.slice(1),
+    }
+  })
+
+  assert.equal(plainScale.h2Size, "16px", `${label}: phone h2 is 16px`)
+
+  await goto(page, `${baseUrl}/notes/guide`)
+
+  const codeSize = await page.evaluate(() => {
+    const pre = document.querySelector("article.reader-article pre")
+
+    return pre ? getComputedStyle(pre).fontSize : ""
+  })
+
+  assert.equal(codeSize, "12px", `${label}: phone code block is 12px`)
+
+  // Orchard note with eleven siblings: head, badge, six rows, expander.
+  await goto(page, `${baseUrl}/orchard/note-01`)
+
+  const siblings = await page.evaluate(() => {
+    const section = document.querySelector('article section[aria-label^="Other notes"]')
+    const head = section?.querySelector(":scope > div")
+    const title = head?.querySelector("span")
+    const badge = head?.querySelectorAll("span")[1]
+    const rows = Array.from(section?.querySelectorAll(":scope ul a") ?? [])
+    const foot = section?.querySelector("button")
+
+    return {
+      present: !!section,
+      label: section?.getAttribute("aria-label") || "",
+      headSize: title ? getComputedStyle(title).fontSize : "",
+      headWeight: title ? getComputedStyle(title).fontWeight : "",
+      badge: badge?.textContent?.trim() || "",
+      badgePadding: badge
+        ? {
+            top: getComputedStyle(badge).paddingTop,
+            right: getComputedStyle(badge).paddingRight,
+          }
+        : null,
+      rows: rows.map((a) => ({
+        href: a.getAttribute("href") || "",
+        icon: !!a.querySelector("svg"),
+        iconSize: a.querySelector("svg")?.getBoundingClientRect().width || 0,
+        height: a.getBoundingClientRect().height,
+      })),
+      footText: foot?.textContent?.trim() || null,
+      footSize: foot ? getComputedStyle(foot).fontSize : "",
+      footWeight: foot ? getComputedStyle(foot).fontWeight : "",
+      footChevron:
+        foot?.parentElement?.querySelector("button svg")?.getBoundingClientRect().width || 0,
+    }
+  })
+
+  assert.ok(siblings.present, `${label}: phone note carries the Other notes section`)
+  assert.equal(siblings.label, "Other notes in Orchard", `${label}: head names the parent`)
+  assert.equal(siblings.headSize, "13px", `${label}: head is 13px`)
+  assert.equal(siblings.headWeight, "600", `${label}: head is semibold`)
+  assert.equal(siblings.badge, "11", `${label}: count pill carries the sibling total`)
+  assert.deepEqual(siblings.badgePadding, { top: "2px", right: "8px" }, `${label}: pill pads 2/8`)
+  assert.equal(siblings.rows.length, 6, `${label}: six rows show before expanding`)
+
+  for (const row of siblings.rows) {
+    assert.ok(row.href.startsWith("/orchard/note-"), `${label}: row links a sibling`)
+    assert.ok(row.icon, `${label}: row carries a file icon`)
+    assert.equal(row.iconSize, 14, `${label}: file icon is 14px`)
+    assert.ok(row.height >= 44, `${label}: phone row touch height is ${row.height}px`)
+  }
+
+  assert.equal(siblings.footText, "Show all 11 notes", `${label}: foot offers the rest`)
+  assert.equal(siblings.footSize, "13px", `${label}: foot is 13px`)
+  assert.equal(siblings.footWeight, "600", `${label}: foot is semibold`)
+  assert.equal(siblings.footChevron, 14, `${label}: foot chevron is 14px`)
+
+  await page.evaluate(() => {
+    document.querySelector('article section[aria-label^="Other notes"] button')?.click()
+  })
+  await page.waitForFunction(
+    () =>
+      document.querySelectorAll('article section[aria-label^="Other notes"] ul a').length === 11,
+    null,
+    { timeout: 5000 },
+  )
+
+  const expanded = await page.evaluate(() => ({
+    rows: document.querySelectorAll('article section[aria-label^="Other notes"] ul a').length,
+    foot: !!document.querySelector('article section[aria-label^="Other notes"] button'),
+  }))
+
+  assert.equal(expanded.rows, 11, `${label}: expander reveals every sibling`)
+  assert.equal(expanded.foot, false, `${label}: foot leaves once all siblings show`)
+  await assertNoPageOverflow(page, `${label} sibling section`)
+  await assertTouchTargets(page, `${label} sibling section`)
+}
+
+/**
+ * Reads the open vault bottom sheet: frame geometry plus the current
+ * row and ordered destination anchors. Null when no vault sheet is open
+ * (the drawer sidebar renders its own sheet content without the
+ * "Switch vault" list, so the two are never confused).
+ */
+async function readVaultSheet(page) {
+  return await page.evaluate(() => {
+    const root = Array.from(document.querySelectorAll('[data-slot="sheet-content"]')).find((el) =>
+      el.querySelector('[aria-label="Switch vault"]'),
+    )
+
+    if (!root) return null
+    const rect = root.getBoundingClientRect()
+    const handle = root.querySelector('div[aria-hidden="true"]')
+    const handleRect = handle?.getBoundingClientRect() || null
+    const title = root.querySelector('[data-slot="sheet-title"]')
+    const close = root.querySelector('[data-slot="sheet-close"]')
+    const closeRect = close?.getBoundingClientRect() || null
+    const list = root.querySelector('[aria-label="Switch vault"]')
+    const current = list?.querySelector(':scope > li[aria-current="true"]') || null
+    const anchors = list ? Array.from(list.querySelectorAll(":scope > li > a")) : []
+
+    return {
+      bottom: rect.bottom,
+      width: rect.width,
+      innerWidth: window.innerWidth,
+      innerHeight: window.innerHeight,
+      handleWidth: handleRect ? handleRect.width : 0,
+      handleHeight: handleRect ? handleRect.height : 0,
+      title: title?.textContent?.trim() || "",
+      closeVisible: !!closeRect && closeRect.width > 0 && closeRect.height > 0,
+      closeLabel: close?.getAttribute("aria-label") || "",
+      text: root.textContent || "",
+      current: current
+        ? {
+            text: current.textContent?.trim() || "",
+            marked: current.getAttribute("aria-current"),
+            hasCheck: !!current.querySelector("svg"),
+            isAnchor: !!current.querySelector("a"),
+          }
+        : null,
+      choices: anchors.map((anchor) => {
+        const inner = Array.from(anchor.querySelectorAll(":scope > span > span")).map(
+          (span) => span.textContent?.trim() || "",
+        )
+
+        return {
+          name: inner.length > 0 ? inner[0] : "",
+          meta: inner.length > 0 ? inner[inner.length - 1] : "",
+          href: anchor.getAttribute("href"),
+          tag: anchor.tagName,
+          target: anchor.getAttribute("target"),
+        }
+      }),
+    }
+  })
+}
+
+/** Vault sheet row assertions shared by the drawer and header journeys. */
+function assertVaultSheetRows(sheet, expect, label) {
+  assert.ok(sheet, `${label}: vault sheet opens`)
+  assert.ok(
+    Math.abs(sheet.bottom - sheet.innerHeight) <= 2,
+    `${label}: sheet anchors to the viewport bottom (got ${sheet.bottom}px of ${sheet.innerHeight}px)`,
+  )
+  assert.ok(
+    Math.abs(sheet.width - sheet.innerWidth) <= 1,
+    `${label}: sheet spans the full width (got ${sheet.width}px of ${sheet.innerWidth}px)`,
+  )
+  assert.ok(
+    Math.abs(sheet.handleWidth - 40) <= 1 && Math.abs(sheet.handleHeight - 4) <= 1,
+    `${label}: sheet shows the 40x4 handle bar`,
+  )
+  assert.equal(sheet.title, "Switch vault", `${label}: sheet titles the vault switch`)
+  assert.ok(sheet.closeVisible, `${label}: sheet shows its close control`)
+  assert.ok(sheet.closeLabel !== "", `${label}: close control is labelled`)
+  assert.ok(sheet.current, `${label}: sheet names the current vault`)
+  assert.ok(
+    sheet.current.text.includes(expect.projection),
+    `${label}: current row names this vault`,
+  )
+  assert.equal(sheet.current.marked, "true", `${label}: current row is marked current`)
+  assert.ok(sheet.current.hasCheck, `${label}: current row carries the check`)
+  assert.equal(sheet.current.isAnchor, false, `${label}: current row is information, not a link`)
+  assert.deepEqual(
+    sheet.choices.map((choice) => ({ name: choice.name, href: choice.href })),
+    expect.destinations.map((destination) => ({
+      name: destination.name,
+      href: destination.origin,
+    })),
+    `${label}: destination rows keep manifest order with absolute HTTPS origins`,
+  )
+
+  for (const [index, choice] of sheet.choices.entries()) {
+    assert.equal(choice.tag, "A", `${label}: destination row ${index} is an ordinary anchor`)
+    assert.ok(choice.href?.startsWith("https://"), `${label}: destination row ${index} is secure`)
+    assert.equal(choice.target, null, `${label}: destination row ${index} stays same-tab`)
+    assert.equal(
+      choice.meta,
+      new URL(choice.href).hostname,
+      `${label}: destination row ${index} metas its origin host`,
+    )
+  }
+
+  assert.ok(!sheet.text.includes("Add"), `${label}: sheet offers no add-vault row`)
+}
+
+async function vaultSheetOpen(page) {
+  await page.waitForSelector('[data-slot="sheet-content"] [aria-label="Switch vault"]', {
+    state: "visible",
+    timeout: 5000,
+  })
+  // The bottom sheet slides up on entry: wait until it settles at the
+  // viewport bottom before reading geometry.
+  await page.waitForFunction(
+    () => {
+      const root = Array.from(document.querySelectorAll('[data-slot="sheet-content"]')).find((el) =>
+        el.querySelector('[aria-label="Switch vault"]'),
+      )
+
+      if (!root) return false
+
+      return Math.abs(root.getBoundingClientRect().bottom - window.innerHeight) <= 2
+    },
+    null,
+    { timeout: 5000 },
+  )
+}
+
+async function vaultSheetClosed(page) {
+  await page.waitForFunction(
+    () =>
+      !Array.from(document.querySelectorAll('[data-slot="sheet-content"]')).some((el) =>
+        el.querySelector('[aria-label="Switch vault"]'),
+      ),
+    null,
+    { timeout: 5000 },
+  )
+}
+
+/**
+ * Phone drawer carries the projection switcher, folded from the retired
+ * projection suite (mobile port item 4): the same trigger that shows the
+ * desktop dropdown opens the vault bottom sheet on phones. Escape
+ * dismisses the sheet and returns focus to the drawer trigger.
  */
 async function runPhoneDrawerSwitcher(page, baseUrl, expect, label) {
   await goto(page, `${baseUrl}/`)
-  await openBrowse(page)
+  await openDrawer(page)
 
   const drawerSwitcher = await page.evaluate(() => {
-    const el = document.querySelector(".reader-phone-drawer-switcher .reader-projection-trigger")
+    const el = document.querySelector(
+      '[data-sidebar="sidebar"][data-mobile="true"] .reader-projection-trigger',
+    )
 
     if (!el) return null
     const rect = el.getBoundingClientRect()
@@ -5441,7 +6229,71 @@ async function runPhoneDrawerSwitcher(page, baseUrl, expect, label) {
     `${label}: drawer switcher names the current projection`,
   )
   assert.ok(drawerSwitcher.visible, `${label}: drawer switcher is visible`)
-  await closeBrowseViaClose(page)
+  await page.evaluate(() =>
+    document
+      .querySelector('[data-sidebar="sidebar"][data-mobile="true"] .reader-projection-trigger')
+      ?.click(),
+  )
+  await vaultSheetOpen(page)
+  assertVaultSheetRows(await readVaultSheet(page), expect, label)
+
+  await page.keyboard.press("Escape")
+  await vaultSheetClosed(page)
+
+  const returned = await page.evaluate(
+    () => document.activeElement?.closest(".reader-projection-trigger")?.className || "",
+  )
+
+  assert.ok(
+    String(returned).includes("reader-projection-trigger"),
+    `${label}: Escape returns focus to the drawer switcher trigger`,
+  )
+  await closeDrawer(page)
+}
+
+/**
+ * Phone header brand opens the vault sheet without the drawer (mobile
+ * port item 4): a phone reader switches projections straight from the
+ * header. The close control and the overlay both dismiss it.
+ */
+async function runPhoneHeaderVaultSheet(page, baseUrl, expect, label) {
+  await goto(page, `${baseUrl}/`)
+
+  const openFromHeader = () =>
+    page.evaluate(() => {
+      const span = document.querySelector(".reader-header-trail span.truncate")
+      const button = span?.closest("button")
+
+      if (button instanceof HTMLElement) button.click()
+    })
+
+  await openFromHeader()
+  await vaultSheetOpen(page)
+  assertVaultSheetRows(await readVaultSheet(page), expect, label)
+  assert.equal(
+    await isVisible(page, '[data-sidebar="sidebar"][data-mobile="true"]'),
+    false,
+    `${label}: header vault switch needs no drawer`,
+  )
+
+  await page.evaluate(() => {
+    const root = Array.from(document.querySelectorAll('[data-slot="sheet-content"]')).find((el) =>
+      el.querySelector('[aria-label="Switch vault"]'),
+    )
+
+    root?.querySelector('[data-slot="sheet-close"]')?.click()
+  })
+  await vaultSheetClosed(page)
+
+  await openFromHeader()
+  await vaultSheetOpen(page)
+  await page.locator('[data-slot="sheet-overlay"]').click()
+  await vaultSheetClosed(page)
+  assert.equal(
+    await isVisible(page, '[data-sidebar="sidebar"][data-mobile="true"]'),
+    false,
+    `${label}: overlay dismissal leaves the drawer closed`,
+  )
 }
 
 /**
@@ -5491,7 +6343,104 @@ function getSharedSyntheticBuild() {
   return sharedSyntheticPromise
 }
 
-test("synthetic phone journey covers Browse, overflow, keyboard, and refresh", async () => {
+/**
+ * Device status chip variant table (mobile port item 3): the phone
+ * header cue renders every offline state as a pill — including
+ * unsupported, which shows Not saved instead of disappearing. Static
+ * source assertions cover the states a live browser journey cannot
+ * reach (ready, saving, update, failures); the live phone journey
+ * covers the idle chip geometry, icon, and muted colors.
+ */
+test("device status chip renders every offline state without starting a save", async () => {
+  const source = fs.readFileSync(path.join(READER_ROOT, "components", "offline-save.tsx"), "utf8")
+  const cueStart = source.indexOf("export function OfflineCue")
+  const cueEnd = source.indexOf("export function OfflineProvider")
+  const cue = source.slice(cueStart, cueEnd)
+
+  assert.ok(!/status === "unsupported"\) return null/.test(cue), "unsupported renders the chip")
+  assert.match(cue, /Database/, "idle and unsupported share the database icon")
+  assert.match(cue, /Not saved/, "no local copy reads Not saved")
+  assert.match(cue, /Checking…/, "checking stays concise and muted")
+  assert.match(cue, /Saving…/, "saving reports progress")
+  assert.match(cue, /Update ready/, "an available update reads Update ready")
+  assert.match(cue, /Offline · /, "browser offline reads Offline with the saved count")
+  assert.match(cue, /saved`/, "the saved count comes from the manifest URL list")
+  assert.match(cue, /Save incomplete/, "an incomplete save keeps its alert")
+  assert.match(cue, /Couldn't remove offline copy/, "a failed removal keeps its alert")
+  assert.match(cue, /data-online/, "the chip marks the browser offline state")
+
+  for (const token of [
+    "rounded-full",
+    "bg-muted",
+    "h-7",
+    "text-2xs",
+    "size-3",
+    "truncate",
+    "reader-offline-cue",
+  ]) {
+    assert.ok(cue.includes(token), `chip carries ${token}`)
+  }
+
+  assert.match(cue, /window\.addEventListener\("online"/, "chip tracks browser online state")
+  assert.match(cue, /window\.addEventListener\("offline"/, "chip tracks browser offline state")
+  assert.match(cue, /removeEventListener\("online"/, "chip listeners clean up")
+  assert.match(cue, /removeEventListener\("offline"/, "chip listeners clean up")
+  assert.ok(!/save\(\)|removeCopy\(\)|reloadUpdate\(\)/.test(cue), "chip never starts a save")
+
+  const css = fs.readFileSync(path.join(READER_ROOT, "app", "globals.css"), "utf8")
+
+  assert.ok(!css.includes(".reader-offline-cue"), "chip styling lives in utilities, not CSS")
+})
+
+/**
+ * Vault bottom sheet static tokens (mobile port item 4): the phone vault
+ * switcher renders the registry Sheet side="bottom" with the xPZVw rows
+ * (washed current row with check, bordered destination anchors keyed by
+ * origin host, no add-vault row) in utilities only, while the desktop
+ * dropdown path and the two phone triggers stay wired.
+ */
+test("vault sheet matches the xPZVw bottom-sheet design tokens", async () => {
+  const sheet = fs.readFileSync(path.join(READER_ROOT, "components", "vault-sheet.tsx"), "utf8")
+
+  assert.match(sheet, /side="bottom"/, "sheet docks to the bottom")
+  assert.match(sheet, /Switch vault/, "sheet titles the vault switch")
+  assert.match(sheet, /aria-label="Switch vault"/, "sheet list is labelled")
+  assert.match(sheet, /showCloseButton=\{false\}/, "title row owns the close control")
+  assert.match(sheet, /aria-label="Close vault switcher"/, "close control is labelled")
+  assert.match(sheet, /aria-current="true"/, "current row is marked current")
+  assert.match(sheet, /bg-muted/, "current row carries the washed fill")
+  assert.match(sheet, /bg-primary/, "current icon box is inverted")
+  assert.match(sheet, /text-card/, "inverted icon reads on the primary fill")
+  assert.match(sheet, /border-border/, "destination rows carry the bordered read")
+  assert.match(sheet, /new URL\(/, "destination meta derives from the origin")
+  assert.match(sheet, /min-h-15/, "rows hold the 60px geometry without arbitrary values")
+  assert.ok(!/rounded-\[|min-h-\[|text-\[|w-\[|h-\[|p[xy]?-\[/.test(sheet), "no arbitrary values")
+  assert.ok(!sheet.includes("reader-"), "sheet adds no custom hook classes")
+  assert.ok(!/Add new vault/.test(sheet), "no add-vault row")
+
+  const config = fs.readFileSync(path.join(PUBLISHER_ROOT, "oxlint.config.ts"), "utf8")
+
+  for (const part of ["^SheetContent$", "^SheetTitle$", "^SheetClose$"]) {
+    assert.ok(config.includes(part), `lint contracts the ${part} restyle`)
+  }
+
+  const switcher = fs.readFileSync(
+    path.join(READER_ROOT, "components", "projection-switcher.tsx"),
+    "utf8",
+  )
+
+  assert.match(switcher, /isMobile/, "switcher branches on the phone viewport")
+  assert.match(switcher, /VaultSheet/, "drawer trigger opens the sheet on phones")
+  assert.match(switcher, /DropdownMenu/, "desktop dropdown stays mounted")
+
+  const chrome = fs.readFileSync(path.join(READER_ROOT, "components", "reader-chrome.tsx"), "utf8")
+
+  assert.match(chrome, /aria-haspopup="dialog"/, "brand button announces the sheet")
+  assert.match(chrome, /aria-expanded=\{vaultOpen\}/, "brand button tracks the sheet")
+  assert.match(chrome, /<VaultSheet/, "header mounts its own sheet instance")
+})
+
+test("synthetic phone journey covers drawer, overflow, keyboard, and refresh", async () => {
   assert.ok(
     fs.existsSync(path.join(READER_ROOT, "node_modules", "next")),
     "reader dependencies must be installed (run `npm ci` in reader/)",
@@ -5544,10 +6493,26 @@ test("synthetic phone journey covers Browse, overflow, keyboard, and refresh", a
       await runPhoneCardsDetail(page, built.baseUrl, expect, "narrow phone")
     })
     await withPhonePage(browser, "narrow", async (page) => {
+      await runPhoneNoteDetail(page, built.baseUrl, "narrow phone")
+    })
+    await withPhonePage(browser, "narrow", async (page) => {
       await runPhoneBreadcrumbsDetail(page, built.baseUrl, built.contentDir, "narrow phone")
     })
     await withPhonePage(browser, "narrow", async (page) => {
-      await runPhoneDrawerSwitcher(page, built.baseUrl, expect, "narrow phone")
+      await runPhoneDrawerSwitcher(
+        page,
+        built.baseUrl,
+        { ...expect, destinations: SYNTHETIC_DESTINATIONS },
+        "narrow phone",
+      )
+    })
+    await withPhonePage(browser, "narrow", async (page) => {
+      await runPhoneHeaderVaultSheet(
+        page,
+        built.baseUrl,
+        { ...expect, destinations: SYNTHETIC_DESTINATIONS },
+        "narrow phone",
+      )
     })
     await withPhonePage(browser, "narrow", async (page) => {
       await runDerivedOverflowProbes(page, built.baseUrl, built.contentDir, "narrow phone", {
@@ -6012,7 +6977,7 @@ test("generic real browse journey covers home → folder → nested note", async
   }
 })
 
-test("generic real phone journey covers Browse open/close and home to note", async (t) => {
+test("generic real phone journey covers drawer open/close and home to note", async (t) => {
   const kbRoot = process.env.KNOWLEDGE_BASE_ROOT
 
   if (!kbRoot || !fs.existsSync(path.resolve(kbRoot))) {
@@ -6034,6 +6999,7 @@ test("generic real phone journey covers Browse open/close and home to note", asy
     folderRoute: built.journey.folderRoute,
     leafTitle: built.journey.leafTitle,
     leafRoute: built.journey.leafRoute,
+    projection: built.metadata.title,
   }
 
   try {

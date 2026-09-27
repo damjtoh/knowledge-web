@@ -184,7 +184,15 @@ async function main() {
     throw new Error("export has no search-index.json; run the search-index build first")
   }
 
-  const urls = all.map((rel) => `/${rel.split(path.sep).join("/")}`)
+  // Publication URLs must match what the browser requests. Next emits the
+  // dynamic-route folder as %5B...slug%5D in asset URLs, and Cache API
+  // matching compares serialized URLs, so a raw "[...slug]" path saved from
+  // the filesystem would never serve the page chunk offline. Brackets are
+  // the only characters Next encodes in these generated paths.
+  const toPublicationUrl = (rel) =>
+    `/${rel.split(path.sep).join("/")}`.replaceAll("[", "%5B").replaceAll("]", "%5D")
+
+  const urls = all.map(toPublicationUrl)
   let totalBytes = 0
   const fingerprints = []
   const integrityByUrl = new Map()
@@ -201,7 +209,7 @@ async function main() {
 
     totalBytes += size
     fingerprints.push(`${rel}:${hashFile(abs)}`)
-    integrityByUrl.set(rel.split(path.sep).join("/"), integrityOf(abs))
+    integrityByUrl.set(toPublicationUrl(rel).slice(1), integrityOf(abs))
   }
 
   const version = crypto
@@ -246,10 +254,11 @@ async function main() {
     // pass through Workbox's own revision pipeline untouched.
     manifestTransforms: [
       (entries) => ({
-        manifest: entries.map((entry) => ({
-          ...entry,
-          integrity: integrityByUrl.get(entry.url) ?? entry.integrity,
-        })),
+        manifest: entries.map((entry) => {
+          const url = toPublicationUrl(entry.url).slice(1)
+
+          return { ...entry, url, integrity: integrityByUrl.get(url) ?? entry.integrity }
+        }),
         warnings: [],
       }),
     ],

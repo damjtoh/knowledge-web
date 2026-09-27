@@ -158,15 +158,7 @@ const config: OxlintConfig = {
               // them without breaking the sample header row.
               {
                 pattern: "^SidebarTrigger$",
-                allow: [
-                  "-ml-1",
-                  "max-md:hidden",
-                  "size-7",
-                  "rounded-md",
-                  "border",
-                  "border-border",
-                  "bg-card",
-                ],
+                allow: ["-ml-1", "size-7", "rounded-md", "border", "border-border", "bg-card"],
               },
               // Separator spacing, responsive visibility, and design
               // 1x16 size must stay on the separator; it renders no
@@ -186,38 +178,52 @@ const config: OxlintConfig = {
                 pattern: "^BreadcrumbPage$",
                 allow: ["text-13", "font-semibold"],
               },
-              // Phone drawer dimensions must stay on the Sheet popup: Sheet
-              // renders no wrapper DOM, so full-viewport width/height and
-              // safe-area containment cannot move to a parent.
-              { pattern: "^SheetContent$", allow: ["reader-phone-drawer"] },
               // Home root cards use the registry Card surface (not a
               // hand-written CSS card). Hook classes carry only readable
               // long-title wrapping and folder/note meta layout; the Card
               // primitive owns the surface and there is no wrapper that can
-              // own them without breaking the card composition.
-              { pattern: "^Card$", allow: ["reader-home-card"] },
-              { pattern: "^CardHeader$", allow: ["reader-home-card-header"] },
-              { pattern: "^CardTitle$", allow: ["reader-home-card-title"] },
-              { pattern: "^CardDescription$", allow: ["reader-home-card-meta"] },
-              // Visible Close touch target must live on the Sheet close
-              // button itself; a wrapper would break focus return and the
-              // 44px touch target.
-              { pattern: "^SheetClose$", allow: ["reader-drawer-close"] },
-              // Sidebar and drawer footers own offline plus appearance
-              // layout (border, scroll cap, safe-area reachability). The
-              // registry Footer elements render no wrapper DOM, so the
-              // hook must stay on the footer itself; a parent would scope
-              // the wrong element and break the fixed-footer/tree-scroll
-              // split. Design footer stack adds a top border with padded
-              // gaps; the divider between On Device and Appearance is the
+              // own them without breaking the card composition. The phone
+              // row (mobile port home-phone) reuses the same Card surface:
+              // max-md utilities switch padding and row layout below 768px,
+              // the desktop header hides there, and the phone-only row uses
+              // the slots below with token colors and scale type sizes.
+              {
+                pattern: "^Card$",
+                allow: [
+                  "reader-home-card",
+                  "max-md:flex-row",
+                  "max-md:items-center",
+                  "max-md:gap-3",
+                  "max-md:p-3",
+                ],
+              },
+              {
+                pattern: "^CardHeader$",
+                allow: ["reader-home-card-header", "max-md:hidden"],
+              },
+              // Phone-only home card row reuses the registry title and
+              // description slots without the desktop hook classes (hooks
+              // stay unique per card for the desktop selectors), carrying
+              // the phone title and count-only meta type sizes.
+              {
+                pattern: "^CardTitle$",
+                allow: ["reader-home-card-title", "truncate", "text-sm", "font-semibold"],
+              },
+              {
+                pattern: "^CardDescription$",
+                allow: ["reader-home-card-meta", "truncate", "text-xs", "text-muted-foreground"],
+              },
+              // Sidebar footer owns offline plus appearance layout
+              // (border, scroll cap, safe-area reachability). The registry
+              // Footer element renders no wrapper DOM, so the hook must
+              // stay on the footer itself; a parent would scope the wrong
+              // element and break the fixed-footer/tree-scroll split.
+              // Design footer stack adds a top border with padded gaps;
+              // the divider between On Device and Appearance is the
               // registry Separator with no wrapper.
               {
                 pattern: "^SidebarFooter$",
                 allow: ["reader-sidebar-footer", "gap-4", "border-t", "p-4"],
-              },
-              {
-                pattern: "^SheetFooter$",
-                allow: ["reader-phone-drawer-footer", "gap-4", "border-t", "p-4"],
               },
               // Appearance segmented control owns its muted pill container;
               // the ToggleGroup primitive renders no wrapper DOM, so the
@@ -247,6 +253,27 @@ const config: OxlintConfig = {
                   "aria-pressed:text-primary",
                 ],
               },
+              // Vault bottom sheet (mobile port item 4): the phone vault
+              // switcher is a bottom sheet per design.pen xPZVw. The Sheet
+              // popup owns positioning, so the surface, padding, and gap
+              // stay on the content; the title keeps its compact semibold
+              // primary read; the title-row close keeps its own target.
+              {
+                pattern: "^SheetContent$",
+                allow: ["gap-2", "rounded-t-2xl", "bg-card", "px-4", "pt-3", "pb-6"],
+              },
+              { pattern: "^SheetTitle$", allow: ["text-sm", "font-semibold", "text-primary"] },
+              {
+                pattern: "^SheetClose$",
+                allow: [
+                  "flex",
+                  "size-8",
+                  "items-center",
+                  "justify-center",
+                  "rounded-md",
+                  "text-muted-foreground",
+                ],
+              },
             ],
           },
         ],
@@ -260,6 +287,7 @@ const config: OxlintConfig = {
           {
             allow: [
               "reader-tree-panel",
+              "reader-offline-cue",
               "reader-offline-remove-error",
               "reader-tree-label",
               "reader-sidebar-home",

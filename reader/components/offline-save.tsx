@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react"
 import {
   Check,
+  Database,
   Download,
   Loader2,
   RefreshCw,
@@ -139,46 +140,79 @@ export function useOffline(): OfflineValue {
 }
 
 /**
- * Compact offline cue for the closed phone header.
+ * Device status chip for the phone header.
  *
- * Concise display only: checking, idle, saving progress, ready, update
- * ready, incomplete, and removal failure. Shares the provider state with
- * the detailed footer actions and never starts a save.
+ * Display only: shares the provider state with the detailed footer
+ * actions and never starts a save. Every status renders a pill with a
+ * 12px icon plus an 11px label; unsupported renders the "Not saved"
+ * variant instead of hiding, so the cue never disappears.
  */
 export function OfflineCue() {
   const { status, manifest, done, updateAvailable } = useOffline()
+  const [online, setOnline] = useState(true)
 
-  if (status === "unsupported") return null
+  useEffect(() => {
+    setOnline(navigator.onLine)
 
+    const markOnline = () => setOnline(true)
+    const markOffline = () => setOnline(false)
+
+    window.addEventListener("online", markOnline)
+    window.addEventListener("offline", markOffline)
+
+    return () => {
+      window.removeEventListener("online", markOnline)
+      window.removeEventListener("offline", markOffline)
+    }
+  }, [])
+
+  // Saved page count shares the footer source (the manifest URL list),
+  // so the chip and the footer never disagree.
   const total = manifest?.urls.length ?? 0
+
   let text = ""
+  let Icon: typeof Wifi | null = null
+  let muted = false
   let role: "status" | "alert" = "status"
 
   if (status === "checking") {
-    text = "Checking offline status…"
+    text = "Checking…"
+    muted = true
   } else if (status === "saving") {
-    text = total > 0 ? `Saving offline… ${done} of ${total}` : "Saving offline…"
+    text = total > 0 ? `Saving… ${done} of ${total}` : "Saving…"
+  } else if (status === "ready" && updateAvailable) {
+    Icon = Wifi
+    text = "Update ready"
   } else if (status === "ready") {
-    text = updateAvailable ? "Update ready" : "Ready offline"
+    Icon = online ? Wifi : WifiOff
+    text = online ? `${total} saved` : `Offline · ${total} saved`
   } else if (status === "incomplete") {
     text = "Save incomplete"
     role = "alert"
   } else if (status === "remove-failed") {
-    text = "Couldn’t remove offline copy"
+    text = "Couldn't remove offline copy"
     role = "alert"
   } else {
-    text = "Not saved offline"
+    Icon = Database
+    text = "Not saved"
+    muted = true
   }
 
   return (
     <p
-      className="reader-offline-cue"
+      className={
+        muted
+          ? "reader-offline-cue hidden h-7 max-w-1/2 items-center gap-1.5 rounded-full bg-muted px-3 text-2xs text-muted-foreground max-md:inline-flex"
+          : "reader-offline-cue hidden h-7 max-w-1/2 items-center gap-1.5 rounded-full bg-muted px-3 text-2xs text-primary max-md:inline-flex"
+      }
       data-offline-state={status}
       data-update={updateAvailable ? "true" : undefined}
+      data-online={online ? undefined : "false"}
       role={role}
       aria-live={role === "alert" ? "assertive" : "polite"}
     >
-      {text}
+      {Icon ? <Icon aria-hidden="true" className="size-3 shrink-0" /> : null}
+      <span className="truncate">{text}</span>
     </p>
   )
 }

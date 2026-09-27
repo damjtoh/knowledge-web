@@ -12,8 +12,8 @@
  * (SidebarProvider/Sidebar/SidebarInset). Tailwind CSS owns layout
  * utilities used in the reader shell components. This stylesheet keeps
  * the semantic reader classes the static and browser checks rely on
- * (reader-header, reader-sidebar-nav, reader-browse-toggle,
- * reader-article, and overflow containment) plus Markdown element styling
+ * (reader-header, reader-sidebar-nav, reader-article, and overflow
+ * containment) plus Markdown element styling
  * that utilities cannot express alone. It styles bespoke article
  * typography and needed responsive details only; it does not recreate
  * the sidebar primitive with custom CSS.
@@ -88,121 +88,8 @@ body {
   max-width: 100%;
 }
 
-/* Compact Browse control: phone-only. Desktop keeps the sidebar. */
+/* Reader shell root: never forces page width. */
 .reader-chrome {
-  min-width: 0;
-}
-
-.reader-browse-toggle {
-  display: none;
-  align-items: center;
-  min-height: 44px;
-  padding: 0.5rem 1rem;
-  font: inherit;
-  font-weight: 600;
-  color: #171717;
-  background: #fff;
-  border: 1px solid #d4d4d4;
-  border-radius: 8px;
-  cursor: pointer;
-}
-
-.reader-browse-toggle:hover {
-  background: #f5f5f5;
-}
-
-/**
- * Phone navigation drawer: registry Sheet content, full viewport.
- *
- * The drawer primitive itself comes from the registry Sheet (focus
- * containment, Escape, overlay, background scroll lock). These classes
- * only give it usable phone dimensions: full viewport width and height,
- * safe-area padding, a fixed header with a visible Close, and a
- * scrollable tree middle so long labels and deep branches stay readable
- * without horizontal overflow. Essential controls keep the 44px touch
- * target used by Browse and navigation.
- */
-.reader-phone-drawer {
-  width: 100dvw;
-  max-width: 100dvw;
-  height: 100dvh;
-  max-height: 100dvh;
-  min-width: 0;
-  gap: 0;
-  padding-top: env(safe-area-inset-top);
-  padding-bottom: env(safe-area-inset-bottom);
-  padding-left: env(safe-area-inset-left);
-  padding-right: env(safe-area-inset-right);
-  overflow-x: hidden;
-}
-
-.reader-phone-drawer-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid #e5e5e5;
-  flex-shrink: 0;
-  min-width: 0;
-}
-
-.reader-phone-drawer-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid #f5f5f5;
-  flex-shrink: 0;
-  min-width: 0;
-}
-
-.reader-drawer-close {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 44px;
-  min-width: 44px;
-  padding: 0.5rem 1rem;
-  font: inherit;
-  font-weight: 600;
-  color: #171717;
-  background: #fff;
-  border: 1px solid #d4d4d4;
-  border-radius: 8px;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.reader-drawer-close:hover {
-  background: #f5f5f5;
-}
-
-.reader-drawer-home {
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
-  padding: 0.5rem 1rem;
-  font: inherit;
-  font-weight: 600;
-  color: #171717;
-  background: #fff;
-  border: 1px solid #d4d4d4;
-  border-radius: 8px;
-  text-decoration: none;
-  overflow-wrap: anywhere;
-}
-
-.reader-drawer-home:hover {
-  background: #f5f5f5;
-}
-
-.reader-phone-drawer-tree {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 0.75rem 1rem calc(1rem + env(safe-area-inset-bottom));
   min-width: 0;
 }
 
@@ -218,13 +105,8 @@ body {
 }
 
 /* Desktop sidebar layout comes from registry sidebar-11. Phone
-   navigation is the registry Sheet drawer (#reader-browse-panel); no
-   inline phone panel remains in the reading column. */
-@media (min-width: 900px) {
-  .reader-browse-toggle {
-    display: none;
-  }
-}
+   navigation is the registry mobile sidebar sheet; no inline phone
+   panel remains in the reading column. */
 
 /* Sidebar header brand: current Web Projection name in the registry
    SidebarHeader. Home and Search use registry SidebarMenuButton with
@@ -270,13 +152,6 @@ body {
 
 .reader-projection-link {
   overflow-wrap: anywhere;
-}
-
-/* Phone drawer shows the same switcher above its Home/Search actions. */
-.reader-phone-drawer-switcher {
-  padding: 0.75rem 1rem 0;
-  flex-shrink: 0;
-  min-width: 0;
 }
 
 .reader-sidebar-nav ul {
@@ -339,7 +214,7 @@ body {
 
 /* Grid items default to min-width auto, which lets one unbroken
    single-line label force its whole branch wider than the sidebar or
-   drawer. Zeroing it keeps every branch inside its container so labels
+   mobile sheet. Zeroing it keeps every branch inside its container so labels
    truncate instead of overflowing. */
 .reader-tree > li,
 .reader-tree-children > li {
@@ -810,19 +685,70 @@ body {
   text-decoration-color: #a3a3a3;
 }
 
+/**
+ * Phone-only body crumb trail for note pages (design screen pWNyV):
+ * 12px muted slash-separated crumbs above the body. The md:hidden utility
+ * in the markup hides it on desktop, so no display rule lives here (an
+ * unlayered display declaration would beat that layered utility). The
+ * hook exists because the unlayered .reader-article p/a rules beat
+ * utilities for margin and link color, so both genuinely need an
+ * unlayered override. Muted and hover colors use tokens so dark mode
+ * follows the shell.
+ */
+.reader-article .reader-note-crumbs {
+  margin: 0;
+  padding: 0 0 0.25rem;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+  overflow-wrap: anywhere;
+}
+
+.reader-article .reader-note-crumbs a {
+  color: var(--muted-foreground);
+  text-decoration: none;
+}
+
+.reader-article .reader-note-crumbs a:hover {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/**
+ * Other-notes sibling section (design screen pWNyV, all viewports).
+ *
+ * Separation reuses the reader-group hook and rows reuse the
+ * reader-group-list hook, so the section matches article sections and
+ * rows keep the plain-anchor read, hover, and dark variants. The single
+ * reader-other-notes hook scopes only what utilities cannot express
+ * against those unlayered list rules: 36px rows with 12px side padding,
+ * no dividers, and the 13px label. The head and foot are utilities-only
+ * in the component (no unlayered article rule targets them).
+ */
+.reader-article .reader-other-notes .reader-group-list a {
+  min-height: 2.25rem;
+  padding: 0.25rem 0.75rem;
+  gap: 0.5rem;
+  /* 13px label: --text-13 lives in @theme inline (never emitted as a
+     runtime variable), so the value is written out here. */
+  font-size: 13px;
+  border-bottom: 0;
+}
+
 :focus-visible {
   outline: 2px solid #171717;
   outline-offset: 2px;
 }
 
-@media (max-width: 899px) {
-  .reader-browse-toggle {
-    display: inline-flex;
-  }
-
+@media (max-width: 767px) {
   .reader-shell {
     flex-direction: column;
     gap: 1rem;
+    /* Phone body padding from design screen I1z3qM: [20, 16, 32, 16].
+       A max-md utility cannot win here: this unlayered declaration beats
+       layered Tailwind utilities, so the responsive value lives here. */
+    padding: 1.25rem 1rem 2rem;
   }
 
   /* Narrow screens indent less so deep branches keep readable titles. */
@@ -834,16 +760,72 @@ body {
     max-width: 100%;
   }
 
+  /* Phone home cards are navigation rows, not prose links: the design
+     (I1z3qM) keeps card titles plain. The unlayered article-link rule
+     above has higher specificity than a bare class, so the exception
+     must match it. */
+  .reader-article .reader-home-card-link {
+    text-decoration: none;
+  }
+
   .reader-article h1 {
+    /* Note pages take the 24px/700 phone title from design screen pWNyV.
+       The homepage keeps its 26px value below via the card-list hook. */
     font-size: 1.5rem;
+    font-weight: 700;
+  }
+
+  /* Homepage-only 26px phone h1 (item 5): the home article is the one
+     carrying the card list, so :has scopes the exception without a new
+     hook class. Desktop h1s are untouched. */
+  .reader-article:has(.reader-home-cards) h1 {
+    font-size: 1.625rem;
+  }
+
+  /* Phone type scale from design screen pWNyV: 14px body, 16px h2 with
+     16px space above and an 8px gap below, 12px code, 8px bullet gaps,
+     and a 12px muted meta line. Same cascade note as the shell padding
+     above: max-md utilities would lose to these unlayered rules. */
+  .reader-article {
+    font-size: 0.875rem;
   }
 
   .reader-article h2 {
-    font-size: 1.2rem;
+    font-size: 1rem;
+    margin-top: 1rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .reader-article pre {
+    font-size: 0.75rem;
+  }
+
+  .reader-article ul:not(.reader-area-list):not(.reader-group-list) li + li,
+  .reader-article ol:not(.reader-area-list):not(.reader-group-list) li + li {
+    margin-top: 0.5rem;
+  }
+
+  .reader-last-edited {
+    font-size: 0.75rem;
+  }
+
+  /* Other-notes rows keep the 44px touch floor on phones through
+     min-height (the same pattern as the group lists), never a fixed
+     height. Desktop rows stay at the 36px design read. */
+  .reader-article .reader-other-notes .reader-group-list a {
+    min-height: 44px;
   }
 
   .reader-article h3 {
     font-size: 1.05rem;
+  }
+
+  /* Phone home card list keeps the 12px card gap from the base grid and
+     takes the 16px top gap before the list from design screen I1z3qM.
+     Same cascade note as the shell padding above: a max-md:mt-4 utility
+     would lose to the unlayered .reader-area-list margin. */
+  .reader-home-cards {
+    margin-top: 1rem;
   }
 }
 
@@ -852,7 +834,7 @@ body {
  *
  * Two trigger controls share one dialog: a full-width control above the
  * tree in the desktop sidebar and a compact control in the phone header.
- * Result rows and the input keep the 44px touch target used by Browse and
+ * Result rows and the input keep the 44px touch target used by
  * navigation. Surfaces stay grayscale only, with dark variants matching
  * the reader shell. The dialog panel itself comes from the registry
  * Dialog component; these classes only shape the search content.
@@ -1019,16 +1001,16 @@ body {
 }
 
 /**
- * Offline save control in the sidebar and drawer footers.
+ * Offline save control in the sidebar footer.
  *
  * One explicit action per Web Projection: Save for offline use with its
  * estimated size and trusted-device note, Saving progress, a Ready offline
  * state only after the whole export is cached, an explicit Remove offline
- * copy action, and an incomplete state with retry. The desktop
- * SidebarFooter and the phone drawer SheetFooter share one mounted state,
- * so both footers stay in sync. Surfaces stay grayscale
+ * copy action, and an incomplete state with retry. The registry
+ * SidebarFooter renders on desktop and inside the mobile sheet from one
+ * mounted state. Surfaces stay grayscale
  * only, with dark variants matching the reader shell. Controls keep the
- * 44px touch target used by Browse and navigation.
+ * 44px touch target used by navigation.
  */
 .reader-offline {
   display: grid;
@@ -1266,9 +1248,8 @@ body {
 /**
  * Appearance control (shadcn Button group) and dark surfaces.
  *
- * The control lives in the reader header on desktop and phone. Options
- * keep the 44px touch target and visible focus used by Browse and
- * navigation. Dark surfaces stay grayscale only: near-black page, raised
+ * The control lives in the sidebar footer. Options
+ * keep the 44px touch target and visible focus used by navigation. Dark surfaces stay grayscale only: near-black page, raised
  * cards, muted text, and borders that keep article, navigation, code,
  * tables, and interaction states readable.
  */
@@ -1311,44 +1292,6 @@ body {
 .dark .reader-header {
   background: #0a0a0a;
   border-bottom-color: #262626;
-}
-
-.dark .reader-browse-toggle {
-  color: #fafafa;
-  background: #171717;
-  border-color: #404040;
-}
-
-.dark .reader-browse-toggle:hover {
-  background: #262626;
-}
-
-.dark .reader-phone-drawer-header {
-  border-bottom-color: #262626;
-}
-
-.dark .reader-phone-drawer-actions {
-  border-bottom-color: #262626;
-}
-
-.dark .reader-drawer-close {
-  color: #fafafa;
-  background: #171717;
-  border-color: #404040;
-}
-
-.dark .reader-drawer-close:hover {
-  background: #262626;
-}
-
-.dark .reader-drawer-home {
-  color: #fafafa;
-  background: #171717;
-  border-color: #404040;
-}
-
-.dark .reader-drawer-home:hover {
-  background: #262626;
 }
 
 .dark .reader-sidebar-nav a {
@@ -1468,14 +1411,14 @@ body {
 }
 
 /**
- * Sidebar and drawer footers own offline plus appearance.
+ * Sidebar footer owns offline plus appearance.
  *
- * Registry SidebarFooter (desktop) and SheetFooter (phone drawer) hold
- * the same Appearance group and detailed offline actions from one mounted
- * state. Footers stay fixed while the tree scrolls: the desktop content
- * and the phone drawer tree own their scroll, the footer keeps
- * flex-shrink zero with its own cap so short viewports keep controls
- * reachable. The closed-phone header cue is phone-only and display-only.
+ * The registry SidebarFooter holds the same Appearance group and
+ * detailed offline actions on desktop and inside the mobile sheet from
+ * one mounted state. The footer stays fixed while the tree scrolls: the
+ * sidebar content owns its scroll, the footer keeps its own cap so short
+ * viewports keep controls reachable. The closed-phone header cue is
+ * phone-only and display-only.
  */
 .reader-sidebar-footer {
   border-top: 1px solid #e5e5e5;
@@ -1483,60 +1426,25 @@ body {
   overflow-y: auto;
 }
 
-.reader-phone-drawer-footer {
-  border-top: 1px solid #e5e5e5;
-  flex-shrink: 0;
-  max-height: 38dvh;
-  overflow-y: auto;
-}
-
-.reader-sidebar-footer .reader-offline,
-.reader-phone-drawer-footer .reader-offline {
+.reader-sidebar-footer .reader-offline {
   margin-top: 0;
   max-width: 100%;
 }
 
-.reader-sidebar-footer .reader-appearance,
-.reader-phone-drawer-footer .reader-appearance {
+.reader-sidebar-footer .reader-appearance {
   flex-wrap: wrap;
-}
-
-.reader-offline-cue {
-  display: none;
-  align-items: center;
-  min-height: 44px;
-  margin: 0;
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: #525252;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 32vw;
 }
 
 .dark .reader-sidebar-footer {
   border-top-color: #262626;
 }
 
-.dark .reader-phone-drawer-footer {
-  border-top-color: #262626;
-}
-
-.dark .reader-offline-cue {
-  color: #d4d4d4;
-}
-
-@media (max-width: 899px) {
+@media (max-width: 767px) {
   .reader-header-actions {
     gap: 0.4rem;
   }
 
   .reader-appearance-option span {
     font-size: 0.8rem;
-  }
-
-  .reader-offline-cue {
-    display: inline-flex;
   }
 }
