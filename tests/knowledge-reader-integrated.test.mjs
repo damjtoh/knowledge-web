@@ -6231,7 +6231,8 @@ async function runPhoneNoteDetail(page, baseUrl, label) {
 
 /**
  * Reads the open vault bottom sheet: frame geometry plus the current
- * row and ordered destination anchors. Null when no vault sheet is open
+ * row, ordered destination anchors, row order, and the trailing Add
+ * mock button. Null when no vault sheet is open
  * (the drawer sidebar renders its own sheet content without the
  * "Switch vault" list, so the two are never confused).
  */
@@ -6251,6 +6252,19 @@ async function readVaultSheet(page) {
     const list = root.querySelector('[aria-label="Switch vault"]')
     const current = list?.querySelector(':scope > li[aria-current="true"]') || null
     const anchors = list ? Array.from(list.querySelectorAll(":scope > li > a")) : []
+
+    const rows = list
+      ? Array.from(list.querySelectorAll(":scope > li")).map((li) => {
+          const child = li.querySelector(":scope > a, :scope > button")
+
+          return {
+            tag: child ? child.tagName : null,
+            text: child?.textContent?.trim() || "",
+          }
+        })
+      : []
+
+    const add = list?.querySelector(":scope > li > button") || null
 
     return {
       bottom: rect.bottom,
@@ -6284,6 +6298,16 @@ async function readVaultSheet(page) {
           target: anchor.getAttribute("target"),
         }
       }),
+      rows,
+      add: add
+        ? {
+            tag: add.tagName,
+            text: add.textContent?.trim() || "",
+            type: add.getAttribute("type"),
+            hasHref: add.hasAttribute("href"),
+            disabled: add.hasAttribute("disabled") || add.hasAttribute("aria-disabled"),
+          }
+        : null,
     }
   })
 }
@@ -6334,7 +6358,22 @@ function assertVaultSheetRows(sheet, expect, label) {
     )
   }
 
-  assert.ok(!sheet.text.includes("Add"), `${label}: sheet offers no add-vault row`)
+  assert.ok(sheet.add, `${label}: sheet renders the Add new vault mock row`)
+  assert.equal(sheet.add.tag, "BUTTON", `${label}: add-vault row is a button, not an anchor`)
+  assert.equal(sheet.add.text, "Add new vault", `${label}: add-vault row keeps its label`)
+  assert.equal(sheet.add.type, "button", `${label}: add-vault row is a plain button`)
+  assert.equal(sheet.add.hasHref, false, `${label}: add-vault row carries no navigation target`)
+  assert.equal(sheet.add.disabled, false, `${label}: add-vault row stays focusable, not disabled`)
+  assert.equal(
+    sheet.rows.length,
+    sheet.choices.length + 2,
+    `${label}: sheet lists the current row, destinations, then the mock`,
+  )
+  assert.equal(
+    sheet.rows[sheet.rows.length - 1]?.tag,
+    "BUTTON",
+    `${label}: add-vault row sits last, ordered after destinations`,
+  )
 }
 
 async function vaultSheetOpen(page) {
@@ -6368,6 +6407,32 @@ async function vaultSheetClosed(page) {
     null,
     { timeout: 5000 },
   )
+}
+
+/**
+ * Add-vault mock no-op: activating the trailing button navigates nowhere
+ * and leaves the vault sheet open (parity item 2 pins the mock semantics).
+ */
+async function assertAddVaultMockNoop(page, label) {
+  const urlBefore = page.url()
+
+  await page.evaluate(() => {
+    const root = Array.from(document.querySelectorAll('[data-slot="sheet-content"]')).find((el) =>
+      el.querySelector('[aria-label="Switch vault"]'),
+    )
+
+    root?.querySelector('[aria-label="Switch vault"] > li > button')?.click()
+  })
+  await page.waitForTimeout(300)
+  assert.equal(page.url(), urlBefore, `${label}: add-vault mock navigates nowhere`)
+
+  const stillOpen = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('[data-slot="sheet-content"]')).some((el) =>
+      el.querySelector('[aria-label="Switch vault"]'),
+    ),
+  )
+
+  assert.ok(stillOpen, `${label}: add-vault mock leaves the sheet open`)
 }
 
 /**
@@ -6443,6 +6508,7 @@ async function runPhoneHeaderVaultSheet(page, baseUrl, expect, label) {
     false,
     `${label}: header vault switch needs no drawer`,
   )
+  await assertAddVaultMockNoop(page, label)
 
   await page.evaluate(() => {
     const root = Array.from(document.querySelectorAll('[data-slot="sheet-content"]')).find((el) =>
@@ -6561,11 +6627,12 @@ test("device status chip renders every offline state without starting a save", a
 })
 
 /**
- * Vault bottom sheet static tokens (mobile port item 4): the phone vault
- * switcher renders the registry Sheet side="bottom" with the xPZVw rows
- * (washed current row with check, bordered destination anchors keyed by
- * origin host, no add-vault row) in utilities only, while the desktop
- * dropdown path and the two phone triggers stay wired.
+ * Vault bottom sheet static tokens (mobile port item 4, parity item 2):
+ * the phone vault switcher renders the registry Sheet side="bottom" with
+ * the xPZVw rows (washed current row with check, bordered destination
+ * anchors keyed by origin host, trailing Add new vault mock button) in
+ * utilities only, while the desktop dropdown path and the two phone
+ * triggers stay wired.
  */
 test("vault sheet matches the xPZVw bottom-sheet design tokens", async () => {
   const sheet = fs.readFileSync(path.join(READER_ROOT, "components", "vault-sheet.tsx"), "utf8")
@@ -6584,7 +6651,23 @@ test("vault sheet matches the xPZVw bottom-sheet design tokens", async () => {
   assert.match(sheet, /min-h-15/, "rows hold the 60px geometry without arbitrary values")
   assert.ok(!/rounded-\[|min-h-\[|text-\[|w-\[|h-\[|p[xy]?-\[/.test(sheet), "no arbitrary values")
   assert.ok(!sheet.includes("reader-"), "sheet adds no custom hook classes")
-  assert.ok(!/Add new vault/.test(sheet), "no add-vault row")
+  assert.match(sheet, /Add new vault/, "add-vault mock row renders its label")
+  assert.match(sheet, /<button[^>]*type="button"/, "add-vault mock is a plain button")
+  assert.ok(!/onClick/.test(sheet), "add-vault mock carries no handler by design")
+  assert.ok(!/aria-disabled/.test(sheet), "add-vault mock is not disabled, only a no-op")
+  assert.match(sheet, /Plus/, "add-vault mock uses the Plus icon")
+  assert.match(
+    sheet,
+    /size-3\.5 shrink-0 text-muted-foreground/,
+    "add icon keeps the 14px muted read",
+  )
+  assert.match(sheet, /text-13/, "add label keeps the 13px token")
+  assert.match(sheet, /text-primary/, "add label keeps the primary read")
+  assert.match(
+    sheet,
+    /w-full items-center gap-3 rounded-lg border border-border p-3/,
+    "add-vault mock shares the destination row treatment",
+  )
 
   const config = fs.readFileSync(path.join(PUBLISHER_ROOT, "oxlint.config.ts"), "utf8")
 

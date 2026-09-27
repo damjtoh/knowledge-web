@@ -1,6 +1,6 @@
 "use client"
 
-import { Archive, Check, XIcon } from "lucide-react"
+import { Archive, Check, Plus, XIcon } from "lucide-react"
 import type { ProjectionDestination } from "../lib/site"
 import { Sheet, SheetClose, SheetContent, SheetTitle } from "./ui/sheet"
 
@@ -26,7 +26,8 @@ function destinationHost(origin: string): string {
  * Display plus navigation only: the current projection is information
  * (washed row, inverted icon box, trailing Check, no link), each
  * destination is an ordinary anchor to its distinct HTTPS origin, and
- * there is no add-vault row. Open state stays with the caller — the
+ * the trailing Add row is a rendered mock (focusable button, no-op).
+ * Open state stays with the caller — the
  * phone header brand and the drawer switcher each mount their own
  * instance, and those triggers are never reachable together, so the
  * instances cannot stack. Focus containment, Escape and overlay
@@ -94,6 +95,18 @@ export function VaultSheet({
               </a>
             </li>
           ))}
+          <li>
+            {/* Mock: awaits a real backend and intentionally does nothing. */}
+            <button
+              type="button"
+              className="flex min-h-15 w-full items-center gap-3 rounded-lg border border-border p-3"
+            >
+              <Plus aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
+              <span className="min-w-0 flex-1 truncate text-left text-13 font-medium text-primary">
+                Add new vault
+              </span>
+            </button>
+          </li>
         </ul>
       </SheetContent>
     </Sheet>
