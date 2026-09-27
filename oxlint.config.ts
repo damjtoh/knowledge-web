@@ -64,7 +64,13 @@ const config: OxlintConfig = {
               { pattern: "^CollapsibleContent$", allow: ["reader-tree-panel"] },
               // Width must stay on the dialog popup: Dialog renders no
               // wrapper DOM, so there is no parent element to move it to.
-              { pattern: "^DialogContent$", allow: ["sm:max-w-lg"] },
+              // The search dialog (design MnMak) composes its chrome there
+              // too: max-w-lg is the 512px desktop width, gap-3 the 12px
+              // block gap, bg-card the dialog fill, p-4 the 16px padding.
+              { pattern: "^DialogContent$", allow: ["sm:max-w-lg", "gap-3", "bg-card", "p-4"] },
+              // Search header owns its row read (title plus close with an
+              // 8px gap); the header renders no wrapper DOM.
+              { pattern: "^DialogHeader$", allow: ["flex-row", "items-center", "gap-2"] },
               // Touch-target sizing must live on the button itself, same as
               // the tree toggle above. Offline actions share the same
               // 44px target and the browser journeys query them by hook
@@ -136,8 +142,12 @@ const config: OxlintConfig = {
               // the Home/Search menu keeps its vertical gap.
               { pattern: "^SidebarHeader$", allow: ["gap-3", "px-3", "py-4"] },
               // Search kbd pill aligns to the row end; the Kbd primitive
-              // owns its own surface.
-              { pattern: "^Kbd$", allow: ["ml-auto"] },
+              // owns its own surface. Search hint chips (design MnMak)
+              // restyle the chip to the 11px card fill with a border.
+              {
+                pattern: "^Kbd$",
+                allow: ["ml-auto", "border", "border-border", "bg-card", "text-2xs"],
+              },
               // Projection switcher trigger owns its hook through the
               // dropdown trigger render composition; the menu button has
               // no other wrapper that can own it.
@@ -204,14 +214,21 @@ const config: OxlintConfig = {
               // Phone-only home card row reuses the registry title and
               // description slots without the desktop hook classes (hooks
               // stay unique per card for the desktop selectors), carrying
-              // the phone title and count-only meta type sizes.
+              // the phone title and count-only meta type sizes. The desktop
+              // D3O3k6 row adds the 11px count-only meta token below.
               {
                 pattern: "^CardTitle$",
                 allow: ["reader-home-card-title", "truncate", "text-sm", "font-semibold"],
               },
               {
                 pattern: "^CardDescription$",
-                allow: ["reader-home-card-meta", "truncate", "text-xs", "text-muted-foreground"],
+                allow: [
+                  "reader-home-card-meta",
+                  "truncate",
+                  "text-xs",
+                  "text-2xs",
+                  "text-muted-foreground",
+                ],
               },
               // Sidebar footer owns offline plus appearance layout
               // (border, scroll cap, safe-area reachability). The registry

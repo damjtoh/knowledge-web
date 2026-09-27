@@ -51,3 +51,38 @@ export default function Breadcrumbs({ items }: { items: Crumb[] }) {
     </div>
   )
 }
+
+/**
+ * Phone-only body crumb trail for note pages (design screen pWNyV):
+ * 12px muted slash-separated crumbs above the body. A plain paragraph,
+ * not a second Breadcrumb landmark, so the header keeps the single
+ * `Breadcrumb` landmark the static checks assert; md:hidden keeps every
+ * desktop viewport pixel-identical.
+ *
+ * Server-rendered with zero client JS: crumbs arrive as props from the
+ * shared trail derivation (`ReaderNavigation.breadcrumbs`, the server
+ * flavor of the `crumbsFromRoots` core in lib/navigation).
+ *
+ * The `reader-note-crumbs` hook (not utilities alone) dodges the
+ * unlayered `.reader-article p/a` rules: those rules beat layered
+ * utilities for margin and link color, so the hook genuinely needs its
+ * unlayered margin/color overrides in globals.css. No display rule lives
+ * there — `md:hidden` in the markup owns visibility, since an unlayered
+ * display declaration would beat that layered utility.
+ */
+export function NoteCrumbs({ crumbs }: { crumbs: Crumb[] }) {
+  return (
+    <p className="reader-note-crumbs md:hidden">
+      {crumbs.map((crumb, index) => (
+        <Fragment key={`${crumb.title}-${index}`}>
+          {index > 0 ? <span aria-hidden="true"> / </span> : null}
+          {crumb.url && !crumb.isCurrent ? (
+            <a href={crumb.url}>{crumb.title}</a>
+          ) : (
+            <span>{crumb.title}</span>
+          )}
+        </Fragment>
+      ))}
+    </p>
+  )
+}

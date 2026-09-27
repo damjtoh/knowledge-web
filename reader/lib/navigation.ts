@@ -123,6 +123,96 @@ function isIndexPath(path: string | undefined): boolean {
 }
 
 /**
+ * Shared trail derivation: one core for the breadcrumb family.
+ *
+ * Both presentation variants consume this core. The desktop header trail
+ * (registry Breadcrumb, via `resolveReadingBreadcrumbs` in
+ * `reading-breadcrumbs.tsx`) calls `crumbsFromRoots` directly from the
+ * client pathname, then enhances the current title from the page's own
+ * document title when the route sits outside visible navigation. The
+ * phone body trail (`NoteCrumbs` in `components/breadcrumbs.tsx`) takes
+ * crumbs computed server-side by `ReaderNavigation.breadcrumbs`, which is
+ * this same core overlaid with staged published titles for routes outside
+ * the visible tree. Tree-covered prefixes are byte-identical either way;
+ * only the outside-navigation fallback source differs (client document
+ * title vs server staged data), because the client never embeds every
+ * staged title.
+ */
+
+function indexRoots(roots: NavigationNode[]): Map<string, NavigationNode> {
+  const nodes = new Map<string, NavigationNode>()
+
+  const walk = (node: NavigationNode): void => {
+    nodes.set(slugKey(node.slugs), node)
+
+    for (const child of node.children) walk(child)
+  }
+
+  for (const root of roots) walk(root)
+
+  return nodes
+}
+
+/** Slugs for a client pathname, with trailing-slash and encoding handled. */
+export function slugsFromPathname(pathname: string): string[] {
+  const clean = normalizePathname(pathname)
+
+  if (clean === "/") return []
+
+  return clean
+    .split("/")
+    .filter(Boolean)
+    .map((seg) => {
+      try {
+        return decodeURIComponent(seg)
+      } catch {
+        return seg
+      }
+    })
+}
+
+/**
+ * Route-derived crumbs from the published tree.
+ *
+ * Walks the same published roots the sidebar renders, so authored and
+ * virtual folders keep their tree titles. Routes outside visible
+ * navigation fall back to humanized slugs; callers overlay the actual
+ * staged or document title when one exists. No new content source.
+ */
+export function crumbsFromRoots(roots: NavigationNode[], slugs: string[]): Crumb[] {
+  if (slugs.length === 0) return [{ title: "Home", url: "/", isCurrent: true }]
+
+  const nodes = indexRoots(roots)
+  const crumbs: Crumb[] = [{ title: "Home", url: "/", isCurrent: false }]
+
+  slugs.forEach((_, i) => {
+    const prefix = slugs.slice(0, i + 1)
+    const key = slugKey(prefix)
+    const isCurrent = i === slugs.length - 1
+    const node = nodes.get(key)
+
+    if (node) {
+      if (isCurrent) crumbs.push({ title: node.title, isCurrent })
+      else crumbs.push({ title: node.title, url: node.url, isCurrent: false })
+
+      return
+    }
+
+    const title = humanizeSegment(prefix[prefix.length - 1])
+    crumbs.push(isCurrent ? { title, isCurrent } : { title, isCurrent: false })
+  })
+
+  return crumbs
+}
+
+/** True when a slug path resolves to a node in the published tree. */
+export function hasRouteInRoots(roots: NavigationNode[], slugs: string[]): boolean {
+  if (slugs.length === 0) return true
+
+  return indexRoots(roots).has(slugKey(slugs))
+}
+
+/**
  * One deep navigation tree for the generic reader.
  *
  * Roots follow generated metadata order. Every folder with Markdown
@@ -287,37 +377,34 @@ export function buildReaderNavigation(
   const find = (slugs: string[]): NavigationNode | undefined => nodes.get(slugKey(slugs))
 
   const breadcrumbs = (slugs: string[]): Crumb[] => {
-    if (slugs.length === 0) return [{ title: "Home", url: "/", isCurrent: true }]
-    const crumbs: Crumb[] = [{ title: "Home", url: "/", isCurrent: false }]
-    slugs.forEach((_, i) => {
-      const prefix = slugs.slice(0, i + 1)
-      const isCurrent = i === slugs.length - 1
+    // One core: tree titles and humanized fallbacks come from
+    // crumbsFromRoots; staged published titles overlay only the prefixes
+    // outside the visible tree, so tree-covered output is identical.
+    const base = crumbsFromRoots(roots, slugs)
+
+    if (slugs.length === 0) return base
+
+    return base.map((crumb, i) => {
+      if (i === 0) return crumb
+      const prefix = slugs.slice(0, i)
       const key = slugKey(prefix)
-      const node = nodes.get(key)
 
-      if (node) {
-        if (isCurrent) crumbs.push({ title: node.title, isCurrent })
-        else crumbs.push({ title: node.title, url: node.url, isCurrent: false })
-      } else {
-        // Routes outside visible navigation stay meaningful by using the
-        // actual staged published title when one exists; humanized slugs
-        // are the fallback. Staged pages are already allowlisted, so this
-        // never broadens publication.
-        const page = pageByKey.get(key)
+      if (nodes.get(key)) return crumb
 
-        if (page) {
-          const title = pageTitle(page)
+      // Routes outside visible navigation stay meaningful by using the
+      // actual staged published title when one exists; humanized slugs
+      // are the fallback. Staged pages are already allowlisted, so this
+      // never broadens publication.
+      const page = pageByKey.get(key)
 
-          if (isCurrent) crumbs.push({ title, isCurrent })
-          else crumbs.push({ title, url: page.url, isCurrent: false })
-        } else {
-          const title = humanizeSegment(prefix[prefix.length - 1])
-          crumbs.push(isCurrent ? { title, isCurrent } : { title, isCurrent: false })
-        }
-      }
+      if (!page) return crumb
+
+      const isCurrent = i === slugs.length
+
+      if (isCurrent) return { title: pageTitle(page), isCurrent }
+
+      return { title: pageTitle(page), url: page.url, isCurrent: false }
     })
-
-    return crumbs
   }
 
   return { roots, find, breadcrumbs }

@@ -1,17 +1,16 @@
 import type { Metadata } from "next"
 import { notFound } from "next/navigation"
-import { Fragment } from "react"
 import { source } from "../../lib/source"
 import { getSiteMetadata, canonicalUrl } from "../../lib/site"
 import { docTitle } from "../../lib/title"
-import LastEdited from "../../components/last-edited"
+import MetaLine, { type MetaLineData } from "../../components/last-edited"
+import { NoteCrumbs } from "../../components/breadcrumbs"
 import OtherNotes, { type SiblingNote } from "../../components/other-notes"
-import type { UpdatedAtSource } from "../../lib/last-edited"
+import { readMinutesFromData } from "../../lib/reading-time"
 import {
   buildReaderNavigation,
   getDirectNotes,
   getChildFolders,
-  type Crumb,
   type NavigationNode,
 } from "../../lib/navigation"
 
@@ -77,41 +76,54 @@ interface SiblingNotes {
   siblings: SiblingNote[]
 }
 
+/**
+ * Serializable sibling stamp: the child's frontmatter `updated_at`
+ * normalized to an ISO string (Date values become ISO). Missing,
+ * non-string, and invalid stamps stay absent here; the client omits the
+ * meta span for those rows instead of guessing a date. Only strings cross
+ * the server/client boundary, never page objects or functions.
+ */
+function siblingUpdatedAt(
+  data: { updated_at?: string | Date | null } | undefined,
+): string | undefined {
+  const raw = data?.updated_at
+
+  if (raw instanceof Date) return raw.toISOString()
+
+  if (raw === null || raw === undefined) return undefined
+
+  // String(x) is identical to x only for string primitives, so this
+  // narrows to string without a runtime typeof check (same idiom as
+  // parseUpdatedAt in lib/last-edited.ts).
+  const text = String(raw)
+
+  // SAFETY: the String-identity check above established raw is a string primitive.
+  if ((text as unknown) !== raw) return undefined
+
+  return text
+}
+
+/** Sibling row for a tree child: title, route, and optional edit stamp. */
+function siblingNoteFor(child: NavigationNode): SiblingNote {
+  const note: SiblingNote = { title: child.title, url: child.url }
+  const updatedAt = siblingUpdatedAt(child.page?.data)
+
+  if (updatedAt !== undefined) note.updatedAt = updatedAt
+
+  return note
+}
+
 function siblingNotes(roots: NavigationNode[], node: NavigationNode): SiblingNotes {
   const parent = findParentNode(roots, node)
   const siblings: SiblingNote[] = []
 
   if (parent) {
     for (const child of getDirectNotes(parent)) {
-      if (child.url !== node.url) siblings.push({ title: child.title, url: child.url })
+      if (child.url !== node.url) siblings.push(siblingNoteFor(child))
     }
   }
 
   return { parent, siblings }
-}
-
-/**
- * Phone-only body crumb trail for note pages (design screen pWNyV):
- * 12px muted slash-separated crumbs above the body. A plain paragraph,
- * not a second Breadcrumb landmark, so the header keeps the single
- * `Breadcrumb` landmark the static checks assert; md:hidden keeps every
- * desktop viewport pixel-identical.
- */
-function NoteCrumbs({ crumbs }: { crumbs: Crumb[] }) {
-  return (
-    <p className="reader-note-crumbs md:hidden">
-      {crumbs.map((crumb, index) => (
-        <Fragment key={`${crumb.title}-${index}`}>
-          {index > 0 ? <span aria-hidden="true"> / </span> : null}
-          {crumb.url && !crumb.isCurrent ? (
-            <a href={crumb.url}>{crumb.title}</a>
-          ) : (
-            <span>{crumb.title}</span>
-          )}
-        </Fragment>
-      ))}
-    </p>
-  )
 }
 
 /**
@@ -196,25 +208,27 @@ export default async function FolderOrNotePage({ params }: { params: Promise<Not
     const childFolders = getChildFolders(node)
 
     // Leaf notes carry the phone note treatment (design screen pWNyV):
-    // a phone-only slash trail, the LastEdited content duplicated into a
-    // phone-only slot above the title (the desktop slot hides on phones,
-    // so each viewport shows exactly one meta line with no flex reorder),
-    // and the shared Other notes sibling section on every viewport.
-    // Folder pages keep their generic Notes/Folders groups unchanged.
+    // a phone-only slash trail, one shared meta line above the title on
+    // every viewport (design component HMIv8; the title lives inside the
+    // MDX body h1, so above the title means before Body), and the shared
+    // Other notes sibling section on every viewport. Folder pages keep
+    // their generic Notes/Folders groups with no meta line (design has no
+    // folder screen).
     if (!node.isFolder) {
       const crumbs = navigation.breadcrumbs(slug)
       const { parent, siblings } = siblingNotes(navigation.roots, node)
+      // SAFETY: loader page data carries frontmatter fields; MetaLine reads only the named updated_at/read_minutes fields.
+      const metaSource = node.page.data as MetaLineData
 
       return (
         <article className="reader-article">
           <NoteCrumbs crumbs={crumbs} />
-          <div className="md:hidden">
-            <LastEdited data={node.page.data} />
-          </div>
+          <MetaLine
+            parentTitle={parent?.title}
+            readMinutes={readMinutesFromData(metaSource)}
+            data={metaSource}
+          />
           <Body />
-          <div className="max-md:hidden">
-            <LastEdited data={node.page.data} />
-          </div>
           <OtherNotes parentTitle={parent?.title} siblings={siblings} />
         </article>
       )
@@ -223,7 +237,6 @@ export default async function FolderOrNotePage({ params }: { params: Promise<Not
     return (
       <article className="reader-article">
         <Body />
-        <LastEdited data={node.page.data} />
         <GroupSection title="Notes" nodes={directNotes} />
         <GroupSection title="Folders" nodes={childFolders} />
       </article>
@@ -248,8 +261,8 @@ export default async function FolderOrNotePage({ params }: { params: Promise<Not
   if (!page) notFound()
   // SAFETY: staged Markdown pages own a compiled body component; getPage returned a page for an existing slug.
   const Body = (page.data as { body: React.ComponentType }).body
-  // SAFETY: loader page data carries frontmatter fields; LastEdited reads only the named updated_at field.
-  const editedSource = page.data as UpdatedAtSource
+  // SAFETY: loader page data carries frontmatter fields; MetaLine reads only the named updated_at/read_minutes fields.
+  const metaSource = page.data as MetaLineData
   // Routes outside visible navigation still get the phone note treatment;
   // the ancestor lookup simply finds no published parent, so the sibling
   // section stays hidden while the trail and meta line still render.
@@ -259,20 +272,19 @@ export default async function FolderOrNotePage({ params }: { params: Promise<Not
 
   if (ancestor) {
     for (const child of getDirectNotes(ancestor)) {
-      if (child.url !== page.url) siblings.push({ title: child.title, url: child.url })
+      if (child.url !== page.url) siblings.push(siblingNoteFor(child))
     }
   }
 
   return (
     <article className="reader-article">
       <NoteCrumbs crumbs={crumbs} />
-      <div className="md:hidden">
-        <LastEdited data={editedSource} />
-      </div>
+      <MetaLine
+        parentTitle={ancestor?.title}
+        readMinutes={readMinutesFromData(metaSource)}
+        data={metaSource}
+      />
       <Body />
-      <div className="max-md:hidden">
-        <LastEdited data={editedSource} />
-      </div>
       <OtherNotes parentTitle={ancestor?.title} siblings={siblings} />
     </article>
   )

@@ -24,6 +24,7 @@
  * site identity comes from generated metadata at build time.
  */
 
+/* Page never scrolls sideways: overflow probes assert zero horizontal overflow. */
 html,
 body {
   overflow-x: hidden;
@@ -46,6 +47,7 @@ body {
   --sidebar-width: 20rem;
 }
 
+/* Base reader surface: grayscale body type on white; the .dark override below flips it. */
 body {
   margin: 0;
   background: #fff;
@@ -63,6 +65,7 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/* Shell header layout: unlayered flex/border/padding must beat layered header utilities. */
 .reader-header {
   display: flex;
   align-items: center;
@@ -93,6 +96,7 @@ body {
   min-width: 0;
 }
 
+/* Reading shell: centered 1100px column; the phone padding variant below beats utilities unlayered. */
 .reader-shell {
   display: flex;
   gap: 2rem;
@@ -154,6 +158,7 @@ body {
   overflow-wrap: anywhere;
 }
 
+/* Sidebar links: pinned hooks the tree journeys query (ul/a/hover/active). */
 .reader-sidebar-nav ul {
   list-style: none;
   margin: 0;
@@ -288,6 +293,7 @@ body {
   opacity: 1;
 }
 
+/* Reading column: flex share with clip containment so wide tables never push the viewport. */
 .reader-main {
   flex: 1;
   min-width: 0;
@@ -296,6 +302,7 @@ body {
   overflow-x: clip;
 }
 
+/* Breadcrumb trail: pinned hook the journeys click; descendants reach registry slots. */
 .reader-breadcrumbs {
   flex: 1 1 auto;
   min-width: 0;
@@ -365,6 +372,7 @@ body {
   text-decoration-color: #a3a3a3;
 }
 
+/* Generated-markup root + bare MDX elements below (h1-h3/p/a/table/img/hr/checkbox): no TSX hosts utilities; dark variants below. */
 .reader-article {
   max-width: 68ch;
   margin: 0;
@@ -410,18 +418,50 @@ body {
   margin-block: 1em;
 }
 
-/* Tailwind preflight removes list markers and indent globally. Restore
-   them for Markdown body lists only. Area and group navigation lists live
-   inside the article on home and folder pages, so they are excluded here
-   and re-asserted marker-free below with higher specificity. */
+/* Generated-markup hooks live here, not in utilities: MDX body
+   markup (ul/ol/li) arrives without classes, so no utility can target
+   it. Bullets follow design Bullet Row pDRO9: 13px text with a 6px
+   round dot. A native ::marker cannot hit the 6px geometry (its disc
+   scales with font size), so the lists go marker-free and paint the
+   dot via li::before instead. Gaps are 8px on both viewports per the
+   h2 section spec, set on the base rule itself (not the phone query).
+   Task items keep no dot. Area/group navigation lists are excluded:
+   they own their marker-free treatment below. */
 .reader-article ul:not(.reader-area-list):not(.reader-group-list) {
-  list-style: disc outside;
+  list-style: none;
   padding-left: 1.5rem;
 }
 
 .reader-article ol:not(.reader-area-list):not(.reader-group-list) {
   list-style: decimal outside;
   padding-left: 1.5rem;
+}
+
+.reader-article ul:not(.reader-area-list):not(.reader-group-list) li,
+.reader-article ol:not(.reader-area-list):not(.reader-group-list) li {
+  /* 13px on both viewports from this rule itself: the phone query
+     drops the article to 14px, so inheritance alone would miss. */
+  font-size: 13px;
+  position: relative;
+}
+
+/* 6px dot marker, #171717 via --primary so dark mode flips with the
+   token. Offset sits the dot inside the kept 1.5rem indent. */
+.reader-article ul:not(.reader-area-list):not(.reader-group-list) li::before {
+  content: "";
+  position: absolute;
+  left: -1rem;
+  top: 0.55em;
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: var(--primary);
+}
+
+.reader-article
+  ul:not(.reader-area-list):not(.reader-group-list)
+  li:has(> input[type="checkbox"])::before {
+  content: none;
 }
 
 .reader-article ul.reader-area-list,
@@ -438,7 +478,7 @@ body {
 
 .reader-article ul:not(.reader-area-list):not(.reader-group-list) li + li,
 .reader-article ol:not(.reader-area-list):not(.reader-group-list) li + li {
-  margin-top: 0.25rem;
+  margin-top: 0.5rem;
 }
 
 /* Article links stay clearly identifiable: dark text with a visible
@@ -485,14 +525,23 @@ body {
   vertical-align: top;
 }
 
+/* Generated-markup hook (same rationale as the list rules above):
+   MDX fenced code arrives as bare pre/code without classes. Code
+   follows the design frame: pad 12, radius 8, dark fill, 12px lines.
+   The fill is hardcoded #0a0a0a on purpose — no light token is
+   near-black (it matches the .dark body precedent below) because the
+   design block is inverted dark in LIGHT mode too. Code text stays
+   hardcoded #f5f5f5 in both modes for the same reason. Border and
+   12px size come from tokens/base so both viewports align. */
 .reader-article pre {
   max-width: 100%;
   overflow-x: auto;
   padding: 0.75rem;
-  background: #f5f5f5;
-  border: 1px solid #e5e5e5;
-  border-radius: 6px;
-  font-size: 0.875rem;
+  background: #0a0a0a;
+  color: #f5f5f5;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  font-size: 0.75rem;
   line-height: 1.55;
 }
 
@@ -513,6 +562,9 @@ body {
   background: transparent;
   border: 0;
   padding: 0;
+  /* 12px lines: the generic code rule below shrinks to 0.9em, which
+     would drop block lines to ~10.8px against the 12px pre. */
+  font-size: 1em;
 }
 
 .reader-article img {
@@ -521,11 +573,35 @@ body {
   border-radius: 6px;
 }
 
+/* Generated-markup hook (same rationale as the list rules above):
+   MDX blockquotes arrive without classes. Quote follows design
+   component Zk8lN: washed bordered block, pad 12, inner gap 6, 13px
+   text. Token map: wash #fafafa -> --muted (nearest grayscale wash;
+   no #fafafa token exists), border #e5e5e5 -> --border, text #171717
+   -> --primary, cite muted -> --muted-foreground. Tokens flip in dark
+   mode, so no separate dark palette is needed. 13px holds on phones
+   from this rule itself, not the phone query. The ↳ prefix is
+   authored content, never markup. The cite pattern styles a trailing
+   paragraph only when the quote holds two or more paragraphs
+   (p + p:last-child matches nothing on single-paragraph quotes). */
 .reader-article blockquote {
   margin: 1.5em 0;
-  padding: 0.25rem 0 0.25rem 1rem;
-  border-left: 3px solid #d4d4d4;
-  color: #525252;
+  padding: 0.75rem;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  color: var(--primary);
+  font-size: 13px;
+  display: grid;
+  gap: 0.375rem;
+}
+
+.reader-article blockquote p {
+  margin: 0;
+}
+
+.reader-article blockquote p + p:last-child {
+  font-size: 11px;
+  color: var(--muted-foreground);
 }
 
 .reader-article hr {
@@ -539,26 +615,6 @@ body {
   height: 1.1rem;
   margin-right: 0.4rem;
   accent-color: #404040;
-}
-
-/**
- * Trustworthy Last edited line.
- *
- * Bespoke article typography only: a subdued muted note directly under
- * the article content. Display-only semantic HTML (paragraph plus time);
- * no UI control or shadcn primitive is involved. The text names an edit
- * time only, never synchronization or drift.
- */
-.reader-last-edited {
-  margin: 1.25rem 0 0;
-  font-size: 0.85rem;
-  line-height: 1.5;
-  color: #737373;
-  overflow-wrap: anywhere;
-}
-
-.dark .reader-last-edited {
-  color: #a3a3a3;
 }
 
 /**
@@ -605,6 +661,14 @@ body {
   color: inherit;
 }
 
+/* Home cards are navigation rows, not prose links: the design keeps
+   card titles plain on both viewports (I1z3qM / D3O3k6). The unlayered
+   article-link rule above has higher specificity than a bare class,
+   so this exception must match it. */
+.reader-article .reader-home-card-link {
+  text-decoration: none;
+}
+
 .reader-home-card-link:hover .reader-home-card-title {
   text-decoration: underline;
   text-underline-offset: 3px;
@@ -622,19 +686,21 @@ body {
   max-width: 100%;
 }
 
+/**
+ * Desktop home card row (design D3O3k6 "Vault Area Row / Desktop"): 40px
+ * muted icon box, stacked title plus count-only meta, and a trailing Open
+ * plus chevron with 12px gaps. Icon, title, meta, and trailing sizes live
+ * in utilities on the markup (the unlayered svg rule that sized the old
+ * bare icon is gone: it would beat the size-4.5 utility). Padding 16
+ * comes from the registry Card/CardHeader tokens, so no padding lives
+ * here.
+ */
 .reader-home-card-row {
   display: flex;
-  align-items: flex-start;
-  gap: 0.5rem;
+  align-items: center;
+  gap: 0.75rem;
   min-width: 0;
   max-width: 100%;
-}
-
-.reader-home-card-row svg {
-  flex-shrink: 0;
-  width: 1.1rem;
-  height: 1.1rem;
-  margin-top: 0.15rem;
 }
 
 .reader-home-card-title {
@@ -652,6 +718,7 @@ body {
   word-break: break-word;
 }
 
+/* Sibling/group sections: pinned hooks shared by folder pages and OtherNotes; rows keep the plain-anchor read. */
 .reader-group {
   margin-top: 2.5rem;
   border-top: 1px solid #e5e5e5;
@@ -736,6 +803,7 @@ body {
   border-bottom: 0;
 }
 
+/* Visible keyboard focus everywhere: unlayered outline must beat layered utilities and primitives. */
 :focus-visible {
   outline: 2px solid #171717;
   outline-offset: 2px;
@@ -760,14 +828,10 @@ body {
     max-width: 100%;
   }
 
-  /* Phone home cards are navigation rows, not prose links: the design
-     (I1z3qM) keeps card titles plain. The unlayered article-link rule
-     above has higher specificity than a bare class, so the exception
-     must match it. */
-  .reader-article .reader-home-card-link {
-    text-decoration: none;
-  }
-
+  /* Phone home cards are navigation rows, not prose links. The plain
+     read lives at the base .reader-home-card-link rule below: the same
+     specificity fight applies on desktop, where the design keeps the
+     card titles plain as well. */
   .reader-article h1 {
     /* Note pages take the 24px/700 phone title from design screen pWNyV.
        The homepage keeps its 26px value below via the card-list hook. */
@@ -805,10 +869,6 @@ body {
     margin-top: 0.5rem;
   }
 
-  .reader-last-edited {
-    font-size: 0.75rem;
-  }
-
   /* Other-notes rows keep the 44px touch floor on phones through
      min-height (the same pattern as the group lists), never a fixed
      height. Desktop rows stay at the 36px design read. */
@@ -830,14 +890,21 @@ body {
 }
 
 /**
- * Search controls and dialog.
+ * Search controls and dialog (design screen MnMak).
  *
  * Two trigger controls share one dialog: a full-width control above the
  * tree in the desktop sidebar and a compact control in the phone header.
- * Result rows and the input keep the 44px touch target used by
- * navigation. Surfaces stay grayscale only, with dark variants matching
- * the reader shell. The dialog panel itself comes from the registry
- * Dialog component; these classes only shape the search content.
+ * Dialog chrome comes from the registry Dialog primitive composed in
+ * search-dialog.tsx (max-w-lg for the 512px desktop width with the
+ * registry full-width-minus-margins phone fallback, p-4, gap-3 on card
+ * fill, row header with gap-2). Type sizes and spacing on the hooked
+ * elements below use the scale tokens (14px query and titles, 13px
+ * status/states and excerpts, 12px urls and hints, 11px kbd chips,
+ * [10,12] input and row padding, 8px row radius) and colors use the
+ * grayscale tokens, so both modes adapt without overrides except the
+ * excerpt mark. Unlayered declarations keep only what utilities cannot
+ * own: the trigger touch floors, list containment, and the data-active
+ * wash, which keyboard highlight and hover share.
  */
 .reader-search-trigger {
   display: inline-flex;
@@ -878,33 +945,28 @@ body {
   gap: 0.75rem;
 }
 
+/* Input chrome (radius, border, fill, type) lives in scale utilities on
+   the element; the touch floor stays here so no utility must own it. */
 .reader-search-input {
-  width: 100%;
   min-height: 44px;
-  padding: 0.6rem 0.75rem;
-  font: inherit;
-  color: #171717;
-  background: #fff;
-  border: 1px solid #d4d4d4;
-  border-radius: 8px;
 }
 
-.reader-search-input::placeholder {
-  color: #737373;
-}
-
+/* Status and state type/color live in utilities; the spacer floor stays. */
 .reader-search-status {
-  font-size: 0.9rem;
-  color: #525252;
   min-height: 1.5em;
 }
 
+/* Hints layout and type live in utilities; the hook keeps a containment
+   anchor so it stays a known selector without owning visuals. */
+.reader-search-hints {
+  min-width: 0;
+}
+
+/* List layout gap lives in utilities; containment and reset stay here. */
 .reader-search-list {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: grid;
-  gap: 0.25rem;
   max-height: min(50vh, 24rem);
   overflow-y: auto;
 }
@@ -913,42 +975,42 @@ body {
   border-radius: 8px;
 }
 
+/* Keyboard highlight and hover share the muted wash. Tokens adapt to
+   dark mode, so no dark override is needed. */
 .reader-search-option[data-active="true"] {
-  background: #f5f5f5;
-  outline: 2px solid #171717;
+  background: var(--muted);
+  outline: 2px solid var(--primary);
   outline-offset: -2px;
 }
 
+.reader-search-option:hover {
+  background: var(--muted);
+}
+
+/* Row padding, inner gap, and layout live in utilities; the touch
+   floor, plain-anchor read, and radius stay here. */
 .reader-search-result {
-  display: grid;
-  gap: 0.15rem;
-  padding: 0.6rem 0.75rem;
   min-height: 44px;
   text-decoration: none;
   color: inherit;
   border-radius: 8px;
 }
 
+/* Row type lives in utilities; long titles wrap instead of overflowing. */
 .reader-search-result-title {
-  font-weight: 700;
-  color: #171717;
   overflow-wrap: anywhere;
 }
 
 .reader-search-result-url {
-  font-size: 0.8rem;
-  color: #737373;
   overflow-wrap: anywhere;
 }
 
 .reader-search-result-excerpt {
-  font-size: 0.9rem;
-  color: #525252;
   overflow-wrap: anywhere;
 }
 
 .reader-search-result-excerpt mark {
-  background: #e5e5e5;
+  background: var(--border);
   color: inherit;
   border-radius: 2px;
   padding: 0 1px;
@@ -964,40 +1026,9 @@ body {
   background: var(--muted);
 }
 
-.dark .reader-search-input {
-  color: #fafafa;
-  background: #171717;
-  border-color: #404040;
-}
-
-.dark .reader-search-input::placeholder {
-  color: #a3a3a3;
-}
-
-.dark .reader-search-status {
-  color: #d4d4d4;
-}
-
-.dark .reader-search-option[data-active="true"] {
-  background: #262626;
-  outline-color: #fafafa;
-}
-
-.dark .reader-search-result-title {
-  color: #fafafa;
-}
-
-.dark .reader-search-result-url {
-  color: #a3a3a3;
-}
-
-.dark .reader-search-result-excerpt {
-  color: #d4d4d4;
-}
-
 .dark .reader-search-result-excerpt mark {
-  background: #404040;
-  color: #fafafa;
+  background: var(--muted);
+  color: var(--primary);
 }
 
 /**
@@ -1359,9 +1390,11 @@ body {
 }
 
 .dark .reader-article pre {
-  background: #171717;
+  /* Inverted block stays near-black in dark mode too; only the edge
+     follows the dark surface line. */
+  background: #0a0a0a;
   border-color: #262626;
-  color: #e5e5e5;
+  color: #f5f5f5;
 }
 
 .dark .reader-article p code,
@@ -1369,11 +1402,6 @@ body {
   background: #262626;
   border-color: #404040;
   color: #f5f5f5;
-}
-
-.dark .reader-article blockquote {
-  border-left-color: #525252;
-  color: #d4d4d4;
 }
 
 .dark .reader-article hr {

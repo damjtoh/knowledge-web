@@ -1,7 +1,9 @@
 "use client"
 
 import { useEffect, useId, useMemo, useState } from "react"
+import { Search } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog"
+import { Kbd } from "./ui/kbd"
 // Runtime comes from the explicit module file (the static-export bundle
 // resolves it directly); types come from the sibling declarations, which
 // keep the typecheck honest about the small dialog interface.
@@ -46,6 +48,16 @@ function fetchSearchIndex(): Promise<SearchIndex | null> {
  * static routes, so opening one is real browser navigation. The input
  * keeps focus while Arrow keys move an aria-activedescendant highlight
  * and Enter follows the highlighted static URL.
+ *
+ * Chrome follows design screen MnMak through registry className
+ * composition plus scale utilities on the hooked elements: max-w-lg for
+ * the 512px desktop width (the registry keeps the full-width-minus-margins
+ * phone fallback), p-4 with gap-3 on card fill, a 14px bordered input
+ * with a leading icon, a 13px muted count line over results, the existing
+ * empty/loading/no-results states restyled as a padded 13px strip, 14/12/13
+ * title/url/excerpt rows with the muted active wash, and a 12px hint row
+ * with 11px kbd chips. Hook classes stay on the same elements; behavior,
+ * copy (plus the design's count line), and focus flow are unchanged.
  */
 export default function SearchDialog({
   open,
@@ -110,6 +122,9 @@ export default function SearchDialog({
           ? `No results for “${trimmed}”.`
           : ""
 
+  const countText =
+    results.length === 0 ? "" : results.length === 1 ? "1 result" : `${results.length} results`
+
   function onInputKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
     if (event.key === "ArrowDown") {
       event.preventDefault()
@@ -138,43 +153,65 @@ export default function SearchDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-lg gap-3 bg-card p-4">
+        <DialogHeader className="flex-row items-center gap-2">
           <DialogTitle>Search</DialogTitle>
         </DialogHeader>
         <div className="reader-search-body">
           <label htmlFor={SEARCH_INPUT_ID} className="sr-only">
             Search notes
           </label>
-          <input
-            id={SEARCH_INPUT_ID}
-            type="text"
-            role="combobox"
-            aria-expanded={results.length > 0}
-            aria-autocomplete="list"
-            aria-controls={listId}
-            aria-activedescendant={activeId}
-            aria-describedby={statusId}
-            autoComplete="off"
-            autoCorrect="off"
-            autoCapitalize="off"
-            spellCheck={false}
-            placeholder="Search notes…"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={onInputKeyDown}
-            className="reader-search-input"
-          />
-          <div id={statusId} role="status" aria-live="polite" className="reader-search-status">
-            {statusText !== "" ? <span>{statusText}</span> : null}
-            {open && trimmed === "" ? <span>Type to find a note.</span> : null}
+          <div className="relative">
+            <Search
+              aria-hidden="true"
+              className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+            />
+            <input
+              id={SEARCH_INPUT_ID}
+              type="text"
+              role="combobox"
+              aria-expanded={results.length > 0}
+              aria-autocomplete="list"
+              aria-controls={listId}
+              aria-activedescendant={activeId}
+              aria-describedby={statusId}
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
+              placeholder="Search notes…"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={onInputKeyDown}
+              className="reader-search-input w-full rounded-md border border-border bg-card py-2.5 pr-3 pl-9 text-sm text-primary placeholder:text-muted-foreground"
+            />
           </div>
+          {results.length > 0 ? (
+            <div
+              id={statusId}
+              role="status"
+              aria-live="polite"
+              className="reader-search-status text-13 text-muted-foreground"
+            >
+              <span>{countText}</span>
+            </div>
+          ) : (
+            <div
+              id={statusId}
+              role="status"
+              aria-live="polite"
+              className="reader-search-status rounded-md p-3 text-13 text-primary"
+            >
+              {statusText !== "" ? <span>{statusText}</span> : null}
+              {open && trimmed === "" ? <span>Type to find a note.</span> : null}
+            </div>
+          )}
           {results.length > 0 ? (
             <ul
               id={listId}
               role="listbox"
               aria-label="Search results"
-              className="reader-search-list"
+              className="reader-search-list grid gap-1"
             >
               {results.map((hit, i) => (
                 <li
@@ -186,11 +223,19 @@ export default function SearchDialog({
                   className="reader-search-option"
                   onMouseMove={() => setActive(i)}
                 >
-                  <a href={hit.url} tabIndex={-1} className="reader-search-result">
-                    <span className="reader-search-result-title">{hit.title}</span>
-                    <span className="reader-search-result-url">{hit.url}</span>
+                  <a
+                    href={hit.url}
+                    tabIndex={-1}
+                    className="reader-search-result grid gap-0.5 px-3 py-2.5"
+                  >
+                    <span className="reader-search-result-title text-sm font-bold text-primary">
+                      {hit.title}
+                    </span>
+                    <span className="reader-search-result-url text-xs text-muted-foreground">
+                      {hit.url}
+                    </span>
                     <span
-                      className="reader-search-result-excerpt"
+                      className="reader-search-result-excerpt text-13 text-muted-foreground"
                       dangerouslySetInnerHTML={{ __html: hit.excerpt }}
                     />
                   </a>
@@ -198,6 +243,20 @@ export default function SearchDialog({
               ))}
             </ul>
           ) : null}
+          <div className="reader-search-hints flex items-center gap-3 text-xs text-muted-foreground">
+            <span className="inline-flex items-center gap-1">
+              <Kbd className="border border-border bg-card text-2xs">↑↓</Kbd>
+              <span>navigate</span>
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <Kbd className="border border-border bg-card text-2xs">↵</Kbd>
+              <span>open</span>
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <Kbd className="border border-border bg-card text-2xs">esc</Kbd>
+              <span>close</span>
+            </span>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

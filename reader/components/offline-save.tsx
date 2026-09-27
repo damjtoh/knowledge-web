@@ -202,8 +202,8 @@ export function OfflineCue() {
     <p
       className={
         muted
-          ? "reader-offline-cue hidden h-7 max-w-1/2 items-center gap-1.5 rounded-full bg-muted px-3 text-2xs text-muted-foreground max-md:inline-flex"
-          : "reader-offline-cue hidden h-7 max-w-1/2 items-center gap-1.5 rounded-full bg-muted px-3 text-2xs text-primary max-md:inline-flex"
+          ? "reader-offline-cue hidden h-7 max-w-40 items-center gap-1.5 rounded-full bg-muted px-3 text-2xs text-muted-foreground max-md:inline-flex"
+          : "reader-offline-cue hidden h-7 max-w-40 items-center gap-1.5 rounded-full bg-muted px-3 text-2xs text-primary max-md:inline-flex"
       }
       data-offline-state={status}
       data-update={updateAvailable ? "true" : undefined}

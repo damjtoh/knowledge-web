@@ -153,3 +153,85 @@ export function updatedAtFromData(data: UpdatedAtSource | null | undefined): Upd
 
   return data.updated_at ?? undefined
 }
+
+/** Valid edit instant with its relative label for the meta line. */
+export interface RelativeUpdatedAt {
+  /** Canonical UTC ISO for `<time datetime>`. */
+  isoDatetime: string
+  /** Relative label without the "Updated" prefix (`2 days ago`, `just now`). */
+  label: string
+}
+
+/**
+ * Strict instant millis for a frontmatter `updated_at` value.
+ *
+ * Reuses the same timezone-aware validation as the absolute display, so
+ * only values worth rendering get a relative label. Returns null for
+ * missing, date-only, naive, or invalid calendar values.
+ */
+export function updatedAtMillis(value: UpdatedAtInput): number | null {
+  const parsed: LastEdited | null = parseUpdatedAt(value)
+
+  if (parsed === null) return null
+  const millis: number = Date.parse(parsed.isoDatetime)
+
+  if (!Number.isFinite(millis)) return null
+
+  return millis
+}
+
+/**
+ * Relative edit label for a frontmatter `updated_at` value.
+ *
+ * Design wording is relative (`Updated 2 days ago`): under a minute reads
+ * `just now`, then minutes, hours, days, 30-day months, and 365-day years
+ * with singular/plural agreement. Future instants clamp to `just now`
+ * rather than rendering a negative duration. Returns null when the value
+ * is not worth rendering (same strictness as the absolute display).
+ */
+export function formatRelativeUpdatedAt(
+  value: UpdatedAtInput,
+  nowMillis: number = Date.now(),
+): string | null {
+  const millis: number | null = updatedAtMillis(value)
+
+  if (millis === null) return null
+  const elapsed: number = nowMillis - millis < 0 ? 0 : nowMillis - millis
+  const seconds: number = Math.floor(elapsed / 1000)
+
+  if (seconds < 60) return "just now"
+  const minutes: number = Math.floor(seconds / 60)
+
+  if (minutes < 60) return minutes === 1 ? "1 minute ago" : `${minutes} minutes ago`
+  const hours: number = Math.floor(minutes / 60)
+
+  if (hours < 24) return hours === 1 ? "1 hour ago" : `${hours} hours ago`
+  const days: number = Math.floor(hours / 24)
+
+  if (days < 30) return days === 1 ? "1 day ago" : `${days} days ago`
+  const months: number = Math.floor(days / 30)
+
+  if (months < 12) return months === 1 ? "1 month ago" : `${months} months ago`
+  const years: number = Math.floor(days / 365)
+
+  return years === 1 ? "1 year ago" : `${years} years ago`
+}
+
+/**
+ * Machine time plus relative label for a frontmatter `updated_at` value.
+ *
+ * Returns null when the value is not worth rendering.
+ */
+export function relativeUpdatedAt(
+  value: UpdatedAtInput,
+  nowMillis: number = Date.now(),
+): RelativeUpdatedAt | null {
+  const parsed: LastEdited | null = parseUpdatedAt(value)
+
+  if (parsed === null) return null
+  const label: string | null = formatRelativeUpdatedAt(value, nowMillis)
+
+  if (label === null) return null
+
+  return { isoDatetime: parsed.isoDatetime, label }
+}

@@ -1353,22 +1353,74 @@ async function runSearchDialog(page, baseUrl, expect) {
   await page.evaluate(() => document.querySelector(".reader-search-sidebar")?.click())
   await dialogOpen(page)
 
-  const dialogMeta = await page.evaluate(() => ({
-    title:
-      document
-        .querySelector('[data-slot="dialog-content"] [data-slot="dialog-title"]')
-        ?.textContent?.trim() || "",
-    labelled: !!document.querySelector('label[for="reader-search-input"]'),
-    live: document.querySelector(".reader-search-status")?.getAttribute("aria-live") || "",
-    status: document.querySelector(".reader-search-status")?.textContent?.trim() || "",
-    combobox: document.getElementById("reader-search-input")?.getAttribute("role") || "",
-  }))
+  // Radix plays a short entrance (translate/scale) after the dialog answers;
+  // let it settle before measuring design geometry.
+  await page.waitForTimeout(400)
+
+  const dialogMeta = await page.evaluate(() => {
+    const content = document.querySelector('[data-slot="dialog-content"]')
+    const contentStyle = content ? getComputedStyle(content) : null
+    const input = document.getElementById("reader-search-input")
+    const inputStyle = input ? getComputedStyle(input) : null
+    const state = document.querySelector(".reader-search-status")
+    const stateStyle = state ? getComputedStyle(state) : null
+    const hints = document.querySelector(".reader-search-hints")
+    const hintsStyle = hints ? getComputedStyle(hints) : null
+    const chip = hints?.querySelector('[data-slot="kbd"]')
+    const chipStyle = chip ? getComputedStyle(chip) : null
+
+    return {
+      title:
+        document
+          .querySelector('[data-slot="dialog-content"] [data-slot="dialog-title"]')
+          ?.textContent?.trim() || "",
+      labelled: !!document.querySelector('label[for="reader-search-input"]'),
+      live: document.querySelector(".reader-search-status")?.getAttribute("aria-live") || "",
+      status: document.querySelector(".reader-search-status")?.textContent?.trim() || "",
+      combobox: document.getElementById("reader-search-input")?.getAttribute("role") || "",
+      inputIcon: !!input?.parentElement?.querySelector("svg"),
+      dialogWidth: content?.getBoundingClientRect().width || 0,
+      dialogPadding: contentStyle?.paddingLeft || "",
+      dialogRadius: contentStyle?.borderTopLeftRadius || "",
+      inputPaddingTop: inputStyle?.paddingTop || "",
+      inputPaddingRight: inputStyle?.paddingRight || "",
+      inputSize: inputStyle?.fontSize || "",
+      inputRadius: inputStyle?.borderTopLeftRadius || "",
+      statePadding: stateStyle?.paddingTop || "",
+      stateSize: stateStyle?.fontSize || "",
+      hintsSize: hintsStyle?.fontSize || "",
+      chipSize: chipStyle?.fontSize || "",
+    }
+  })
 
   assert.equal(dialogMeta.title, "Search", "dialog is labelled Search")
   assert.ok(dialogMeta.labelled, "search input is labeled")
   assert.equal(dialogMeta.live, "polite", "state changes announce politely")
   assert.ok(dialogMeta.status.includes("Type to find a note"), "empty state invites a query")
   assert.equal(dialogMeta.combobox, "combobox", "input exposes the combobox pattern")
+
+  // Design MnMak chrome on desktop: 512px width, 16px padding, 8px
+  // input radius with [10,12] padding and 14px query text, the padded
+  // 13px empty state, and the 12px hints with 11px kbd chips.
+  assert.ok(
+    Math.abs(dialogMeta.dialogWidth - 512) <= 1,
+    `dialog spans the 512px design width (got ${dialogMeta.dialogWidth}px)`,
+  )
+  assert.equal(dialogMeta.dialogPadding, "16px", "dialog keeps the 16px design padding")
+  assert.equal(
+    dialogMeta.dialogRadius,
+    "14px",
+    "dialog keeps the registry dialog radius (rounded-xl computes to 14px under the radius theme; design reads 12)",
+  )
+  assert.ok(dialogMeta.inputIcon, "input carries its leading search icon")
+  assert.equal(dialogMeta.inputPaddingTop, "10px", "input keeps the 10px vertical design padding")
+  assert.equal(dialogMeta.inputPaddingRight, "12px", "input keeps the 12px trailing design padding")
+  assert.equal(dialogMeta.inputSize, "14px", "query text is 14px")
+  assert.equal(dialogMeta.inputRadius, "8px", "input keeps the 8px design radius")
+  assert.equal(dialogMeta.statePadding, "12px", "empty state keeps the 12px design padding")
+  assert.equal(dialogMeta.stateSize, "13px", "empty state text is 13px")
+  assert.equal(dialogMeta.hintsSize, "12px", "keyboard hints are 12px")
+  assert.equal(dialogMeta.chipSize, "11px", "hint kbd chips are 11px")
 
   await setSearchQuery(page, "zzz-no-such-note-qqq9")
   await page.waitForFunction(
@@ -1431,6 +1483,42 @@ async function runSearchDialog(page, baseUrl, expect) {
   )
 
   assert.equal(highlighted, firstHref, "highlight tracks the first result")
+
+  // Design MnMak rows over results: the muted count line plus 14/12/13
+  // title/url/excerpt type with the active wash on the highlight.
+  const resultsMeta = await page.evaluate(() => {
+    const content = document.querySelector('[data-slot="dialog-content"]')
+    const first = document.querySelector(".reader-search-result")
+    const active = document.querySelector('.reader-search-option[data-active="true"]')
+    const px = (el, prop) => (el ? getComputedStyle(el)[prop] : "")
+
+    return {
+      status: document.querySelector(".reader-search-status")?.textContent?.trim() || "",
+      statusSize: px(document.querySelector(".reader-search-status"), "fontSize"),
+      titleSize: px(first?.querySelector(".reader-search-result-title"), "fontSize"),
+      urlSize: px(first?.querySelector(".reader-search-result-url"), "fontSize"),
+      excerptSize: px(first?.querySelector(".reader-search-result-excerpt"), "fontSize"),
+      activeWash: px(active, "backgroundColor"),
+      dialogWash: px(content, "backgroundColor"),
+    }
+  })
+
+  assert.match(resultsMeta.status, /^\d+ results?$/, "results show the count line")
+  assert.equal(resultsMeta.statusSize, "13px", "count line is 13px")
+  assert.equal(resultsMeta.titleSize, "14px", "row titles are 14px")
+  assert.equal(resultsMeta.urlSize, "12px", "row urls are 12px")
+  assert.equal(resultsMeta.excerptSize, "13px", "row excerpts are 13px")
+  assert.notEqual(
+    resultsMeta.activeWash,
+    "rgba(0, 0, 0, 0)",
+    "keyboard highlight carries the active wash",
+  )
+  assert.notEqual(
+    resultsMeta.activeWash,
+    resultsMeta.dialogWash,
+    "active wash reads against the dialog fill",
+  )
+
   await Promise.all([
     page.waitForURL((url) => url.href.includes(firstHref), {
       waitUntil: "networkidle",
@@ -2649,14 +2737,44 @@ function assertAbsentEverywhere(outDir, needle, label) {
   )
 }
 
-function lastEditedFromHtml(html) {
-  const match = html.match(
-    /<p class="reader-last-edited">Last edited <time date[Tt]ime="([^"]+)">([^<]+)<\/time><\/p>/,
+/**
+ * Shared article meta line (design HMIv8) in static HTML, scoped to the
+ * article so shell 11px utilities (offline cue, more-row) never match.
+ * Returns the first segment text, dot presence, and machine/visible date.
+ */
+function metaLineFromHtml(html) {
+  const articleStart = html.indexOf("<article")
+
+  if (articleStart === -1) return null
+  const article = html.slice(articleStart, html.indexOf("</article>", articleStart))
+
+  const divMatch = article.match(
+    /<div[^>]*class="[^"]*items-center gap-1\.5 text-2xs text-muted-foreground[^"]*"[^>]*>([\s\S]*?)<\/div>/,
   )
 
-  if (!match) return null
+  if (!divMatch) return null
+  const inner = divMatch[1]
+  const first = inner.match(/<span>([^<]*)<\/span>/)?.[1].trim() ?? null
+  const dot = /bg-border/.test(inner) && /rounded-full/.test(inner)
+  const time = inner.match(/<time[^>]*date[Tt]ime="([^"]+)"[^>]*>([^<]*)<\/time>/)
 
-  return { datetime: match[1], display: match[2] }
+  return {
+    div: divMatch[0],
+    first,
+    dot,
+    datetime: time ? time[1] : null,
+    updated: time ? time[2].trim() : null,
+  }
+}
+
+/** Article-scoped count of meta-line first segments (`min read`). */
+function metaLineCount(html) {
+  const articleStart = html.indexOf("<article")
+
+  if (articleStart === -1) return 0
+  const article = html.slice(articleStart, html.indexOf("</article>", articleStart))
+
+  return article.split("min read").length - 1
 }
 
 /** Search excerpts highlight matches with <mark>; strip it for text checks. */
@@ -2694,10 +2812,10 @@ function countOccurrences(hay, needle) {
 /**
  * Complete static-export inspection, folded from the retired static suite
  * and the static halves of the home-card, breadcrumb, projection,
- * last-edited, and note suites. Runs on the finished export before it is
+ * meta-line, and note suites. Runs on the finished export before it is
  * served: page-set equality, home cards, rich syntax, canonical metadata,
  * install manifest, output safety, runtime inspection, search coverage,
- * breadcrumb trails, last-edited lines, and the offline precache.
+ * breadcrumb trails, meta lines, and the offline precache.
  */
 async function runStaticExportChecks({
   outDir,
@@ -2771,8 +2889,8 @@ async function runStaticExportChecks({
     ["note", "folder", "folder", "folder"],
     "folder and note cards carry distinct cues",
   )
-  assert.match(home, /Folder · 12 items/, "flat folder count is accurate")
-  assert.match(home, /Folder · 2 items/, "authored folder count is accurate")
+  assert.match(home, /12 items/, "flat folder count is accurate")
+  assert.match(home, /2 items/, "authored folder count is accurate")
 
   const section = areaListSection(home)
 
@@ -2780,15 +2898,15 @@ async function runStaticExportChecks({
     m[1].trim(),
   )
 
-  assert.ok(metas.length > 0, "folder/note cards carry a kind meta line")
+  assert.ok(metas.length > 0, "folder/note cards carry a count meta line")
 
   for (const meta of metas) {
-    assert.match(
-      meta,
-      /^(Folder|Note)( · \d+ items?)?$/,
-      `card meta stays kind plus count: ${meta}`,
-    )
+    // Parity item 7 (D3O3k6): the desktop meta is count-only and the phone
+    // row already was; only the phone note root keeps its kind word.
+    assert.match(meta, /^(\d+ items?|Note)$/, `card meta stays count-only: ${meta}`)
   }
+
+  assert.ok(!section.includes("Folder ·"), "no kind-prefixed card meta remains")
 
   assert.ok(!home.includes("Hidden Draft"), "routes outside navigation never become cards")
   assert.ok(!/href="\/"/.test(section), "no Home self-link card")
@@ -2803,9 +2921,25 @@ async function runStaticExportChecks({
   )
   assert.equal(
     countOccurrences(section, "lucide-chevron-right"),
-    links.length,
-    "every home card carries a phone-only trailing chevron",
+    links.length * 2,
+    "desktop and phone rows each carry a trailing chevron",
   )
+  assert.equal(
+    countOccurrences(section, ">Open<"),
+    links.length,
+    "every desktop card carries the Open action",
+  )
+  assert.equal(
+    countOccurrences(section, "size-10"),
+    links.length,
+    "every desktop card carries the 40px icon box",
+  )
+  assert.equal(
+    countOccurrences(section, "size-4.5"),
+    links.length,
+    "every desktop icon renders at 18px",
+  )
+  assert.ok(section.includes("text-2xs"), "desktop count meta uses the 11px token")
   assert.match(section, />12 items</, "phone card meta is count-only for the flat folder")
   assert.match(section, />2 items</, "phone card meta is count-only for the authored folder")
   assert.ok(
@@ -3273,12 +3407,35 @@ async function runStaticExportChecks({
     "eleven siblings page to six rows before expanding",
   )
   assert.ok(orchardSection.includes("Show all 11 notes"), "expander foot offers the rest")
+  // Parity item 7 (a4MmZf): orchard siblings carry no updated_at, so their
+  // rows render no relative-time meta.
+  assert.equal(
+    countOccurrences(orchardSection.split("</section>")[0], "<time"),
+    0,
+    "rows without updated_at omit the meta span",
+  )
 
   const guideNote = readOut(outDir, "notes/guide.html")
 
   assert.ok(guideNote.includes("reader-note-crumbs"), "guide carries the phone trail")
   assert.ok(guideNote.includes("Other notes in Notes"), "guide heads its siblings")
   assert.ok(!guideNote.includes("Show all"), "six siblings need no expander foot")
+
+  // Only the two timestamped siblings (Valid Zulu, Valid Offset) render a
+  // relative-time meta; date-only, impossible, and missing stamps omit it.
+  const guideSection = guideNote
+    .slice(guideNote.indexOf("Other notes in Notes"))
+    .split("</section>")[0]
+
+  const guideTimes = [...guideSection.matchAll(/<time[^>]*>([^<]*)</g)].map((m) => m[1].trim())
+
+  assert.equal(guideTimes.length, 2, "timestamped siblings render a relative meta")
+  assert.ok(guideSection.includes("text-2xs"), "sibling meta uses the 11px muted token")
+
+  for (const label of guideTimes) {
+    assert.match(label, /ago|just now/, `sibling meta stays relative: ${label}`)
+  }
+
   assert.ok(garden.includes('href="/"'), "folder trail links Home")
   assert.ok(standalone.includes("Lone Pine"), "root note shows its authored title")
 
@@ -3295,35 +3452,75 @@ async function runStaticExportChecks({
   assert.ok(!home.includes("Unselected"), "unselected sentinel stays out of home")
   assert.ok(!deep.includes("Unselected"), "unselected sentinel stays out of deep pages")
 
-  // Last edited lines in static HTML: valid authored timestamps render
-  // date, hour, minute, zone, and machine time; missing, invalid, and
-  // date-only values never create a label; virtual folders never guess one.
-  const offset = lastEditedFromHtml(readOut(outDir, "notes/valid-offset.html"))
-  assert.ok(offset, "valid offset note renders Last edited")
-  assert.equal(offset.display, "2026-09-20 14:30 UTC+02:00")
+  // Meta lines in static HTML (design HMIv8): one shared row above the
+  // title with `{parent} • {N} min read`, a border-token dot, and a
+  // relative `Updated …` date with machine time. Notes without a valid
+  // timestamp keep the minutes segment but no date; root notes drop the
+  // category; folders and home render no meta line at all.
+  const offsetHtml = readOut(outDir, "notes/valid-offset.html")
+  const offset = metaLineFromHtml(offsetHtml)
+  assert.ok(offset, "valid offset note renders the meta line")
+  assert.equal(offset.first, "Notes • 1 min read")
+  assert.equal(offset.dot, true, "offset meta carries the dot separator")
   assert.equal(offset.datetime, "2026-09-20T12:30:00.000Z")
+  assert.match(offset.updated ?? "", /^Updated .+ ago$/, "offset date is relative")
+  assert.ok(offset.div.includes("text-2xs"), "offset meta is the 11px token")
+  assert.equal(metaLineCount(offsetHtml), 1, "offset note renders exactly one meta line")
+  assert.ok(
+    offsetHtml.indexOf(offset.div) < offsetHtml.indexOf("<h1"),
+    "offset meta sits above the title",
+  )
 
-  const zulu = lastEditedFromHtml(readOut(outDir, "notes/valid-z.html"))
-  assert.ok(zulu, "valid Zulu note renders Last edited")
-  assert.equal(zulu.display, "2026-08-27 05:49 UTC")
+  const zuluHtml = readOut(outDir, "notes/valid-z.html")
+  const zulu = metaLineFromHtml(zuluHtml)
+  assert.ok(zulu, "valid Zulu note renders the meta line")
+  assert.equal(zulu.first, "Notes • 1 min read")
+  assert.equal(zulu.dot, true, "zulu meta carries the dot separator")
   assert.equal(zulu.datetime, "2026-08-27T05:49:53.387Z")
+  assert.match(zulu.updated ?? "", /^Updated .+ ago$/, "zulu date is relative")
+  assert.equal(metaLineCount(zuluHtml), 1, "zulu note renders exactly one meta line")
+  assert.ok(zuluHtml.indexOf(zulu.div) < zuluHtml.indexOf("<h1"), "zulu meta sits above the title")
 
-  for (const rel of [
-    "notes/plain.html",
-    "notes/date-only.html",
-    "notes/feb-thirty.html",
-    "garden.html",
-    "index.html",
-  ]) {
+  // Invalid or missing timestamps keep minutes but never a date segment.
+  for (const rel of ["notes/plain.html", "notes/date-only.html", "notes/feb-thirty.html"]) {
     const html = readOut(outDir, rel)
-    assert.equal(lastEditedFromHtml(html), null, `${rel} omits Last edited`)
-    assert.ok(!html.includes("Last edited"), `${rel} shows no freshness claim`)
+    const meta = metaLineFromHtml(html)
+    assert.ok(meta, `${rel} keeps the minutes segment`)
+    assert.equal(meta.first, "Notes • 1 min read", `${rel} names its parent`)
+    assert.equal(meta.dot, false, `${rel} renders no date dot`)
+    assert.equal(meta.datetime, null, `${rel} renders no machine time`)
+    assert.equal(meta.updated, null, `${rel} renders no Updated date`)
+    assert.equal(metaLineCount(html), 1, `${rel} renders exactly one meta line`)
+    assert.ok(!html.includes("Last edited"), `${rel} shows no retired label`)
+  }
+
+  // Root notes drop the category segment and its dot.
+  const standaloneHtml = readOut(outDir, "standalone.html")
+  const standaloneMeta = metaLineFromHtml(standaloneHtml)
+  assert.ok(standaloneMeta, "root note renders the meta line")
+  assert.equal(standaloneMeta.first, "1 min read", "root note drops the category")
+  assert.equal(standaloneMeta.dot, false, "root note renders no category dot")
+  assert.equal(metaLineCount(standaloneHtml), 1, "root note renders exactly one meta line")
+
+  // Folder indexes and home render no meta line (design has no folder screen).
+  for (const rel of ["garden.html", "index.html"]) {
+    const html = readOut(outDir, rel)
+    assert.equal(metaLineFromHtml(html), null, `${rel} renders no meta line`)
+    assert.equal(metaLineCount(html), 0, `${rel} carries no minutes segment`)
+    assert.ok(!html.includes("Last edited"), `${rel} shows no retired label`)
   }
 
   for (const rel of ["notes.html", "notes/nest.html", "notes/nest/inner.html"]) {
     assert.ok(fs.existsSync(path.join(outDir, rel)), `virtual page emitted: ${rel}`)
-    assert.equal(lastEditedFromHtml(readOut(outDir, rel)), null, `${rel} omits a guessed label`)
+    assert.equal(metaLineFromHtml(readOut(outDir, rel)), null, `${rel} omits a guessed label`)
   }
+
+  // The retired responsive duplication is gone: no page carries two slots.
+  for (const rel of ["notes/valid-offset.html", "orchard/note-01.html", "standalone.html"]) {
+    assert.equal(metaLineCount(readOut(outDir, rel)), 1, `${rel} keeps a single meta slot`)
+  }
+
+  assertAbsentEverywhere(outDir, "Last edited", "retired Last edited label")
 
   for (const rel of ["notes/valid-offset.html", "notes/valid-z.html"]) {
     const html = readOut(outDir, rel)
@@ -3363,9 +3560,10 @@ async function runStaticExportChecks({
 
 /**
  * Home card slice on desktop, folded from the retired home-cards suite:
- * ordered links, distinct folder/note cues, accurate counts, kind-only
- * meta, hidden-route exclusion, Home self-link omission, containment,
- * and touch targets.
+ * ordered links, distinct folder/note cues, accurate count-only metas
+ * (parity item 7, D3O3k6: 40px box, 18px icon, 16px title, 11px count,
+ * Open plus chevron), hidden-route exclusion, Home self-link omission,
+ * containment, and touch targets.
  */
 async function runHomeCardsDetail(page, baseUrl, expect) {
   await page.goto(`${baseUrl}/`, { waitUntil: "networkidle", timeout: 15000 })
@@ -3411,22 +3609,73 @@ async function runHomeCardsDetail(page, baseUrl, expect) {
     ),
   )
 
-  assert.ok(metas.length > 0, "cards carry a kind meta line")
+  assert.ok(metas.length > 0, "cards carry a count meta line")
 
   for (const meta of metas) {
-    assert.match(
-      meta,
-      /^(Folder|Note)( · \d+ items?)?$/,
-      `card meta stays kind plus count: ${meta}`,
-    )
+    assert.match(meta, /^(\d+ items?|Note)$/, `card meta stays count-only: ${meta}`)
   }
 
   const cardText = cards.map((c) => c.text).join("\n")
-  assert.match(cardText, /Folder · 12 items/, "flat folder count is accurate")
-  assert.match(cardText, /Folder · 2 items/, "authored folder count is accurate")
+  assert.match(cardText, /12 items/, "flat folder count is accurate")
+  assert.match(cardText, /2 items/, "authored folder count is accurate")
+  assert.ok(!cardText.includes("Folder ·"), "no kind-prefixed card meta remains")
 
   // Mobile port home-phone: the phone-only Home crumb and phone-only card
-  // row stay hidden on desktop, so the desktop meta keeps its kind prefix.
+  // row stay hidden on desktop. Parity item 7 (D3O3k6): the visible desktop
+  // card keeps the 40px muted icon box with an 18px icon, the 16px title
+  // (no 15px scale token exists, so text-base stands in), the 11px
+  // count-only meta, and the trailing 12px Open plus 14px chevron. Note
+  // roots carry no count, so their desktop card renders no meta.
+  const desktopCards = await page.evaluate(() => {
+    const visible = (root, selector) =>
+      Array.from(root.querySelectorAll(selector)).filter(
+        (el) => el.getBoundingClientRect().height > 0,
+      )
+
+    return Array.from(document.querySelectorAll(".reader-area-list a")).map((a) => {
+      const header = a.querySelector(".reader-home-card-header")
+      const box = header?.querySelector("span.size-10") ?? null
+      const titles = visible(header ?? a, '[data-slot="card-title"]')
+      const metas = visible(header ?? a, '[data-slot="card-description"]')
+      const chevrons = visible(header ?? a, "svg.lucide-chevron-right")
+
+      const open = Array.from(header?.querySelectorAll("span") ?? []).find(
+        (el) =>
+          el.textContent?.trim() === "Open" && !el.querySelector("svg") && el.children.length === 0,
+      )
+
+      const boxRect = box?.getBoundingClientRect()
+
+      return {
+        kind: a.getAttribute("data-kind") || "",
+        box: boxRect ? { width: boxRect.width, height: boxRect.height } : null,
+        icon: box?.querySelector("svg")?.getBoundingClientRect().width ?? 0,
+        titleSize: titles[0] ? getComputedStyle(titles[0]).fontSize : "",
+        meta: metas[0]?.textContent?.trim() ?? null,
+        metaSize: metas[0] ? getComputedStyle(metas[0]).fontSize : "",
+        openSize: open ? getComputedStyle(open).fontSize : "",
+        chevron: chevrons.length,
+        chevronSize: chevrons[0]?.getBoundingClientRect().width ?? 0,
+      }
+    })
+  })
+
+  for (const card of desktopCards) {
+    assert.deepEqual(card.box, { width: 40, height: 40 }, "desktop icon box is 40px")
+    assert.equal(card.icon, 18, "desktop icon is 18px")
+    assert.equal(card.titleSize, "16px", "desktop title is 16px (no 15px token exists)")
+    assert.equal(card.openSize, "12px", "desktop Open action is 12px")
+    assert.equal(card.chevron, 1, "desktop card carries one trailing chevron")
+    assert.equal(card.chevronSize, 14, "desktop chevron is 14px")
+
+    if (card.kind === "folder") {
+      assert.match(card.meta ?? "", /^\d+ items?$/, "desktop folder meta is count-only")
+      assert.equal(card.metaSize, "11px", "desktop count meta is 11px")
+    } else {
+      assert.equal(card.meta, null, "desktop note card renders no guessed meta")
+    }
+  }
+
   const desktopCrumbDisplay = await page.evaluate(() => {
     const el = Array.from(document.querySelectorAll(".reader-article > span")).find(
       (node) => node.textContent?.trim() === "Home",
@@ -3723,45 +3972,88 @@ async function runProjectionSwitcher(page, baseUrl, expect) {
 }
 
 /**
- * Last edited line in the browser, folded from the retired last-edited
- * suite (its parseUpdatedAt unit test stays in place): valid authored
- * timestamps render with machine time, missing and virtual pages omit.
+ * Meta line in the browser, folded from the retired last-edited suite
+ * (its parseUpdatedAt unit test stays in place): valid authored notes
+ * render one 11px row above the title with category, minutes, dot, and a
+ * relative Updated date with machine time; dateless notes keep minutes
+ * without a date; virtual folders render no meta line.
  */
-async function runLastEditedBrowser(page, baseUrl) {
+async function runMetaLineBrowser(page, baseUrl) {
   const errors = []
   page.on("pageerror", (error) => errors.push(String(error)))
   await page.goto(`${baseUrl}/notes/valid-offset`, { waitUntil: "networkidle", timeout: 15000 })
 
   const rendered = await page.evaluate(() => {
-    const line = document.querySelector("p.reader-last-edited")
+    const article = document.querySelector("article.reader-article")
+
+    const metas = Array.from(article?.querySelectorAll("div.text-2xs") ?? []).filter((el) =>
+      (el.textContent ?? "").includes("min read"),
+    )
+
+    const line = metas[0] ?? null
     const time = line?.querySelector("time")
+    const dot = line?.querySelector("span[aria-hidden='true']")
+    const h1 = article?.querySelector("h1")
+    const lineStyle = line ? getComputedStyle(line) : null
+    const dotRect = dot?.getBoundingClientRect()
 
     return {
+      count: metas.length,
       text: line?.textContent?.trim() || null,
       datetime: time?.getAttribute("datetime") || null,
-      display: time?.textContent?.trim() || null,
+      updated: time?.textContent?.trim() || null,
+      size: lineStyle?.fontSize || "",
+      dotWidth: dotRect?.width || 0,
+      dotHeight: dotRect?.height || 0,
+      dotClass: dot?.className || "",
+      metaTop: line?.getBoundingClientRect().top || 0,
+      h1Top: h1?.getBoundingClientRect().top || 0,
     }
   })
 
-  assert.ok(rendered.text?.startsWith("Last edited"), "browser shows Last edited")
+  assert.equal(rendered.count, 1, "browser renders exactly one meta line")
+  assert.match(rendered.text ?? "", /Notes • 1 min read/, "browser shows category plus minutes")
+  assert.match(rendered.updated ?? "", /^Updated .+ ago$/, "browser shows the relative date")
   assert.equal(rendered.datetime, "2026-09-20T12:30:00.000Z")
-  assert.equal(rendered.display, "2026-09-20 14:30 UTC+02:00")
+  assert.equal(rendered.size, "11px", "browser meta line is 11px")
+  assert.ok(Math.abs(rendered.dotWidth - 3) <= 1, `dot is 3px wide (got ${rendered.dotWidth})`)
+  assert.ok(Math.abs(rendered.dotHeight - 3) <= 1, `dot is 3px tall (got ${rendered.dotHeight})`)
+  assert.ok(rendered.dotClass.includes("bg-border"), "dot uses the border token")
+  assert.ok(rendered.metaTop <= rendered.h1Top, "desktop meta sits above the title")
 
   await page.goto(`${baseUrl}/notes/plain`, { waitUntil: "networkidle", timeout: 15000 })
-  assert.equal(
-    await page.evaluate(() => document.querySelector("p.reader-last-edited")),
-    null,
-    "browser omits the label without a valid timestamp",
-  )
+
+  const plain = await page.evaluate(() => {
+    const article = document.querySelector("article.reader-article")
+
+    const metas = Array.from(article?.querySelectorAll("div.text-2xs") ?? []).filter((el) =>
+      (el.textContent ?? "").includes("min read"),
+    )
+
+    return {
+      count: metas.length,
+      text: metas[0]?.textContent?.trim() || null,
+      time: !!metas[0]?.querySelector("time"),
+    }
+  })
+
+  assert.equal(plain.count, 1, "dateless note keeps one meta line")
+  assert.match(plain.text ?? "", /Notes • 1 min read/, "dateless meta keeps minutes")
+  assert.equal(plain.time, false, "dateless meta renders no Updated date")
 
   await page.goto(`${baseUrl}/notes`, { waitUntil: "networkidle", timeout: 15000 })
   assert.equal(
-    await page.evaluate(() => document.querySelector("p.reader-last-edited")),
-    null,
-    "browser omits a guessed virtual-folder label",
+    await page.evaluate(
+      () =>
+        Array.from(document.querySelectorAll("article.reader-article div.text-2xs") ?? []).filter(
+          (el) => (el.textContent ?? "").includes("min read"),
+        ).length,
+    ),
+    0,
+    "browser omits a guessed virtual-folder meta line",
   )
 
-  assert.deepEqual(errors, [], "no hydration or page errors on timestamp routes")
+  assert.deepEqual(errors, [], "no hydration or page errors on meta routes")
 }
 
 /**
@@ -3778,6 +4070,13 @@ async function runDirectNoteDetail(page, baseUrl, expect) {
     const canonical = document.querySelector('link[rel="canonical"]')
     const otherNotes = article?.querySelector('section[aria-label^="Other notes"]')
 
+    const metas = Array.from(article?.querySelectorAll("div.text-2xs") ?? []).filter((el) =>
+      (el.textContent ?? "").includes("min read"),
+    )
+
+    const meta = metas[0] ?? null
+    const metaStyle = meta ? getComputedStyle(meta) : null
+
     return {
       title: document.title,
       mainCount: document.querySelectorAll("main").length,
@@ -3787,6 +4086,11 @@ async function runDirectNoteDetail(page, baseUrl, expect) {
       tableCount: article ? article.querySelectorAll("table").length : 0,
       hasExternalLink: !!article?.querySelector('a[href^="https://"]'),
       canonicalHref: canonical?.getAttribute("href") || null,
+      metaCount: metas.length,
+      metaText: meta?.textContent?.trim() || null,
+      metaSize: metaStyle?.fontSize || "",
+      metaTop: meta?.getBoundingClientRect().top || 0,
+      h1Top: article?.querySelector("h1")?.getBoundingClientRect().top || 0,
       otherNotesLabel: otherNotes?.getAttribute("aria-label") || null,
       otherNotesRows: Array.from(otherNotes?.querySelectorAll(":scope ul a") ?? []).map(
         (a) => a.getAttribute("href") || "",
@@ -3794,6 +4098,14 @@ async function runDirectNoteDetail(page, baseUrl, expect) {
       otherNotesFoot: !!otherNotes?.querySelector("button"),
       otherNotesRowHeight:
         otherNotes?.querySelector(":scope ul a")?.getBoundingClientRect().height || 0,
+      // Parity item 7 (a4MmZf): rows for the two timestamped siblings carry
+      // an 11px relative-time meta; every other row omits the span.
+      otherNotesMetas: Array.from(otherNotes?.querySelectorAll(":scope ul a time") ?? []).map(
+        (t) => ({
+          text: t.textContent?.trim() || "",
+          size: getComputedStyle(t).fontSize,
+        }),
+      ),
     }
   })
 
@@ -3819,6 +4131,17 @@ async function runDirectNoteDetail(page, baseUrl, expect) {
     `https://${expect.hostname}${expect.route}`,
     "canonical hostname metadata",
   )
+  // Shared meta line on desktop too: one 11px row above the title with
+  // the parent category plus minutes (the guide carries no timestamp, so
+  // no Updated date), and nothing below the body.
+  assert.equal(note.metaCount, 1, "desktop renders exactly one meta line")
+  assert.match(
+    note.metaText ?? "",
+    /Notes • \d+ min read/,
+    "desktop meta names parent plus minutes",
+  )
+  assert.equal(note.metaSize, "11px", "desktop meta line is 11px")
+  assert.ok(note.metaTop <= note.h1Top, "desktop meta sits above the title")
   // Mobile port note-phone: the shared Other notes sibling section
   // renders on desktop too. The guide keeps six siblings, so all rows
   // show at the 36px design read with no expander foot.
@@ -3833,6 +4156,140 @@ async function runDirectNoteDetail(page, baseUrl, expect) {
     Math.abs(note.otherNotesRowHeight - 36) <= 2,
     `desktop sibling rows are 36px-ish (got ${note.otherNotesRowHeight}px)`,
   )
+  // The first row is the untimestamped long-title note, so it stays
+  // single-line at the 36px read above; only Valid Zulu and Valid Offset
+  // carry a relative meta.
+  assert.equal(note.otherNotesMetas.length, 2, "timestamped siblings render a relative meta")
+
+  for (const meta of note.otherNotesMetas) {
+    assert.match(meta.text, /ago|just now/, `sibling meta stays relative: ${meta.text}`)
+    assert.equal(meta.size, "11px", "sibling meta is 11px")
+  }
+
+  // Article extras fidelity (parity item 4, design Zk8lN/pDRO9/code
+  // frame): quote wash/border/pad/type, bullet text/dots/gaps, and the
+  // inverted code block — computed on desktop light, same numbers as
+  // the phone journey above.
+  const extras = await page.evaluate(() => {
+    const article = document.querySelector("article.reader-article")
+    const pre = article?.querySelector("pre")
+    const preStyle = pre ? getComputedStyle(pre) : null
+    const code = pre?.querySelector("code")
+
+    return pre
+      ? {
+          size: preStyle.fontSize,
+          background: preStyle.backgroundColor,
+          padding: preStyle.paddingTop,
+          radius: preStyle.borderRadius,
+          codeSize: code ? getComputedStyle(code).fontSize : "",
+        }
+      : null
+  })
+
+  assert.ok(extras, "desktop code block renders")
+  assert.equal(extras.size, "12px", "desktop code block is 12px")
+  assert.equal(extras.background, "rgb(10, 10, 10)", "desktop code fill is inverted")
+  assert.equal(extras.padding, "12px", "desktop code pads 12")
+  assert.equal(extras.radius, "8px", "desktop code radius is 8")
+  assert.equal(extras.codeSize, "12px", "desktop code lines are 12px")
+
+  await page.goto(`${baseUrl}/notes/plain`, { waitUntil: "networkidle", timeout: 15000 })
+
+  const plainExtras = await page.evaluate(() => {
+    const article = document.querySelector("article.reader-article")
+
+    const items = Array.from(
+      article?.querySelectorAll("ul:not(.reader-area-list):not(.reader-group-list) li") ?? [],
+    )
+
+    const quote = article?.querySelector("blockquote")
+    const quoteStyle = quote ? getComputedStyle(quote) : null
+    const cite = quote?.querySelector("p + p:last-child") ?? null
+
+    const probe = document.createElement("span")
+
+    probe.style.position = "absolute"
+    probe.style.visibility = "hidden"
+    document.body.appendChild(probe)
+
+    const readToken = (prop, value) => {
+      probe.style.cssText = `position:absolute;visibility:hidden;${prop}:${value}`
+
+      return getComputedStyle(probe).getPropertyValue(prop)
+    }
+
+    const primary = readToken("color", "var(--primary)")
+    const mutedBg = readToken("background-color", "var(--muted)")
+    const border = readToken("border-top-color", "var(--border)")
+    const mutedFg = readToken("color", "var(--muted-foreground)")
+
+    probe.remove()
+
+    return {
+      bulletCount: items.length,
+      bulletSizes: items.map((li) => getComputedStyle(li).fontSize),
+      bulletGaps: items.slice(1).map((li) => getComputedStyle(li).marginTop),
+      bulletMarkers: items.map((li) => {
+        const dot = getComputedStyle(li, "::before")
+
+        return {
+          width: dot.width,
+          height: dot.height,
+          background: dot.getPropertyValue("background-color"),
+        }
+      }),
+      quote: quote
+        ? {
+            background: quoteStyle.getPropertyValue("background-color"),
+            borderWidth: quoteStyle.borderTopWidth,
+            borderColor: quoteStyle.getPropertyValue("border-top-color"),
+            padding: quoteStyle.paddingTop,
+            size: quoteStyle.fontSize,
+            color: quoteStyle.getPropertyValue("color"),
+          }
+        : null,
+      tokens: { primary, mutedBg, border },
+      cite: cite
+        ? {
+            size: getComputedStyle(cite).fontSize,
+            color: getComputedStyle(cite).getPropertyValue("color"),
+            text: cite.textContent?.trim() || "",
+          }
+        : null,
+      citeToken: mutedFg,
+    }
+  })
+
+  assert.ok(plainExtras.bulletCount >= 3, "desktop bullets render")
+
+  for (const size of plainExtras.bulletSizes) {
+    assert.equal(size, "13px", "desktop bullet text is 13px")
+  }
+
+  for (const gap of plainExtras.bulletGaps) {
+    assert.equal(gap, "8px", "desktop bullet gap is 8px")
+  }
+
+  for (const marker of plainExtras.bulletMarkers) {
+    assert.equal(marker.width, "6px", "desktop bullet dot is 6px wide")
+    assert.equal(marker.height, "6px", "desktop bullet dot is 6px tall")
+    assert.equal(marker.background, plainExtras.tokens.primary, "desktop dot uses primary")
+  }
+
+  assert.ok(plainExtras.quote, "desktop quote renders")
+  assert.equal(plainExtras.quote.background, plainExtras.tokens.mutedBg, "desktop quote wash")
+  assert.equal(plainExtras.quote.borderWidth, "1px", "desktop quote border is 1px")
+  assert.equal(plainExtras.quote.borderColor, plainExtras.tokens.border, "desktop quote edge")
+  assert.equal(plainExtras.quote.padding, "12px", "desktop quote pads 12")
+  assert.equal(plainExtras.quote.size, "13px", "desktop quote text is 13px")
+  assert.equal(plainExtras.quote.color, plainExtras.tokens.primary, "desktop quote ink")
+  assert.ok(plainExtras.cite, "desktop cite line renders")
+  assert.equal(plainExtras.cite.size, "11px", "desktop cite is 11px")
+  assert.equal(plainExtras.cite.color, plainExtras.citeToken, "desktop cite is muted")
+  assert.ok(plainExtras.cite.text.startsWith("↳"), "desktop cite keeps its authored prefix")
+
+  await page.goto(`${baseUrl}${expect.route}`, { waitUntil: "networkidle", timeout: 15000 })
   await page.reload({ waitUntil: "networkidle", timeout: 15000 })
 
   const afterReload = await page.evaluate(
@@ -5591,8 +6048,8 @@ async function runPhoneOfflinePlacement(page, baseUrl, label) {
 
 /**
  * Home card slice at phone width, folded from the retired home-cards
- * suite: ordered links, distinct folder/note cues, kind-prefixed desktop
- * meta with accurate counts, count-only phone meta, hidden-route
+ * suite: ordered links, distinct folder/note cues, count-only desktop and
+ * phone metas with accurate counts (parity item 7, D3O3k6), hidden-route
  * exclusion, no Home self-link, containment, touch targets, phone body
  * measurements from design screen I1z3qM, and real card navigation with
  * Back.
@@ -5644,19 +6101,18 @@ async function runPhoneCardsDetail(page, baseUrl, expect, label) {
     ),
   )
 
-  assert.ok(metas.length > 0, `${label}: cards carry a kind meta line`)
+  assert.ok(metas.length > 0, `${label}: cards carry a count meta line`)
 
   for (const meta of metas) {
-    assert.match(
-      meta,
-      /^(Folder|Note)( · \d+ items?)?$/,
-      `${label}: card meta stays kind plus count`,
-    )
+    // Parity item 7 (D3O3k6): desktop and phone metas are count-only; only
+    // the phone note root keeps its kind word.
+    assert.match(meta, /^(\d+ items?|Note)$/, `${label}: card meta stays count-only`)
   }
 
   const cardText = cards.map((c) => c.text).join("\n")
-  assert.match(cardText, /Folder · 12 items/, `${label}: flat folder count is accurate`)
-  assert.match(cardText, /Folder · 2 items/, `${label}: authored folder count is accurate`)
+  assert.match(cardText, /12 items/, `${label}: flat folder count is accurate`)
+  assert.match(cardText, /2 items/, `${label}: authored folder count is accurate`)
+  assert.ok(!cardText.includes("Folder ·"), `${label}: no kind-prefixed card meta remains`)
 
   // Mobile port home-phone: the phone body matches design screen I1z3qM —
   // 12px muted Home crumb, 26px h1, [20, 16, 32, 16] body padding, and
@@ -5894,7 +6350,8 @@ async function runPhoneBreadcrumbsDetail(page, baseUrl, contentDir, label) {
 
 /**
  * Phone note page (mobile port item 6, design screen pWNyV): the body
- * carries a 12px muted slash trail, then the 12px muted meta line, then
+ * carries a 12px muted slash trail, then the shared 11px muted meta line
+ * (`{parent} • {N} min read` plus dot plus relative Updated date), then
  * the 24px/700 title, with the 14px body / 16px h2 / 12px code phone
  * scale; the shared Other notes section shows its 13px/600 head with a
  * count pill, file-icon rows, and a "Show all N notes" foot that expands
@@ -5907,14 +6364,21 @@ async function runPhoneNoteDetail(page, baseUrl, label) {
   const note = await page.evaluate(() => {
     const article = document.querySelector(".reader-article")
     const trail = article?.querySelector(".reader-note-crumbs")
-    const metas = Array.from(article?.querySelectorAll("p.reader-last-edited") ?? [])
+
+    const metas = Array.from(article?.querySelectorAll("div.text-2xs") ?? []).filter((el) =>
+      (el.textContent ?? "").includes("min read"),
+    )
+
     const visibleMeta = metas.find((el) => el.getBoundingClientRect().height > 0)
+    const dot = visibleMeta?.querySelector("span[aria-hidden='true']")
+    const time = visibleMeta?.querySelector("time")
     const h1 = article?.querySelector("h1")
     const h1Style = h1 ? getComputedStyle(h1) : null
     const trailStyle = trail ? getComputedStyle(trail) : null
     const metaStyle = visibleMeta ? getComputedStyle(visibleMeta) : null
-    const firstPara = article?.querySelector("p:not(.reader-last-edited):not(.reader-note-crumbs)")
+    const firstPara = article?.querySelector("p:not(.reader-note-crumbs)")
     const pre = article?.querySelector("pre")
+    const dotRect = dot?.getBoundingClientRect()
 
     return {
       trailVisible:
@@ -5926,8 +6390,15 @@ async function runPhoneNoteDetail(page, baseUrl, label) {
       trailTop: trail?.getBoundingClientRect().top || 0,
       metaText: visibleMeta?.textContent?.trim() || null,
       metaSize: metaStyle?.fontSize || "",
+      metaColor: metaStyle?.color || "",
       metaTop: visibleMeta?.getBoundingClientRect().top || 0,
       metaCount: metas.length,
+      metaDot: !!dot,
+      metaDotClass: dot?.className || "",
+      metaDotWidth: dotRect?.width || 0,
+      metaDotHeight: dotRect?.height || 0,
+      metaDatetime: time?.getAttribute("datetime") || null,
+      metaUpdated: time?.textContent?.trim() || null,
       h1Size: h1Style?.fontSize || "",
       h1Weight: h1Style?.fontWeight || "",
       h1Top: h1?.getBoundingClientRect().top || 0,
@@ -5942,9 +6413,26 @@ async function runPhoneNoteDetail(page, baseUrl, label) {
   assert.equal(note.trailSize, "12px", `${label}: trail is 12px`)
   assert.match(note.trailColor, /115,\s*115,\s*115|oklch\(0\.556 0 0\)/, `${label}: trail is muted`)
   assert.equal(note.trailPadding, "4px", `${label}: trail keeps 4px bottom padding`)
-  assert.ok(note.metaText?.startsWith("Last edited"), `${label}: meta line renders`)
-  assert.equal(note.metaSize, "12px", `${label}: meta line is 12px`)
-  assert.equal(note.metaCount, 2, `${label}: both responsive meta slots render`)
+  assert.match(
+    note.metaText ?? "",
+    /Notes • 1 min read/,
+    `${label}: meta names parent plus minutes`,
+  )
+  assert.match(note.metaUpdated ?? "", /^Updated .+ ago$/, `${label}: meta date is relative`)
+  assert.equal(note.metaDatetime, "2026-09-20T12:30:00.000Z", `${label}: meta keeps machine time`)
+  assert.equal(note.metaSize, "11px", `${label}: meta line is 11px`)
+  assert.match(note.metaColor, /115,\s*115,\s*115|oklch\(0\.556 0 0\)/, `${label}: meta is muted`)
+  assert.equal(note.metaCount, 1, `${label}: exactly one meta line renders`)
+  assert.ok(note.metaDot, `${label}: meta carries the dot separator`)
+  assert.ok(note.metaDotClass.includes("bg-border"), `${label}: dot uses the border token`)
+  assert.ok(
+    Math.abs(note.metaDotWidth - 3) <= 1,
+    `${label}: dot is 3px wide (got ${note.metaDotWidth})`,
+  )
+  assert.ok(
+    Math.abs(note.metaDotHeight - 3) <= 1,
+    `${label}: dot is 3px tall (got ${note.metaDotHeight})`,
+  )
   assert.ok(
     note.trailTop <= note.metaTop && note.metaTop <= note.h1Top,
     `${label}: trail -> meta -> title order`,
@@ -5961,27 +6449,127 @@ async function runPhoneNoteDetail(page, baseUrl, label) {
     const article = document.querySelector(".reader-article")
     const h2 = article?.querySelector("h2")
 
-    const items = Array.from(article?.querySelectorAll("ul li") ?? []).map(
-      (li) => getComputedStyle(li).marginTop,
+    const items = Array.from(
+      article?.querySelectorAll("ul:not(.reader-area-list):not(.reader-group-list) li") ?? [],
     )
+
+    const quote = article?.querySelector("blockquote")
+    const quoteStyle = quote ? getComputedStyle(quote) : null
+    const cite = quote?.querySelector("p + p:last-child") ?? null
+    const dot = (li) => getComputedStyle(li, "::before")
+
+    // Token probes: the same tokens through an identical path, so
+    // equality holds whatever color serialization the browser uses.
+    const probe = document.createElement("span")
+
+    probe.style.position = "absolute"
+    probe.style.visibility = "hidden"
+    document.body.appendChild(probe)
+
+    const readToken = (prop, value) => {
+      probe.style.cssText = `position:absolute;visibility:hidden;${prop}:${value}`
+
+      return getComputedStyle(probe).getPropertyValue(prop)
+    }
+
+    const primary = readToken("color", "var(--primary)")
+    const mutedBg = readToken("background-color", "var(--muted)")
+    const border = readToken("border-top-color", "var(--border)")
+    const mutedFg = readToken("color", "var(--muted-foreground)")
+
+    probe.remove()
 
     return {
       h2Size: h2 ? getComputedStyle(h2).fontSize : "",
-      bulletGaps: items.slice(1),
+      bulletCount: items.length,
+      bulletSizes: items.map((li) => getComputedStyle(li).fontSize),
+      bulletGaps: items.slice(1).map((li) => getComputedStyle(li).marginTop),
+      bulletMarkers: items.map((li) => ({
+        width: dot(li).width,
+        height: dot(li).height,
+        radius: dot(li).borderRadius,
+        background: dot(li).getPropertyValue("background-color"),
+      })),
+      quote: quote
+        ? {
+            background: quoteStyle.getPropertyValue("background-color"),
+            borderWidth: quoteStyle.borderTopWidth,
+            borderColor: quoteStyle.getPropertyValue("border-top-color"),
+            padding: quoteStyle.paddingTop,
+            size: quoteStyle.fontSize,
+            color: quoteStyle.getPropertyValue("color"),
+          }
+        : null,
+      quoteTokens: { primary, mutedBg, border },
+      cite: cite
+        ? {
+            size: getComputedStyle(cite).fontSize,
+            color: getComputedStyle(cite).getPropertyValue("color"),
+            text: cite.textContent?.trim() || "",
+          }
+        : null,
+      citeToken: mutedFg,
     }
   })
 
   assert.equal(plainScale.h2Size, "16px", `${label}: phone h2 is 16px`)
+  assert.ok(plainScale.bulletCount >= 3, `${label}: phone bullets render`)
+
+  for (const size of plainScale.bulletSizes) {
+    assert.equal(size, "13px", `${label}: phone bullet text is 13px`)
+  }
+
+  for (const gap of plainScale.bulletGaps) {
+    assert.equal(gap, "8px", `${label}: phone bullet gap is 8px`)
+  }
+
+  for (const marker of plainScale.bulletMarkers) {
+    assert.equal(marker.width, "6px", `${label}: phone bullet dot is 6px wide`)
+    assert.equal(marker.height, "6px", `${label}: phone bullet dot is 6px tall`)
+    assert.ok(
+      marker.radius === "3px" || marker.radius === "50%" || Number.parseFloat(marker.radius) >= 3,
+      `${label}: phone bullet dot is round (got ${marker.radius})`,
+    )
+    assert.equal(marker.background, plainScale.quoteTokens.primary, `${label}: dot uses primary`)
+  }
+
+  assert.ok(plainScale.quote, `${label}: phone quote renders`)
+  assert.equal(plainScale.quote.background, plainScale.quoteTokens.mutedBg, `${label}: quote wash`)
+  assert.equal(plainScale.quote.borderWidth, "1px", `${label}: phone quote border is 1px`)
+  assert.equal(plainScale.quote.borderColor, plainScale.quoteTokens.border, `${label}: quote edge`)
+  assert.equal(plainScale.quote.padding, "12px", `${label}: phone quote pads 12`)
+  assert.equal(plainScale.quote.size, "13px", `${label}: phone quote text is 13px`)
+  assert.equal(plainScale.quote.color, plainScale.quoteTokens.primary, `${label}: quote ink`)
+  assert.ok(plainScale.cite, `${label}: phone cite line renders`)
+  assert.equal(plainScale.cite.size, "11px", `${label}: phone cite is 11px`)
+  assert.equal(plainScale.cite.color, plainScale.citeToken, `${label}: cite is muted`)
+  assert.ok(plainScale.cite.text.startsWith("↳"), `${label}: cite keeps its authored prefix`)
 
   await goto(page, `${baseUrl}/notes/guide`)
 
-  const codeSize = await page.evaluate(() => {
+  const codeDetail = await page.evaluate(() => {
     const pre = document.querySelector("article.reader-article pre")
+    const style = pre ? getComputedStyle(pre) : null
+    const code = pre?.querySelector("code")
 
-    return pre ? getComputedStyle(pre).fontSize : ""
+    return pre
+      ? {
+          size: style.fontSize,
+          background: style.backgroundColor,
+          padding: style.paddingTop,
+          radius: style.borderRadius,
+          color: style.color,
+          codeSize: code ? getComputedStyle(code).fontSize : "",
+        }
+      : null
   })
 
-  assert.equal(codeSize, "12px", `${label}: phone code block is 12px`)
+  assert.ok(codeDetail, `${label}: phone code block renders`)
+  assert.equal(codeDetail.size, "12px", `${label}: phone code block is 12px`)
+  assert.equal(codeDetail.background, "rgb(10, 10, 10)", `${label}: phone code fill is inverted`)
+  assert.equal(codeDetail.padding, "12px", `${label}: phone code pads 12`)
+  assert.equal(codeDetail.radius, "8px", `${label}: phone code radius is 8`)
+  assert.equal(codeDetail.codeSize, "12px", `${label}: phone code lines are 12px`)
 
   // Orchard note with eleven siblings: head, badge, six rows, expander.
   await goto(page, `${baseUrl}/orchard/note-01`)
@@ -6011,6 +6599,9 @@ async function runPhoneNoteDetail(page, baseUrl, label) {
         icon: !!a.querySelector("svg"),
         iconSize: a.querySelector("svg")?.getBoundingClientRect().width || 0,
         height: a.getBoundingClientRect().height,
+        // Parity item 7 (a4MmZf): orchard siblings carry no updated_at, so
+        // no row renders a relative-time meta.
+        meta: !!a.querySelector("time"),
       })),
       footText: foot?.textContent?.trim() || null,
       footSize: foot ? getComputedStyle(foot).fontSize : "",
@@ -6033,6 +6624,7 @@ async function runPhoneNoteDetail(page, baseUrl, label) {
     assert.ok(row.icon, `${label}: row carries a file icon`)
     assert.equal(row.iconSize, 14, `${label}: file icon is 14px`)
     assert.ok(row.height >= 44, `${label}: phone row touch height is ${row.height}px`)
+    assert.equal(row.meta, false, `${label}: row without updated_at omits the meta`)
   }
 
   assert.equal(siblings.footText, "Show all 11 notes", `${label}: foot offers the rest`)
@@ -6063,7 +6655,8 @@ async function runPhoneNoteDetail(page, baseUrl, label) {
 
 /**
  * Reads the open vault bottom sheet: frame geometry plus the current
- * row and ordered destination anchors. Null when no vault sheet is open
+ * row, ordered destination anchors, row order, and the trailing Add
+ * mock button. Null when no vault sheet is open
  * (the drawer sidebar renders its own sheet content without the
  * "Switch vault" list, so the two are never confused).
  */
@@ -6083,6 +6676,19 @@ async function readVaultSheet(page) {
     const list = root.querySelector('[aria-label="Switch vault"]')
     const current = list?.querySelector(':scope > li[aria-current="true"]') || null
     const anchors = list ? Array.from(list.querySelectorAll(":scope > li > a")) : []
+
+    const rows = list
+      ? Array.from(list.querySelectorAll(":scope > li")).map((li) => {
+          const child = li.querySelector(":scope > a, :scope > button")
+
+          return {
+            tag: child ? child.tagName : null,
+            text: child?.textContent?.trim() || "",
+          }
+        })
+      : []
+
+    const add = list?.querySelector(":scope > li > button") || null
 
     return {
       bottom: rect.bottom,
@@ -6116,6 +6722,16 @@ async function readVaultSheet(page) {
           target: anchor.getAttribute("target"),
         }
       }),
+      rows,
+      add: add
+        ? {
+            tag: add.tagName,
+            text: add.textContent?.trim() || "",
+            type: add.getAttribute("type"),
+            hasHref: add.hasAttribute("href"),
+            disabled: add.hasAttribute("disabled") || add.hasAttribute("aria-disabled"),
+          }
+        : null,
     }
   })
 }
@@ -6166,7 +6782,22 @@ function assertVaultSheetRows(sheet, expect, label) {
     )
   }
 
-  assert.ok(!sheet.text.includes("Add"), `${label}: sheet offers no add-vault row`)
+  assert.ok(sheet.add, `${label}: sheet renders the Add new vault mock row`)
+  assert.equal(sheet.add.tag, "BUTTON", `${label}: add-vault row is a button, not an anchor`)
+  assert.equal(sheet.add.text, "Add new vault", `${label}: add-vault row keeps its label`)
+  assert.equal(sheet.add.type, "button", `${label}: add-vault row is a plain button`)
+  assert.equal(sheet.add.hasHref, false, `${label}: add-vault row carries no navigation target`)
+  assert.equal(sheet.add.disabled, false, `${label}: add-vault row stays focusable, not disabled`)
+  assert.equal(
+    sheet.rows.length,
+    sheet.choices.length + 2,
+    `${label}: sheet lists the current row, destinations, then the mock`,
+  )
+  assert.equal(
+    sheet.rows[sheet.rows.length - 1]?.tag,
+    "BUTTON",
+    `${label}: add-vault row sits last, ordered after destinations`,
+  )
 }
 
 async function vaultSheetOpen(page) {
@@ -6200,6 +6831,32 @@ async function vaultSheetClosed(page) {
     null,
     { timeout: 5000 },
   )
+}
+
+/**
+ * Add-vault mock no-op: activating the trailing button navigates nowhere
+ * and leaves the vault sheet open (parity item 2 pins the mock semantics).
+ */
+async function assertAddVaultMockNoop(page, label) {
+  const urlBefore = page.url()
+
+  await page.evaluate(() => {
+    const root = Array.from(document.querySelectorAll('[data-slot="sheet-content"]')).find((el) =>
+      el.querySelector('[aria-label="Switch vault"]'),
+    )
+
+    root?.querySelector('[aria-label="Switch vault"] > li > button')?.click()
+  })
+  await page.waitForTimeout(300)
+  assert.equal(page.url(), urlBefore, `${label}: add-vault mock navigates nowhere`)
+
+  const stillOpen = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('[data-slot="sheet-content"]')).some((el) =>
+      el.querySelector('[aria-label="Switch vault"]'),
+    ),
+  )
+
+  assert.ok(stillOpen, `${label}: add-vault mock leaves the sheet open`)
 }
 
 /**
@@ -6275,6 +6932,7 @@ async function runPhoneHeaderVaultSheet(page, baseUrl, expect, label) {
     false,
     `${label}: header vault switch needs no drawer`,
   )
+  await assertAddVaultMockNoop(page, label)
 
   await page.evaluate(() => {
     const root = Array.from(document.querySelectorAll('[data-slot="sheet-content"]')).find((el) =>
@@ -6393,11 +7051,12 @@ test("device status chip renders every offline state without starting a save", a
 })
 
 /**
- * Vault bottom sheet static tokens (mobile port item 4): the phone vault
- * switcher renders the registry Sheet side="bottom" with the xPZVw rows
- * (washed current row with check, bordered destination anchors keyed by
- * origin host, no add-vault row) in utilities only, while the desktop
- * dropdown path and the two phone triggers stay wired.
+ * Vault bottom sheet static tokens (mobile port item 4, parity item 2):
+ * the phone vault switcher renders the registry Sheet side="bottom" with
+ * the xPZVw rows (washed current row with check, bordered destination
+ * anchors keyed by origin host, trailing Add new vault mock button) in
+ * utilities only, while the desktop dropdown path and the two phone
+ * triggers stay wired.
  */
 test("vault sheet matches the xPZVw bottom-sheet design tokens", async () => {
   const sheet = fs.readFileSync(path.join(READER_ROOT, "components", "vault-sheet.tsx"), "utf8")
@@ -6416,7 +7075,23 @@ test("vault sheet matches the xPZVw bottom-sheet design tokens", async () => {
   assert.match(sheet, /min-h-15/, "rows hold the 60px geometry without arbitrary values")
   assert.ok(!/rounded-\[|min-h-\[|text-\[|w-\[|h-\[|p[xy]?-\[/.test(sheet), "no arbitrary values")
   assert.ok(!sheet.includes("reader-"), "sheet adds no custom hook classes")
-  assert.ok(!/Add new vault/.test(sheet), "no add-vault row")
+  assert.match(sheet, /Add new vault/, "add-vault mock row renders its label")
+  assert.match(sheet, /<button[^>]*type="button"/, "add-vault mock is a plain button")
+  assert.ok(!/onClick/.test(sheet), "add-vault mock carries no handler by design")
+  assert.ok(!/aria-disabled/.test(sheet), "add-vault mock is not disabled, only a no-op")
+  assert.match(sheet, /Plus/, "add-vault mock uses the Plus icon")
+  assert.match(
+    sheet,
+    /size-3\.5 shrink-0 text-muted-foreground/,
+    "add icon keeps the 14px muted read",
+  )
+  assert.match(sheet, /text-13/, "add label keeps the 13px token")
+  assert.match(sheet, /text-primary/, "add label keeps the primary read")
+  assert.match(
+    sheet,
+    /w-full items-center gap-3 rounded-lg border border-border p-3/,
+    "add-vault mock shares the destination row treatment",
+  )
 
   const config = fs.readFileSync(path.join(PUBLISHER_ROOT, "oxlint.config.ts"), "utf8")
 
@@ -6438,6 +7113,252 @@ test("vault sheet matches the xPZVw bottom-sheet design tokens", async () => {
   assert.match(chrome, /aria-haspopup="dialog"/, "brand button announces the sheet")
   assert.match(chrome, /aria-expanded=\{vaultOpen\}/, "brand button tracks the sheet")
   assert.match(chrome, /<VaultSheet/, "header mounts its own sheet instance")
+})
+
+/**
+ * Article extras fidelity static tokens (parity item 4, design Zk8lN /
+ * pDRO9 / code frame): the washed Quote, the inverted code block, and
+ * the dotted bullets stay in globals.css because MDX body markup
+ * arrives without classes, use tokens with dark variants alongside,
+ * and add no new hook classes or registry changes. No GFM-alert
+ * Callout ships: `> [!NOTE]` renders a plain blockquote with no
+ * styleable hook (see survey.md), so remark-gfm stays transitive-only.
+ */
+test("article extras match the quote/code/bullet design tokens", async () => {
+  const css = fs.readFileSync(path.join(READER_ROOT, "app", "globals.css"), "utf8")
+
+  const quote = css.slice(
+    css.indexOf(".reader-article blockquote"),
+    css.indexOf(".reader-article hr"),
+  )
+
+  assert.match(quote, /background:\s*var\(--muted\)/, "quote wash uses the muted token")
+  assert.match(quote, /border:\s*1px solid var\(--border\)/, "quote edge uses the border token")
+  assert.match(quote, /font-size:\s*13px/, "quote text is 13px from its own rule")
+  assert.match(quote, /p \+ p:last-child/, "cite styles only a trailing second paragraph")
+  assert.match(quote, /font-size:\s*11px/, "cite line is 11px")
+  assert.match(quote, /color:\s*var\(--muted-foreground\)/, "cite uses the muted token")
+
+  const pre = css.slice(css.indexOf(".reader-article pre {"), css.indexOf(".reader-article img"))
+
+  assert.match(pre, /background:\s*#0a0a0a/, "code fill is inverted dark in light mode")
+  assert.match(pre, /border-radius:\s*0\.5rem/, "code radius is 8")
+  assert.match(pre, /font-size:\s*0\.75rem/, "code block is 12px")
+  assert.match(pre, /font-size:\s*1em/, "code lines keep the 12px block size")
+
+  const lists = css.slice(css.indexOf("Bullet Row pDRO9"), css.indexOf(".reader-article a {"))
+
+  assert.match(lists, /list-style:\s*none/, "bullets paint their own dot")
+  assert.match(lists, /li::before/, "dot uses a positioned marker")
+  assert.match(lists, /width:\s*6px/, "dot is 6px wide")
+  assert.match(lists, /height:\s*6px/, "dot is 6px tall")
+  assert.match(lists, /background:\s*var\(--primary\)/, "dot uses the primary token")
+  assert.match(lists, /margin-top:\s*0\.5rem/, "list gaps are 8px on the base rule")
+  assert.match(lists, /li:has\(> input\[type="checkbox"\]\)::before/, "task rows keep no dot")
+
+  assert.match(css, /\.dark \.reader-article pre \{/, "dark code variant stays alongside")
+  assert.ok(
+    !/\.dark \.reader-article blockquote/.test(css),
+    "dark quote needs no override: the base rule is fully token-driven",
+  )
+  assert.ok(
+    !/\.reader-[a-z-]*callout/.test(css),
+    "no callout hook ships without a producing syntax",
+  )
+
+  const pkg = JSON.parse(fs.readFileSync(path.join(READER_ROOT, "package.json"), "utf8"))
+
+  assert.ok(!("remark-gfm" in (pkg.dependencies || {})), "reader adds no unused GFM dependency")
+})
+
+/**
+ * Search dialog fidelity static tokens (parity item 6, design MnMak):
+ * the dialog composes registry chrome plus scale utilities on the
+ * existing reader-search hooks, colors come from grayscale tokens, and
+ * no arbitrary values or registry edits ship. The browser journeys prove
+ * the computed numbers; this test pins the source contract.
+ */
+test("search dialog matches the MnMak design tokens", async () => {
+  const dialog = fs.readFileSync(path.join(READER_ROOT, "components", "search-dialog.tsx"), "utf8")
+
+  assert.match(dialog, /sm:max-w-lg/, "dialog keeps the 512px desktop width")
+  assert.match(
+    dialog,
+    /gap-3 bg-card p-4/,
+    "dialog chrome carries the 12px gap, card fill, and 16px padding",
+  )
+  assert.match(dialog, /flex-row items-center gap-2/, "header keeps the row read with an 8px gap")
+  assert.match(dialog, /pl-9/, "input clears the leading icon without arbitrary values")
+  assert.match(dialog, /py-2\.5 pr-3/, "input keeps the [10,12] design padding")
+  assert.match(
+    dialog,
+    /rounded-md border border-border bg-card/,
+    "input keeps the 8px radius with token edge and fill",
+  )
+  assert.match(dialog, /text-sm text-primary/, "query text is 14px primary")
+  assert.match(dialog, /placeholder:text-muted-foreground/, "placeholder uses the muted token")
+  assert.match(
+    dialog,
+    /results\.length === 1 \? "1 result" :/,
+    "count line singularizes the design copy",
+  )
+  assert.match(
+    dialog,
+    /reader-search-status rounded-md p-3 text-13 text-primary/,
+    "states strip keeps padding 12 with 13px primary text",
+  )
+  assert.match(
+    dialog,
+    /reader-search-status text-13 text-muted-foreground/,
+    "count line is 13px muted",
+  )
+  assert.match(dialog, /reader-search-list grid gap-1/, "results list keeps the 4px gap")
+  assert.match(
+    dialog,
+    /reader-search-result grid gap-0\.5 px-3 py-2\.5/,
+    "rows keep [10,12] padding with a 2px inner gap",
+  )
+  assert.match(
+    dialog,
+    /reader-search-result-title text-sm font-bold text-primary/,
+    "row titles are 14px primary",
+  )
+  assert.match(
+    dialog,
+    /reader-search-result-url text-xs text-muted-foreground/,
+    "row urls are 12px muted",
+  )
+  assert.match(
+    dialog,
+    /reader-search-result-excerpt text-13 text-muted-foreground/,
+    "row excerpts are 13px muted",
+  )
+  assert.match(
+    dialog,
+    /reader-search-hints flex items-center gap-3 text-xs/,
+    "hints row is 12px muted",
+  )
+  assert.match(
+    dialog,
+    /border border-border bg-card text-2xs/,
+    "hint chips are 11px on card fill with a border",
+  )
+
+  for (const hook of [
+    "reader-search-body",
+    "reader-search-input",
+    "reader-search-status",
+    "reader-search-list",
+    "reader-search-option",
+    "reader-search-result",
+    "reader-search-result-title",
+    "reader-search-result-url",
+    "reader-search-result-excerpt",
+    "reader-search-hints",
+  ]) {
+    assert.ok(dialog.includes(hook), `dialog keeps the ${hook} hook`)
+  }
+
+  assert.ok(
+    !/rounded-\[|min-h-\[|text-\[|w-\[|h-\[|p[xy]?-\[|max-w-\[/.test(dialog),
+    "no arbitrary values",
+  )
+
+  const css = fs.readFileSync(path.join(READER_ROOT, "app", "globals.css"), "utf8")
+
+  const search = css.slice(
+    css.indexOf("Search controls and dialog"),
+    css.indexOf("Offline save control"),
+  )
+
+  assert.match(search, /background:\s*var\(--muted\)/, "active wash uses the muted token")
+  assert.match(search, /\.reader-search-option:hover/, "hover shares the keyboard wash")
+  assert.match(
+    search,
+    /outline:\s*2px solid var\(--primary\)/,
+    "highlight edge uses the primary token",
+  )
+  assert.match(search, /\.reader-search-hints/, "hints hook ships a selector")
+  assert.ok(
+    !/#[0-9a-fA-F]{3,8}\b/.test(search),
+    "search rules carry no raw hex: tokens own every color",
+  )
+  assert.ok(
+    !/\.dark \.reader-search-input/.test(search),
+    "dark input needs no override: utilities adapt through tokens",
+  )
+  assert.ok(
+    !/\.dark \.reader-search-option/.test(search),
+    "dark wash needs no override: the muted token adapts",
+  )
+
+  const config = fs.readFileSync(path.join(PUBLISHER_ROOT, "oxlint.config.ts"), "utf8")
+
+  for (const part of ["^DialogContent$", "^DialogHeader$", "^Kbd$"]) {
+    assert.ok(config.includes(part), `lint contracts the ${part} restyle`)
+  }
+
+  const registryDialog = fs.readFileSync(
+    path.join(READER_ROOT, "components", "ui", "dialog.tsx"),
+    "utf8",
+  )
+
+  assert.ok(!registryDialog.includes("reader-search"), "registry dialog stays hook-free")
+
+  const kbd = fs.readFileSync(path.join(READER_ROOT, "components", "ui", "kbd.tsx"), "utf8")
+
+  assert.ok(!kbd.includes("reader-search"), "registry kbd stays hook-free")
+})
+
+/**
+ * Home card and sibling-row fidelity static tokens (parity item 7, design
+ * D3O3k6 / a4MmZf): the desktop card row utilities, the count-only meta,
+ * the Open action, the serializable sibling stamp, and no arbitrary values
+ * or registry edits. The browser journeys prove the computed numbers; this
+ * test pins the source contract.
+ */
+test("home cards and sibling rows match the D3O3k6/a4MmZf design tokens", async () => {
+  const page = fs.readFileSync(path.join(READER_ROOT, "app", "page.tsx"), "utf8")
+
+  assert.match(page, /size-10/, "desktop icon box is 40px")
+  assert.match(page, /rounded-lg bg-muted/, "desktop box keeps the muted 8px read")
+  assert.match(page, /size-4\.5/, "desktop icon is 18px")
+  assert.match(
+    page,
+    /reader-home-card-meta text-2xs text-muted-foreground/,
+    "desktop count meta is 11px muted",
+  )
+  assert.match(page, />Open</, "desktop row carries the Open action")
+  assert.match(page, /text-xs text-muted-foreground/, "Open action is 12px muted")
+  assert.ok(!page.includes("Folder ·"), "desktop meta is count-only")
+  assert.ok(!/rounded-\[|min-h-\[|text-\[|w-\[|h-\[|p[xy]?-\[/.test(page), "no arbitrary values")
+  assert.match(page, /size-9/, "phone icon box stays 36px")
+  assert.match(page, /truncate text-sm font-semibold/, "phone title stays 14px semibold")
+
+  const notes = fs.readFileSync(path.join(READER_ROOT, "components", "other-notes.tsx"), "utf8")
+
+  assert.match(notes, /relativeUpdatedAt/, "sibling meta formats the serializable stamp")
+  assert.match(notes, /updatedAt\?: string/, "only ISO strings cross the client boundary")
+  assert.match(notes, /truncate text-13/, "sibling label is 13px")
+  assert.match(notes, /truncate text-2xs text-muted-foreground/, "sibling meta is 11px muted")
+  assert.ok(!/rounded-\[|min-h-\[|text-\[|w-\[|h-\[|p[xy]?-\[/.test(notes), "no arbitrary values")
+
+  const route = fs.readFileSync(path.join(READER_ROOT, "app", "[...slug]", "page.tsx"), "utf8")
+
+  assert.match(route, /siblingNoteFor/, "both sibling loops share the serializable mapping")
+  assert.match(route, /note\.updatedAt = updatedAt/, "sibling rows carry the edit stamp")
+  assert.match(route, /toISOString/, "Date stamps normalize to ISO server-side")
+
+  const config = fs.readFileSync(path.join(PUBLISHER_ROOT, "oxlint.config.ts"), "utf8")
+
+  assert.ok(config.includes("^CardDescription$"), "lint contracts the count-meta restyle")
+
+  const registryCard = fs.readFileSync(
+    path.join(READER_ROOT, "components", "ui", "card.tsx"),
+    "utf8",
+  )
+
+  assert.ok(!registryCard.includes("reader-home"), "registry card stays hook-free")
 })
 
 test("synthetic phone journey covers drawer, overflow, keyboard, and refresh", async () => {
@@ -6666,7 +7587,7 @@ test("synthetic browse journey covers home → folder → nested note → Back",
       hiddenRoute,
       hiddenTitle,
     })
-    await runLastEditedBrowser(page, baseUrl)
+    await runMetaLineBrowser(page, baseUrl)
     await page.close()
     const projectionPage = await context.newPage()
     await projectionPage.setViewportSize({ width: 1280, height: 800 })

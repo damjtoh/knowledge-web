@@ -106,7 +106,24 @@ export function writeSyntheticKb(kbRoot) {
   writeFile(
     kbRoot,
     "notes/plain.md",
-    "# Plain Meadow\n\nJust a body.\n\n## Details\n\nSection content.\n",
+    [
+      "# Plain Meadow",
+      "",
+      "Just a body.",
+      "",
+      "## Details",
+      "",
+      "Section content.",
+      "",
+      "- Meadow grass",
+      "- Clover patches",
+      "- Morning dew",
+      "",
+      "> Stay curious about small green things.",
+      ">",
+      "> ↳ Field notes, page 12",
+      "",
+    ].join("\n"),
   )
   writeFile(kbRoot, "notes/nest/inner/leaf.md", "# Inner Leaf\n\nDeep nested note.\n")
   writeFile(kbRoot, `notes/${LONG_SLUG}.md`, `# ${LONG_TITLE}\n\nPack light.\n`)

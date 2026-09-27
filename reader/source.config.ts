@@ -2,6 +2,7 @@ import { defineCollections, defineConfig } from "fumadocs-mdx/config"
 import wikiLinkPlugin from "@flowershow/remark-wiki-link"
 import path from "node:path"
 import { buildWikiLinkMaps } from "./lib/wiki-aliases.js"
+import remarkReadingTime from "./lib/reading-time.js"
 import remarkRelativeLinks from "./lib/relative-links.js"
 
 /**
@@ -40,6 +41,12 @@ export const content = defineCollections({
  * adapter supplies title, filename, path, and nested-index aliases plus
  * stable permalinks from staged page metadata; missing targets keep the
  * plugin `internal new` unresolved state and frontmatter stays untouched.
+ *
+ * Read-time stays a repository heuristic (decision 2, quality not a
+ * concern): remarkReadingTime counts body text words and writes
+ * `read_minutes` onto parsed frontmatter, where it flows to page data like
+ * `updated_at`. The collection declares no schema, so the unknown field
+ * passes through without validation changes.
  */
 const wikiMaps = buildWikiLinkMaps(resolveContentDir())
 
@@ -52,6 +59,7 @@ export default defineConfig({
         { format: "regular", files: wikiMaps.files, permalinks: wikiMaps.permalinks },
       ],
       [remarkRelativeLinks, resolveContentDir()],
+      remarkReadingTime,
     ],
   },
 })
