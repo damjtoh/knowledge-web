@@ -9,14 +9,10 @@
  * Calm generic grayscale reader.
  *
  * Desktop sidebar layout comes from registry-installed sidebar-11
- * (SidebarProvider/Sidebar/SidebarInset). Tailwind CSS owns layout
- * utilities used in the reader shell components. This stylesheet keeps
- * the semantic reader classes the static and browser checks rely on
- * (reader-header, reader-sidebar-nav, reader-article, and overflow
- * containment) plus Markdown element styling
- * that utilities cannot express alone. It styles bespoke article
- * typography and needed responsive details only; it does not recreate
- * the sidebar primitive with custom CSS.
+ * (SidebarProvider/Sidebar/SidebarInset). Reader shell/header visuals live
+ * in Tailwind utilities on reader-chrome.tsx. This stylesheet keeps global
+ * and library internals plus generated-markdown styling only; it does not
+ * recreate the sidebar primitive with custom CSS.
  *
  * Palette is neutral grayscale only: white surfaces, neutral-50/100 washes,
  * neutral-200/300 borders, neutral-500/600 muted text, neutral-900 body text.
@@ -63,49 +59,6 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-}
-
-/* Shell header layout: unlayered flex/border/padding must beat layered header utilities. */
-.reader-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  border-bottom: 1px solid #e5e5e5;
-  background: #fff;
-  padding: 0.75rem 1rem;
-}
-
-/**
- * Reading-header trail: registry SidebarTrigger, Separator, and one
- * route-derived Breadcrumb. The trail takes available room and shrinks
- * below actions, so long titles and deep paths wrap inside the header
- * without pushing the page wider.
- */
-.reader-header-trail {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex: 1 1 auto;
-  min-width: 0;
-  max-width: 100%;
-}
-
-/* Reader shell root: never forces page width. */
-.reader-chrome {
-  min-width: 0;
-}
-
-/* Reading shell: centered 1100px column; the phone padding variant below beats utilities unlayered. */
-.reader-shell {
-  display: flex;
-  gap: 2rem;
-  width: 100%;
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 1.5rem 1rem 3rem;
-  min-width: 0;
-  box-sizing: border-box;
 }
 
 /* Desktop sidebar layout comes from registry sidebar-11. Phone
@@ -291,15 +244,6 @@ body {
 .reader-tree-row:hover .reader-tree-toggle svg,
 .reader-tree-row:focus-within .reader-tree-toggle svg {
   opacity: 1;
-}
-
-/* Reading column: flex share with clip containment so wide tables never push the viewport. */
-.reader-main {
-  flex: 1;
-  min-width: 0;
-  max-width: 100%;
-  padding: 0;
-  overflow-x: clip;
 }
 
 /* Breadcrumb trail: pinned hook the journeys click; descendants reach registry slots. */
@@ -810,15 +754,6 @@ body {
 }
 
 @media (max-width: 767px) {
-  .reader-shell {
-    flex-direction: column;
-    gap: 1rem;
-    /* Phone body padding from design screen I1z3qM: [20, 16, 32, 16].
-       A max-md utility cannot win here: this unlayered declaration beats
-       layered Tailwind utilities, so the responsive value lives here. */
-    padding: 1.25rem 1rem 2rem;
-  }
-
   /* Narrow screens indent less so deep branches keep readable titles. */
   .reader-tree-children {
     padding-left: 0.6rem;
@@ -1284,18 +1219,6 @@ body {
  * cards, muted text, and borders that keep article, navigation, code,
  * tables, and interaction states readable.
  */
-.reader-header {
-  flex-wrap: wrap;
-}
-
-.reader-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-  margin-left: auto;
-  min-width: 0;
-}
 
 .reader-appearance {
   display: inline-flex;
@@ -1318,11 +1241,6 @@ body {
 .dark body {
   background: #0a0a0a;
   color: #f5f5f5;
-}
-
-.dark .reader-header {
-  background: #0a0a0a;
-  border-bottom-color: #262626;
 }
 
 .dark .reader-sidebar-nav a {
@@ -1468,10 +1386,6 @@ body {
 }
 
 @media (max-width: 767px) {
-  .reader-header-actions {
-    gap: 0.4rem;
-  }
-
   .reader-appearance-option span {
     font-size: 0.8rem;
   }

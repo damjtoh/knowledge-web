@@ -129,7 +129,7 @@ export default function ReaderChrome({
   }, [])
 
   return (
-    <div className="reader-chrome min-h-screen antialiased">
+    <div className="reader-chrome min-h-screen min-w-0 antialiased">
       <AppearanceProvider>
         <OfflineProvider>
           <SidebarProvider>
@@ -141,8 +141,8 @@ export default function ReaderChrome({
               onSearch={openSearch}
             />
             <SidebarInset>
-              <header className="reader-header h-11 max-md:h-16 items-center justify-between gap-3 border-b px-4">
-                <div className="reader-header-trail items-center gap-2">
+              <header className="reader-header flex h-11 max-md:h-16 min-w-0 flex-wrap items-center justify-between gap-3 border-b border-border bg-background px-4">
+                <div className="reader-header-trail flex min-w-0 max-w-full flex-1 items-center gap-2">
                   <SidebarTrigger className="-ml-1 size-7 rounded-md border border-border bg-card" />
                   <div className="max-md:hidden md:contents">
                     <Separator orientation="vertical" className="mr-2 hidden h-4 w-px md:block" />
@@ -162,7 +162,7 @@ export default function ReaderChrome({
                     />
                   </button>
                 </div>
-                <div className="reader-header-actions">
+                <div className="reader-header-actions ml-auto flex min-w-0 flex-wrap items-center gap-2 max-md:gap-1.5">
                   <OfflineCue />
                   <button
                     type="button"
@@ -174,8 +174,10 @@ export default function ReaderChrome({
                   </button>
                 </div>
               </header>
-              <div className="reader-shell">
-                <div className="reader-main">{children}</div>
+              <div className="reader-shell mx-auto flex w-full min-w-0 max-w-275 gap-8 px-4 pt-6 pb-12 max-md:flex-col max-md:gap-4 max-md:pt-5 max-md:pb-8">
+                <div className="reader-main max-w-full min-w-0 flex-1 overflow-x-clip p-0">
+                  {children}
+                </div>
               </div>
               <SearchDialog open={searchOpen} onOpenChange={handleSearchOpenChange} />
               <VaultSheet
