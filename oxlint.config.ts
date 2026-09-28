@@ -255,16 +255,50 @@ const config: OxlintConfig = {
                 pattern: "^Separator$",
                 allow: ["mr-2", "hidden", "md:block", "w-px", "h-4"],
               },
-              // Reading-header trail keeps 13px/600 crumbs on the link
-              // and current-page elements; the Breadcrumb primitives own
-              // landmarks and aria, so utilities stay on the items.
+              // Reading-header trail owns wrapping, containment, touch,
+              // and plain-anchor visuals in utilities; the Breadcrumb
+              // primitives own landmarks and aria, so utilities stay on
+              // the items. The wrapper div owns flex-1 containment, the
+              // List owns reset plus containment (registry owns flex,
+              // wrap, gap, and muted type), Items own containment, and
+              // Link/Page own 13px/600 type with wrapping, touch floors,
+              // and token hover underlines. No scoped breadcrumb rules
+              // remain; dark mode follows the tokens.
+              {
+                pattern: "^Breadcrumb$",
+                allow: ["min-w-0", "max-w-full"],
+              },
+              {
+                pattern: "^BreadcrumbList$",
+                allow: ["m-0", "list-none", "p-0", "min-w-0", "max-w-full"],
+              },
+              {
+                pattern: "^BreadcrumbItem$",
+                allow: ["min-w-0", "max-w-full"],
+              },
               {
                 pattern: "^BreadcrumbLink$",
-                allow: ["text-13", "font-semibold"],
+                allow: [
+                  "text-13",
+                  "font-semibold",
+                  "inline-flex",
+                  "items-center",
+                  "min-h-11",
+                  "min-w-0",
+                  "max-w-full",
+                  "wrap-break-word",
+                  "text-muted-foreground",
+                  "no-underline",
+                  "hover:text-foreground",
+                  "hover:underline",
+                  "hover:decoration-ring",
+                  "hover:underline-offset-3",
+                  "dark:hover:decoration-chart-3",
+                ],
               },
               {
                 pattern: "^BreadcrumbPage$",
-                allow: ["text-13", "font-semibold"],
+                allow: ["text-13", "font-semibold", "min-w-0", "max-w-full", "wrap-break-word"],
               },
               // Home root cards use the registry Card surface (not a
               // hand-written CSS card). Utilities on page.tsx own list,
@@ -403,7 +437,10 @@ const config: OxlintConfig = {
         // and the plain-card prose override keep scoped CSS. Tree,
         // navigation, and projection hooks stay after their visuals move
         // to utilities; only the menu max-width and the open-row
-        // transparent wash keep scoped CSS.
+        // transparent wash keep scoped CSS. Breadcrumb, group, and
+        // other-notes hooks stay after their visuals move to utilities;
+        // only the article group plain-anchor override and the
+        // phone-crumb prose override keep scoped CSS.
         "shadcn/no-unknown-classes": [
           "error",
           {
@@ -430,6 +467,7 @@ const config: OxlintConfig = {
               "reader-sidebar-home",
               "reader-sidebar-brand",
               "reader-chrome",
+              "reader-header",
               "reader-header-trail",
               "reader-header-actions",
               "reader-shell",
@@ -453,6 +491,11 @@ const config: OxlintConfig = {
               "reader-home-card-row",
               "reader-home-card-title",
               "reader-home-card-meta",
+              "reader-breadcrumbs",
+              "reader-group",
+              "reader-group-list",
+              "reader-other-notes",
+              "reader-note-crumbs",
             ],
           },
         ],

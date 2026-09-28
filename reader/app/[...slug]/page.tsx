@@ -39,12 +39,17 @@ function GroupSection({ title, nodes }: { title: string; nodes: NavigationNode[]
   if (nodes.length === 0) return null
 
   return (
-    <section aria-label={title} className="reader-group">
+    <section aria-label={title} className="reader-group mt-10 border-t border-border pt-5">
       <h2>{title}</h2>
-      <ul className="reader-group-list">
+      <ul className="reader-group-list m-0 mt-3 grid max-w-full min-w-0 list-none gap-2 p-0">
         {nodes.map((node) => (
-          <li key={node.url}>
-            <a href={node.url}>{node.title}</a>
+          <li key={node.url} className="max-w-full min-w-0">
+            <a
+              href={node.url}
+              className="flex max-w-full min-h-11 min-w-0 items-center border-b border-border px-1 py-3 leading-snug wrap-break-word text-muted-foreground no-underline hover:text-foreground hover:underline hover:decoration-ring hover:underline-offset-3 dark:hover:decoration-chart-3"
+            >
+              {node.title}
+            </a>
           </li>
         ))}
       </ul>

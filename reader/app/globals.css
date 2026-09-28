@@ -97,75 +97,14 @@ body {
    and kin) stay as non-visual DOM/test selectors; no other scoped rules
    remain. */
 
-/* Breadcrumb trail: pinned hook the journeys click; descendants reach registry slots. */
-.reader-breadcrumbs {
-  flex: 1 1 auto;
-  min-width: 0;
-  max-width: 100%;
-  margin-bottom: 0;
-}
-
-/* Header trail owns the single breadcrumb landmark; article pages no
-   longer render a second row above content. */
-.reader-header .reader-breadcrumbs {
-  margin-bottom: 0;
-}
-
-.reader-breadcrumbs nav,
-.reader-breadcrumbs [data-slot="breadcrumb"],
-.reader-breadcrumbs [data-slot="breadcrumb-list"],
-.reader-breadcrumbs [data-slot="breadcrumb-item"],
-.reader-breadcrumbs [data-slot="breadcrumb-link"],
-.reader-breadcrumbs [data-slot="breadcrumb-page"] {
-  min-width: 0;
-  max-width: 100%;
-}
-
-.reader-breadcrumbs [data-slot="breadcrumb-link"],
-.reader-breadcrumbs [data-slot="breadcrumb-page"] {
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
-
-.reader-breadcrumbs ol {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem 0.5rem;
-  font-size: 0.9rem;
-  color: #525252;
-  min-width: 0;
-  max-width: 100%;
-}
-
-.reader-breadcrumbs li {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  min-width: 0;
-  max-width: 100%;
-  overflow-wrap: anywhere;
-}
-
-.reader-breadcrumbs a {
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
-  color: #404040;
-  text-decoration: none;
-  min-width: 0;
-  max-width: 100%;
-  overflow-wrap: anywhere;
-}
-
-.reader-breadcrumbs a:hover {
-  color: #171717;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  text-decoration-color: #a3a3a3;
-}
+/* Breadcrumb trail: pinned hook the journeys click. Utilities on
+   breadcrumbs.tsx own the trail visuals (flex-1 containment on the
+   wrapper, list reset plus min-w-0/max-w-full on the registry List/Item,
+   44px touch floors with wrap-break-word containment and token
+   muted/hover colors plus underline offsets on Link/Page, registry
+   flex-wrap for wrapping). The registry Breadcrumb primitives own
+   landmarks and aria, so no scoped rules remain here; dark mode follows
+   the muted/foreground tokens. */
 
 /* Generated-markup root + bare MDX elements below (h1-h3/p/a/table/img/hr/checkbox): no TSX hosts utilities; dark variants below. */
 .reader-article {
@@ -437,53 +376,57 @@ body {
   text-decoration: none;
 }
 
-/* Sibling/group sections: pinned hooks shared by folder pages and OtherNotes; rows keep the plain-anchor read. */
-.reader-group {
-  margin-top: 2.5rem;
-  border-top: 1px solid #e5e5e5;
-  padding-top: 1.25rem;
-}
+/* Sibling/group sections: pinned hooks shared by folder pages and
+   OtherNotes. Utilities on [...slug]/page.tsx and other-notes.tsx own
+   section separation (mt-10 border-t border-border pt-5), list reset
+   (m-0 mt-3 grid list-none gap-2 p-0 with min/max containment), and row
+   layout (flex 44px touch floors with px/py, leading, wrap-break-word,
+   token muted/hover colors, plain-anchor no-underline with hover
+   underline offsets). Other-notes rows use 36px min-h-9 with 12px side
+   padding, no dividers, and 13px labels, keeping the 44px floor on
+   phones via max-md:min-h-11. */
 
-.reader-group-list {
-  list-style: none;
-  margin: 0.75rem 0 0;
-  padding: 0;
-  display: grid;
-  gap: 0.5rem;
-}
-
-.reader-group-list a {
-  display: flex;
-  align-items: center;
-  padding: 0.75rem 0.25rem;
-  min-height: 44px;
-  line-height: 1.4;
-  color: #404040;
+/* Group rows are navigation anchors, not prose links: the unlayered
+   .reader-article a rule beats layered color/decoration/background
+   utilities, so this exception keeps the plain-anchor read inside
+   articles. Tokens flip in dark mode; the matching dark exception sits
+   after the dark prose link rules so it wins by order and specificity.
+   Visited stays muted so read rows never turn into prose
+   links; hover keeps the token underline read with a transparent wash
+   (the prose hover wash would paint behind the row). */
+.reader-article .reader-group-list a {
+  color: var(--muted-foreground);
   text-decoration: none;
-  border-bottom: 1px solid #f5f5f5;
-  overflow-wrap: anywhere;
+  background: transparent;
 }
 
-.reader-group-list a:hover {
-  color: #171717;
+.reader-article .reader-group-list a:visited {
+  color: var(--muted-foreground);
+}
+
+.reader-article .reader-group-list a:hover {
+  color: var(--foreground);
   text-decoration: underline;
   text-underline-offset: 3px;
-  text-decoration-color: #a3a3a3;
+  text-decoration-color: var(--ring);
+  background: transparent;
 }
 
 /**
  * Phone-only body crumb trail for note pages (design screen pWNyV):
  * 12px muted slash-separated crumbs above the body. The md:hidden utility
- * in the markup hides it on desktop, so no display rule lives here (an
- * unlayered display declaration would beat that layered utility). The
- * hook exists because the unlayered .reader-article p/a rules beat
- * utilities for margin and link color, so both genuinely need an
- * unlayered override. Muted and hover colors use tokens so dark mode
- * follows the shell.
+ * plus pb-1/min/max containment in the markup own visibility, bottom
+ * padding, and containment (an unlayered display declaration would beat
+ * that layered utility). The hook remains because the unlayered
+ * .reader-article p rule beats utilities for margin, and the unlayered
+ * .reader-article font/line-height/color rules beat utilities for the
+ * 12px size, 1.5 line height, muted color, and wrapping, so those
+ * genuinely need unlayered values here; link colors need the same
+ * treatment against .reader-article a. Muted and hover colors use
+ * tokens so dark mode follows the shell.
  */
 .reader-article .reader-note-crumbs {
   margin: 0;
-  padding: 0 0 0.25rem;
   font-size: 0.75rem;
   line-height: 1.5;
   color: var(--muted-foreground);
@@ -499,27 +442,6 @@ body {
   color: var(--primary);
   text-decoration: underline;
   text-underline-offset: 3px;
-}
-
-/**
- * Other-notes sibling section (design screen pWNyV, all viewports).
- *
- * Separation reuses the reader-group hook and rows reuse the
- * reader-group-list hook, so the section matches article sections and
- * rows keep the plain-anchor read, hover, and dark variants. The single
- * reader-other-notes hook scopes only what utilities cannot express
- * against those unlayered list rules: 36px rows with 12px side padding,
- * no dividers, and the 13px label. The head and foot are utilities-only
- * in the component (no unlayered article rule targets them).
- */
-.reader-article .reader-other-notes .reader-group-list a {
-  min-height: 2.25rem;
-  padding: 0.25rem 0.75rem;
-  gap: 0.5rem;
-  /* 13px label: --text-13 lives in @theme inline (never emitted as a
-     runtime variable), so the value is written out here. */
-  font-size: 13px;
-  border-bottom: 0;
 }
 
 /* Visible keyboard focus everywhere: unlayered outline must beat layered utilities and primitives. */
@@ -574,13 +496,6 @@ body {
   .reader-article ul:not(.reader-area-list):not(.reader-group-list) li + li,
   .reader-article ol:not(.reader-area-list):not(.reader-group-list) li + li {
     margin-top: 0.5rem;
-  }
-
-  /* Other-notes rows keep the 44px touch floor on phones through
-     min-height (the same pattern as the group lists), never a fixed
-     height. Desktop rows stay at the 36px design read. */
-  .reader-article .reader-other-notes .reader-group-list a {
-    min-height: 44px;
   }
 
   .reader-article h3 {
@@ -900,18 +815,11 @@ body {
    border-border guide, text-primary/muted-foreground labels); no scoped
    dark rules remain. */
 
-.dark .reader-breadcrumbs ol {
-  color: #d4d4d4;
-}
-
-.dark .reader-breadcrumbs a {
-  color: #d4d4d4;
-}
-
-.dark .reader-breadcrumbs a:hover {
-  color: #fff;
-  text-decoration-color: #525252;
-}
+/* Breadcrumb and group dark variants live in tokens
+   (text-muted-foreground, hover:text-foreground, border-border,
+   decoration-ring/chart-3, plus the article group prose overrides
+   below); only the article group dark override keeps scoped CSS, placed
+   after the dark prose link rules so it wins by order and specificity. */
 
 .dark .reader-article {
   color: #e5e5e5;
@@ -939,6 +847,30 @@ body {
 
 .dark .reader-article a:visited {
   color: #d4d4d4;
+}
+
+/* Group rows stay plain navigation anchors in dark mode too. The base
+   group override above ties with the unlayered dark prose link rules at
+   equal specificity, and those dark prose rules come later, so without
+   this later, higher-specificity exception dark rows would inherit the
+   prose #fafafa/#d4d4d4 colors and the #262626 hover wash. Tokens flip
+   with the shell; the hover underline uses --chart-3 to match the
+   dark:hover:decoration-chart-3 utility intent that layered utilities
+   cannot win with. Background stays transparent so exactly one wash
+   layer paints. */
+.dark .reader-article .reader-group-list a,
+.dark .reader-article .reader-group-list a:visited {
+  color: var(--muted-foreground);
+  text-decoration: none;
+  background: transparent;
+}
+
+.dark .reader-article .reader-group-list a:hover {
+  color: var(--foreground);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--chart-3);
+  background: transparent;
 }
 
 .dark .reader-article thead th {
@@ -972,20 +904,6 @@ body {
 
 .dark .reader-article input[type="checkbox"] {
   accent-color: #d4d4d4;
-}
-
-.dark .reader-group {
-  border-top-color: #262626;
-}
-
-.dark .reader-group-list a {
-  color: #d4d4d4;
-  border-bottom-color: #262626;
-}
-
-.dark .reader-group-list a:hover {
-  color: #fff;
-  text-decoration-color: #525252;
 }
 
 .dark :focus-visible {
