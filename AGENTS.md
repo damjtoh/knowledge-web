@@ -14,6 +14,11 @@ Use the five canonical triage roles. See `docs/agents/triage-labels.md`.
 This is a single-context repository. Read the canonical vocabulary and
 relevant ADRs before work. See `docs/agents/domain.md`.
 
+### Styling
+
+Before UI styling work, read `docs/agents/styling-ownership.md` for
+scoped-CSS ownership scopes and exceptions.
+
 ### Testing
 
 Read `docs/agents/testing.md` before adding, modifying, or removing tests.
