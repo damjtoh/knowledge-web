@@ -97,8 +97,12 @@ interface TreeState {
  * navigation tree in metadata order. A folder keeps two separate controls:
  * its name is a plain anchor to its own page and a disclosure hit target
  * at the row's right edge expands children without navigating (collapsed
- * rows reveal a chevron-right there on hover or focus; expanded rows
- * leave it empty).
+ * rows reveal a chevron-right there on hover or focus via group-hover and
+ * group-focus-within opacity utilities; expanded rows leave it empty).
+ * Row, link, label, toggle, indent, washes, and containment live in JSX
+ * utilities; hooks stay as non-visual DOM/test selectors. The open-row
+ * wash lives on the row (bg-border) with the link forced transparent by
+ * scoped CSS so exactly one wash layer paints in dark mode.
  * The row itself shows only a leading cue plus label: the folder icon when
  * collapsed, a chevron-down when expanded.
  */
@@ -114,14 +118,22 @@ function TreeNode({ node, state }: { node: NavigationNode; state: TreeState }) {
   const LeadingIcon = node.isFolder ? (open ? ChevronDown : Folder) : File
 
   const labelClassName = node.isFolder
-    ? `reader-tree-label text-13 ${open ? "font-semibold" : "font-medium"} text-primary`
-    : "reader-tree-label text-xs font-normal text-muted-foreground truncate"
+    ? `reader-tree-label text-13 min-w-0 flex-1 wrap-break-word leading-snug ${open ? "font-semibold" : "font-medium"} text-primary`
+    : "reader-tree-label text-xs min-w-0 flex-1 wrap-break-word leading-snug font-normal text-muted-foreground truncate"
 
   const [visibleCount, setVisibleCount] = useState(INITIAL_WINDOW)
 
   useEffect(() => {
     if (!open) setVisibleCount(INITIAL_WINDOW)
   }, [open])
+
+  const linkClassName = open
+    ? isActive
+      ? "is-active min-h-11 w-auto min-w-0 flex-1 gap-2 rounded-md bg-transparent px-3 py-2.5 no-underline wrap-break-word hover:bg-transparent data-active:bg-transparent"
+      : "min-h-11 w-auto min-w-0 flex-1 gap-2 rounded-md bg-transparent px-3 py-2.5 no-underline wrap-break-word hover:bg-transparent data-active:bg-transparent"
+    : isActive
+      ? "is-active min-h-11 w-auto min-w-0 flex-1 gap-2 rounded-md bg-border px-3 py-2.5 no-underline wrap-break-word hover:bg-muted data-active:bg-border"
+      : "min-h-11 w-auto min-w-0 flex-1 gap-2 rounded-md px-3 py-2.5 no-underline wrap-break-word hover:bg-muted"
 
   const link = (
     <SidebarMenuButton
@@ -135,7 +147,7 @@ function TreeNode({ node, state }: { node: NavigationNode; state: TreeState }) {
         />
       }
       isActive={isActive}
-      className={isActive ? "is-active rounded-md bg-border" : "rounded-md"}
+      className={linkClassName}
     >
       <LeadingIcon aria-hidden="true" className="size-3.5 text-muted-foreground" />
       <span className={labelClassName}>{node.title}</span>
@@ -144,8 +156,10 @@ function TreeNode({ node, state }: { node: NavigationNode; state: TreeState }) {
 
   if (!node.isFolder || node.children.length === 0) {
     return (
-      <SidebarMenuItem data-tree-url={node.url}>
-        <div className="reader-tree-row">{link}</div>
+      <SidebarMenuItem data-tree-url={node.url} className="min-w-0 max-w-full">
+        <div className="reader-tree-row group flex min-w-0 max-w-full items-stretch gap-1 rounded-md">
+          {link}
+        </div>
       </SidebarMenuItem>
     )
   }
@@ -155,26 +169,35 @@ function TreeNode({ node, state }: { node: NavigationNode; state: TreeState }) {
   const hidden = total - visible.length
 
   return (
-    <SidebarMenuItem data-tree-url={node.url}>
+    <SidebarMenuItem data-tree-url={node.url} className="min-w-0 max-w-full">
       <Collapsible
-        className="reader-tree-collapsible"
+        className="reader-tree-collapsible min-w-0 max-w-full"
         open={open}
         onOpenChange={(next) => state.setOpen(node.url, next)}
       >
-        <div className={open ? "reader-tree-row reader-tree-open" : "reader-tree-row"}>
+        <div
+          className={
+            open
+              ? "reader-tree-row reader-tree-open group flex min-w-0 max-w-full items-stretch gap-1 rounded-md bg-border"
+              : "reader-tree-row group flex min-w-0 max-w-full items-stretch gap-1 rounded-md"
+          }
+        >
           {link}
           <CollapsibleTrigger
-            className="reader-tree-toggle"
+            className="reader-tree-toggle flex min-h-11 w-6 shrink-0 cursor-pointer items-center justify-center self-stretch rounded-md border border-transparent bg-transparent p-0"
             aria-label={open ? `Collapse ${node.title}` : `Expand ${node.title}`}
           >
             {open ? null : (
-              <ChevronRight aria-hidden="true" className="size-3.5 text-muted-foreground" />
+              <ChevronRight
+                aria-hidden="true"
+                className="size-3.5 text-muted-foreground opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
+              />
             )}
           </CollapsibleTrigger>
         </div>
         <CollapsibleContent keepMounted className="reader-tree-panel">
-          <div className="pl-3.5">
-            <SidebarMenuSub className="reader-tree-children gap-0.5 border-l border-border py-1 pl-2.5">
+          <div className="min-w-0 max-w-full pl-3.5 max-md:pl-2.5">
+            <SidebarMenuSub className="reader-tree-children max-w-full min-w-0 gap-0.5 border-l border-border py-1 pl-2.5">
               {visible.map((child) => (
                 <TreeNode key={child.url} node={child} state={state} />
               ))}
@@ -310,11 +333,11 @@ export default function Sidebar({ roots }: { roots: NavigationNode[] }) {
   }
 
   return (
-    <nav aria-label="Published sections" className="reader-sidebar-nav">
+    <nav aria-label="Published sections" className="reader-sidebar-nav min-w-0 max-w-full">
       <SidebarGroupLabel className="text-2xs font-semibold tracking-label text-muted-foreground">
         Published
       </SidebarGroupLabel>
-      <SidebarMenu className="reader-tree">
+      <SidebarMenu className="reader-tree m-0 max-w-full min-w-0 list-none gap-1 p-0">
         {roots.map((root) => (
           <TreeNode key={root.url} node={root} state={state} />
         ))}

@@ -53,12 +53,36 @@ const config: OxlintConfig = {
           {
             contracts: [
               // Touch-target styling must live on the trigger button itself;
-              // a wrapper would break focus and the 44px touch target.
-              { pattern: "^CollapsibleTrigger$", allow: ["reader-tree-toggle"] },
-              // Branch hook carries only min-width containment; moving it to
-              // the parent <li> would break the browser-test selector
-              // li > .reader-tree-collapsible > .reader-tree-panel.
-              { pattern: "^Collapsible$", allow: ["reader-tree-collapsible"] },
+              // a wrapper would break focus and the 44px touch target. The
+              // toggle owns its hit area, centering, and transparent
+              // surface in utilities; the caret reveal uses group-hover and
+              // group-focus-within opacity on the icon.
+              {
+                pattern: "^CollapsibleTrigger$",
+                allow: [
+                  "reader-tree-toggle",
+                  "flex",
+                  "min-h-11",
+                  "w-6",
+                  "shrink-0",
+                  "cursor-pointer",
+                  "items-center",
+                  "justify-center",
+                  "self-stretch",
+                  "rounded-md",
+                  "border",
+                  "border-transparent",
+                  "bg-transparent",
+                  "p-0",
+                ],
+              },
+              // Branch hook carries containment; moving it to the parent
+              // <li> would break the browser-test selector li >
+              // .reader-tree-collapsible > .reader-tree-panel.
+              {
+                pattern: "^Collapsible$",
+                allow: ["reader-tree-collapsible", "min-w-0", "max-w-full"],
+              },
               // Panel hook is a DOM selector only (no CSS declared); it must
               // stay on the collapsible content element.
               { pattern: "^CollapsibleContent$", allow: ["reader-tree-panel"] },
@@ -93,14 +117,31 @@ const config: OxlintConfig = {
               // Registry sidebar-11 tree hooks: published root order and
               // active cues must stay on the menu elements the browser
               // journeys query; wrappers would break
-              // .reader-sidebar-nav > ul > li and active selectors.
+              // .reader-sidebar-nav > ul > li and active selectors. Utilities
+              // own list reset, gaps, touch floors, washes, wrapping, and
+              // containment; hooks stay as non-visual selectors.
               {
                 pattern: "^SidebarMenu$",
-                allow: ["reader-tree", "reader-projection-switcher", "gap-1"],
+                allow: [
+                  "reader-tree",
+                  "reader-projection-switcher",
+                  "gap-1",
+                  "mb-1",
+                  "m-0",
+                  "list-none",
+                  "p-0",
+                  "min-w-0",
+                  "max-w-full",
+                ],
               },
+              // Tree list items keep containment so one unbroken label never
+              // forces its branch wider than the sidebar or mobile sheet.
+              { pattern: "^SidebarMenuItem$", allow: ["min-w-0", "max-w-full"] },
               // Published tree children indent and guide must stay on the
               // menu sub itself; a wrapper would break the
               // li > .reader-tree-collapsible > .reader-tree-panel selector.
+              // Utilities own the guide, spacing, wrapping, and containment;
+              // the responsive indent lives on the branch wrapper.
               {
                 pattern: "^SidebarMenuSub$",
                 allow: [
@@ -110,6 +151,8 @@ const config: OxlintConfig = {
                   "border-border",
                   "py-1",
                   "pl-2.5",
+                  "min-w-0",
+                  "max-w-full",
                 ],
               },
               // Published section label owns its muted 11px/600/0.6px
@@ -122,6 +165,11 @@ const config: OxlintConfig = {
               // a wrapper would break focus return and the 44px touch target.
               // The tree selected wash lives on the button with the active
               // hook so folder and note rows share one active-row element.
+              // Utilities own touch floors, padding, wrapping, containment,
+              // and washes: bg-border with data-active:bg-border beats the
+              // primitive data-active wash, while open rows use transparent
+              // washes (plus the unlayered open-row rule for the dark
+              // two-tone stack).
               {
                 pattern: "^SidebarMenuButton$",
                 allow: [
@@ -133,12 +181,24 @@ const config: OxlintConfig = {
                   "rounded-md",
                   "px-2.5",
                   "py-2",
+                  "px-3",
+                  "py-2.5",
                   "gap-2",
                   "bg-border",
+                  "bg-transparent",
                   "min-h-11",
+                  "min-w-0",
+                  "max-w-full",
+                  "flex-1",
                   "w-full",
+                  "w-auto",
                   "justify-start",
+                  "no-underline",
+                  "wrap-break-word",
                   "hover:bg-muted",
+                  "hover:bg-transparent",
+                  "data-active:bg-border",
+                  "data-active:bg-transparent",
                 ],
               },
               // Desktop top chrome owns its header spacing from design.pen:
@@ -154,17 +214,31 @@ const config: OxlintConfig = {
               },
               // Projection switcher trigger owns its hook through the
               // dropdown trigger render composition; the menu button has
-              // no other wrapper that can own it.
-              { pattern: "^DropdownMenuTrigger$", allow: ["reader-projection-trigger"] },
+              // no other wrapper that can own it. The 44px floor lives on
+              // the trigger itself to keep the touch target.
+              {
+                pattern: "^DropdownMenuTrigger$",
+                allow: ["reader-projection-trigger", "min-h-11"],
+              },
               // Projection menu width must stay on the dropdown popup: the
-              // menu renders in a portal with no wrapper DOM.
-              { pattern: "^DropdownMenuContent$", allow: ["reader-projection-menu"] },
-              // Projection choices carry only readable long-name wrapping;
-              // the DropdownMenu primitive owns the menu surface and the
-              // anchors must stay on the menu items.
+              // menu renders in a portal with no wrapper DOM. Min-width
+              // lives as min-w-48 in utilities; only the viewport-relative
+              // max-width stays in scoped CSS (bracket values are banned).
+              {
+                pattern: "^DropdownMenuContent$",
+                allow: ["reader-projection-menu", "min-w-48"],
+              },
+              // Projection choices carry readable long-name wrapping plus
+              // containment; the DropdownMenu primitive owns the menu
+              // surface and the anchors must stay on the menu items.
               {
                 pattern: "^DropdownMenuItem$",
-                allow: ["reader-projection-current", "reader-projection-choice"],
+                allow: [
+                  "reader-projection-current",
+                  "reader-projection-choice",
+                  "min-w-0",
+                  "wrap-break-word",
+                ],
               },
               // Registry shell layout: trigger owns the design inset-header
               // treatment (bordered 28px square) plus its sample offset and
@@ -326,12 +400,30 @@ const config: OxlintConfig = {
         // allow-listed by exact name so no other unknown class passes.
         // Home card hooks stay for the browser journeys after their
         // visuals move to utilities; only the responsive column track
-        // and the plain-card prose override keep scoped CSS.
+        // and the plain-card prose override keep scoped CSS. Tree,
+        // navigation, and projection hooks stay after their visuals move
+        // to utilities; only the menu max-width and the open-row
+        // transparent wash keep scoped CSS.
         "shadcn/no-unknown-classes": [
           "error",
           {
             allow: [
               "reader-tree-panel",
+              "is-active",
+              "reader-tree",
+              "reader-tree-children",
+              "reader-tree-collapsible",
+              "reader-tree-row",
+              "reader-tree-open",
+              "reader-tree-toggle",
+              "reader-sidebar-nav",
+              "reader-projection-switcher",
+              "reader-projection-trigger",
+              "reader-projection-menu",
+              "reader-projection-current",
+              "reader-projection-choice",
+              "reader-projection-link",
+              "reader-projection-name",
               "reader-offline-cue",
               "reader-offline-remove-error",
               "reader-tree-label",

@@ -65,186 +65,37 @@ body {
    navigation is the registry mobile sidebar sheet; no inline phone
    panel remains in the reading column. */
 
-/* Sidebar header brand: current Web Projection name in the registry
-   SidebarHeader. Home and Search use registry SidebarMenuButton with
-   reader hooks for labels. */
-.reader-sidebar-brand {
-  overflow-wrap: anywhere;
-  min-width: 0;
-}
-
-/**
- * Projection switcher: registry SidebarMenuButton trigger plus registry
- * DropdownMenu choices. The trigger shows the current Web Projection even
- * when no destinations are declared; each declared destination is an
- * ordinary cross-origin anchor. Long projection names wrap instead of
- * pushing the sidebar wider.
- */
-.reader-projection-switcher {
-  margin-bottom: 0.25rem;
-}
-
-.reader-projection-trigger {
-  min-height: 44px;
-}
-
-.reader-projection-name {
-  flex: 1 1 auto;
-  min-width: 0;
-  max-width: 100%;
-  text-align: left;
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-
+/* Sidebar header brand and projection switcher: utilities on
+   projection-switcher.tsx own trigger, brand, name, and choice visuals
+   (44px floor, truncate, wrapping, containment). Hooks stay as non-visual
+   DOM/test selectors. Two scoped rules remain: the menu max-width needs
+   min(16rem, calc(100vw - 2rem)) which shadcn/no-arbitrary-values bans as
+   max-w-[...] on the portal popup, and the open-row link must stay
+   transparent so exactly one wash layer paints (dark --border is
+   translucent, so a link-level wash would stack to a two-tone patch). */
 .reader-projection-menu {
-  min-width: 12rem;
   max-width: min(16rem, calc(100vw - 2rem));
 }
 
-.reader-projection-current,
-.reader-projection-choice {
-  overflow-wrap: anywhere;
-}
-
-.reader-projection-link {
-  overflow-wrap: anywhere;
-}
-
-/* Sidebar links: pinned hooks the tree journeys query (ul/a/hover/active). */
-.reader-sidebar-nav ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 0.25rem;
-}
-
-.reader-sidebar-nav a {
-  display: flex;
-  align-items: center;
-  padding: 0.65rem 0.75rem;
-  min-height: 44px;
-  line-height: 1.4;
-  font-size: 0.95rem;
-  text-decoration: none;
-  color: #404040;
-  border-radius: 6px;
-  overflow-wrap: break-word;
-}
-
-.reader-sidebar-nav a:hover {
-  background: #f5f5f5;
-  color: #171717;
-}
-
-.reader-sidebar-nav a.is-active {
-  font-weight: 600;
-  color: var(--primary);
-  background: var(--border);
-}
-
-/* Folder-and-note tree: nested branches under each published root keep
-   the sidebar link style. Root order follows generated metadata and
-   child order follows the navigation tree. Each folder row holds its
-   page link plus a glyph-free disclosure hit target at the row's right
-   edge, so visiting a folder never collides with expanding it. */
-.reader-tree,
-.reader-tree-children {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 0.25rem;
-  min-width: 0;
-}
-
-.reader-tree-children {
-  margin-top: 0.25rem;
-  padding-left: 0.85rem;
-  border-left: 1px solid #e5e5e5;
-  min-width: 0;
-}
-
-.reader-tree-collapsible {
-  min-width: 0;
-}
-
-/* Grid items default to min-width auto, which lets one unbroken
-   single-line label force its whole branch wider than the sidebar or
-   mobile sheet. Zeroing it keeps every branch inside its container so labels
-   truncate instead of overflowing. */
-.reader-tree > li,
-.reader-tree-children > li {
-  min-width: 0;
-}
-
-.reader-tree-row {
-  display: flex;
-  align-items: stretch;
-  gap: 0.25rem;
-  min-width: 0;
-}
-
-/* Expanded folder header wash: full-row $--border fill with 6px radius,
-   matching the design's active row. The row container paints so the wash
-   covers the link plus the trailing toggle zone. The link inside an open
-   row stays transparent at rest and on hover so exactly one wash layer
-   paints (dark --border is translucent, so a link-level wash would stack
-   to a two-tone patch). Non-open a.is-active rows keep their own wash. */
-.reader-tree-row.reader-tree-open {
-  background: var(--border);
-  border-radius: 6px;
-}
-
+/* Expanded folder header wash: the row container paints so the wash covers
+   the link plus the trailing toggle zone. The link inside an open row stays
+   transparent at rest and on hover so exactly one wash layer paints. This
+   stays unlayered so it beats the layered SidebarMenuButton
+   data-active/hover washes from the registry primitive. Non-open
+   a.is-active rows keep their own bg-border wash from utilities. */
 .reader-sidebar-nav .reader-tree-row.reader-tree-open a,
 .reader-sidebar-nav .reader-tree-row.reader-tree-open a:hover {
   background: transparent;
 }
 
-.reader-tree-row a {
-  flex: 1 1 auto;
-  min-width: 0;
-  width: auto;
-  overflow-wrap: anywhere;
-}
-
-.reader-tree-label {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-/* Disclosure hit target at the row's right edge: a separate
-   flex sibling of the page link, so label clicks navigate while right-edge
-   clicks expand or collapse. Collapsed rows hold a chevron-right glyph
-   that stays hidden until row hover or focus; expanded rows keep the
-   slot empty (their caret leads). Stretch keeps the 44px touch target
-   the journeys assert. */
-.reader-tree-toggle {
-  flex-shrink: 0;
-  align-self: stretch;
-  width: 1.5rem;
-  min-height: 44px;
-  padding: 0;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-/* Collapsed-row hover caret: the chevron-right glyph stays in the DOM but
-   hidden at rest, and appears on row hover or keyboard focus. Expanded
-   rows render no svg child, so they keep their empty trailing zone. */
-.reader-tree-toggle svg {
-  opacity: 0;
-  transition: opacity 150ms ease;
-}
-
-.reader-tree-row:hover .reader-tree-toggle svg,
-.reader-tree-row:focus-within .reader-tree-toggle svg {
-  opacity: 1;
-}
+/* Folder-and-note tree: utilities on sidebar.tsx own rows, links, labels,
+   toggle, indent, washes, and containment (flex rows, min-h-11 touch
+   floors, bg-border washes, hover:bg-muted, group-hover caret reveal,
+   min-w-0 containment, wrap-break-word, responsive pl-3.5/max-md:pl-2.5
+   indent, border-border guide with token dark variants). Hooks
+   (reader-sidebar-nav, reader-tree, reader-tree-row, reader-tree-toggle,
+   and kin) stay as non-visual DOM/test selectors; no other scoped rules
+   remain. */
 
 /* Breadcrumb trail: pinned hook the journeys click; descendants reach registry slots. */
 .reader-breadcrumbs {
@@ -678,11 +529,8 @@ body {
 }
 
 @media (max-width: 767px) {
-  /* Narrow screens indent less so deep branches keep readable titles. */
-  .reader-tree-children {
-    padding-left: 0.6rem;
-  }
-
+  /* Phone tree indent lives in utilities (pl-3.5 with max-md:pl-2.5 on the
+     branch wrapper); no scoped rule remains. */
   .reader-article {
     max-width: 100%;
   }
@@ -1048,18 +896,9 @@ body {
   color: #f5f5f5;
 }
 
-.dark .reader-sidebar-nav a {
-  color: #d4d4d4;
-}
-
-.dark .reader-sidebar-nav a:hover {
-  background: #262626;
-  color: #fafafa;
-}
-
-.dark .reader-tree-children {
-  border-left-color: #262626;
-}
+/* Tree dark variants live in tokens (hover:bg-muted, bg-border washes,
+   border-border guide, text-primary/muted-foreground labels); no scoped
+   dark rules remain. */
 
 .dark .reader-breadcrumbs ol {
   color: #d4d4d4;
