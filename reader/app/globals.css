@@ -825,123 +825,22 @@ body {
 }
 
 /**
- * Search controls and dialog (design screen MnMak).
+ * Search results list height cap plus excerpt highlights (scoped CSS only).
  *
- * Two trigger controls share one dialog: a full-width control above the
- * tree in the desktop sidebar and a compact control in the phone header.
- * Dialog chrome comes from the registry Dialog primitive composed in
- * search-dialog.tsx (max-w-lg for the 512px desktop width with the
- * registry full-width-minus-margins phone fallback, p-4, gap-3 on card
- * fill, row header with gap-2). Type sizes and spacing on the hooked
- * elements below use the scale tokens (14px query and titles, 13px
- * status/states and excerpts, 12px urls and hints, 11px kbd chips,
- * [10,12] input and row padding, 8px row radius) and colors use the
- * grayscale tokens, so both modes adapt without overrides except the
- * excerpt mark. Unlayered declarations keep only what utilities cannot
- * own: the trigger touch floors, list containment, and the data-active
- * wash, which keyboard highlight and hover share.
+ * The list cap uses max-height: min(50vh, 24rem) so short phone viewports
+ * cap the list at half the viewport and the dialog footer stays reachable.
+ * It cannot move to utilities: the scale token max-h-96 covers only the
+ * 24rem half, and shadcn/no-arbitrary-values bans bracket values such as
+ * max-h-[min(50vh,24rem)]. Overflow, reset, and layout stay in utilities
+ * on search-dialog.tsx, so this rule owns only the height cap. The search
+ * index returns excerpt HTML with bare <mark> elements via
+ * dangerouslySetInnerHTML in search-dialog.tsx, so no utility can target
+ * them. Every other trigger, dialog, list, and row visual lives in
+ * utilities on search-dialog.tsx, app-sidebar.tsx, and reader-chrome.tsx.
+ * Tokens adapt to dark mode, so only the mark keeps a dark override.
  */
-.reader-search-trigger {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  min-height: 44px;
-  padding: 0.5rem 0.625rem;
-  font: inherit;
-  color: inherit;
-  background: transparent;
-  border: 0;
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-.reader-search-trigger:hover {
-  background: var(--muted);
-}
-
-.reader-search-sidebar {
-  width: 100%;
-  justify-content: flex-start;
-  padding: 0.5rem 0.625rem;
-}
-
-/* The header Search icon renders at all widths in the desktop inset header. */
-.reader-search-header {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  min-width: 44px;
-}
-
-.reader-search-body {
-  display: grid;
-  gap: 0.75rem;
-}
-
-/* Input chrome (radius, border, fill, type) lives in scale utilities on
-   the element; the touch floor stays here so no utility must own it. */
-.reader-search-input {
-  min-height: 44px;
-}
-
-/* Status and state type/color live in utilities; the spacer floor stays. */
-.reader-search-status {
-  min-height: 1.5em;
-}
-
-/* Hints layout and type live in utilities; the hook keeps a containment
-   anchor so it stays a known selector without owning visuals. */
-.reader-search-hints {
-  min-width: 0;
-}
-
-/* List layout gap lives in utilities; containment and reset stay here. */
 .reader-search-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
   max-height: min(50vh, 24rem);
-  overflow-y: auto;
-}
-
-.reader-search-option {
-  border-radius: 8px;
-}
-
-/* Keyboard highlight and hover share the muted wash. Tokens adapt to
-   dark mode, so no dark override is needed. */
-.reader-search-option[data-active="true"] {
-  background: var(--muted);
-  outline: 2px solid var(--primary);
-  outline-offset: -2px;
-}
-
-.reader-search-option:hover {
-  background: var(--muted);
-}
-
-/* Row padding, inner gap, and layout live in utilities; the touch
-   floor, plain-anchor read, and radius stay here. */
-.reader-search-result {
-  min-height: 44px;
-  text-decoration: none;
-  color: inherit;
-  border-radius: 8px;
-}
-
-/* Row type lives in utilities; long titles wrap instead of overflowing. */
-.reader-search-result-title {
-  overflow-wrap: anywhere;
-}
-
-.reader-search-result-url {
-  overflow-wrap: anywhere;
-}
-
-.reader-search-result-excerpt {
-  overflow-wrap: anywhere;
 }
 
 .reader-search-result-excerpt mark {
@@ -949,16 +848,6 @@ body {
   color: inherit;
   border-radius: 2px;
   padding: 0 1px;
-}
-
-.dark .reader-search-trigger {
-  color: inherit;
-  background: transparent;
-  border-color: transparent;
-}
-
-.dark .reader-search-trigger:hover {
-  background: var(--muted);
 }
 
 .dark .reader-search-result-excerpt mark {

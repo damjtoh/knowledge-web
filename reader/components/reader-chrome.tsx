@@ -166,7 +166,7 @@ export default function ReaderChrome({
                   <OfflineCue />
                   <button
                     type="button"
-                    className="reader-search-trigger reader-search-header"
+                    className="reader-search-trigger reader-search-header inline-flex min-h-11 min-w-11 items-center justify-center rounded-md p-0 hover:bg-muted"
                     aria-label="Search"
                     onClick={(event) => openSearch(event.currentTarget)}
                   >
