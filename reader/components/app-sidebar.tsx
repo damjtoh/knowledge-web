@@ -89,7 +89,7 @@ export function AppSidebar({
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter className="reader-sidebar-footer gap-4 border-t p-4">
+      <SidebarFooter className="reader-sidebar-footer gap-4 border-t border-border p-4 overflow-y-auto">
         <OfflineSave />
         <Separator />
         <AppearanceControl />

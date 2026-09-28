@@ -96,9 +96,11 @@ const config: OxlintConfig = {
               // 8px gap); the header renders no wrapper DOM.
               { pattern: "^DialogHeader$", allow: ["flex-row", "items-center", "gap-2"] },
               // Touch-target sizing must live on the button itself, same as
-              // the tree toggle above. Offline actions share the same
-              // 44px target and the browser journeys query them by hook
-              // class; a wrapper would break activation and selectors.
+              // the tree toggle above. Offline actions own the 44px floor
+              // in utilities (min-h-11, plus min-w-11 on icon-only Remove)
+              // with token hover/dark from the Button primitive; the browser
+              // journeys query them by hook class, so a wrapper would break
+              // activation and selectors.
               {
                 pattern: "^Button$",
                 allow: [
@@ -112,6 +114,8 @@ const config: OxlintConfig = {
                   "px-2.5",
                   "py-1.5",
                   "gap-1.5",
+                  "min-h-11",
+                  "min-w-11",
                 ],
               },
               // Registry sidebar-11 tree hooks: published root order and
@@ -364,16 +368,24 @@ const config: OxlintConfig = {
                 ],
               },
               // Sidebar footer owns offline plus appearance layout
-              // (border, scroll cap, safe-area reachability). The registry
+              // (token border, scroll cap, safe-area reachability). The registry
               // Footer element renders no wrapper DOM, so the hook must
               // stay on the footer itself; a parent would scope the wrong
               // element and break the fixed-footer/tree-scroll split.
-              // Design footer stack adds a top border with padded gaps;
-              // the divider between On Device and Appearance is the
+              // Design footer stack adds a top border-border with padded gaps
+              // plus overflow-y-auto so the 45dvh-capped footer scrolls; the
+              // divider between On Device and Appearance is the
               // registry Separator with no wrapper.
               {
                 pattern: "^SidebarFooter$",
-                allow: ["reader-sidebar-footer", "gap-4", "border-t", "p-4"],
+                allow: [
+                  "reader-sidebar-footer",
+                  "gap-4",
+                  "border-t",
+                  "border-border",
+                  "p-4",
+                  "overflow-y-auto",
+                ],
               },
               // Appearance segmented control owns its muted pill container;
               // the ToggleGroup primitive renders no wrapper DOM, so the
@@ -384,9 +396,10 @@ const config: OxlintConfig = {
               },
               // Appearance options keep the DOM hook for touch sizing plus
               // the pill option layout; the toggle primitive renders the
-              // button itself, so flex and active-state utilities must stay
-              // on the item. Active state uses aria-pressed variants; the
-              // readable names live in screen-reader labels.
+              // button itself, so flex, 44px floors (min-h-11/min-w-11),
+              // and active-state utilities must stay on the item. Active
+              // state uses aria-pressed variants; the readable names live
+              // in screen-reader labels.
               {
                 pattern: "^ToggleGroupItem$",
                 allow: [
@@ -398,6 +411,8 @@ const config: OxlintConfig = {
                   "p-1.5",
                   "justify-center",
                   "text-muted-foreground",
+                  "min-h-11",
+                  "min-w-11",
                   "aria-pressed:bg-card",
                   "aria-pressed:border-border",
                   "aria-pressed:text-primary",
@@ -440,7 +455,10 @@ const config: OxlintConfig = {
         // transparent wash keep scoped CSS. Breadcrumb, group, and
         // other-notes hooks stay after their visuals move to utilities;
         // only the article group plain-anchor override and the
-        // phone-crumb prose override keep scoped CSS.
+        // phone-crumb prose override keep scoped CSS. Offline, appearance,
+        // and footer hooks stay after their visuals move to utilities;
+        // only the footer 45dvh cap keeps scoped CSS (bracket values are
+        // banned).
         "shadcn/no-unknown-classes": [
           "error",
           {
@@ -463,6 +481,19 @@ const config: OxlintConfig = {
               "reader-projection-name",
               "reader-offline-cue",
               "reader-offline-remove-error",
+              "reader-offline",
+              "reader-offline-save",
+              "reader-offline-retry",
+              "reader-offline-reload",
+              "reader-offline-remove",
+              "reader-offline-size",
+              "reader-offline-trust",
+              "reader-offline-status",
+              "reader-offline-ready",
+              "reader-offline-progress",
+              "reader-appearance",
+              "reader-appearance-option",
+              "reader-sidebar-footer",
               "reader-tree-label",
               "reader-sidebar-home",
               "reader-sidebar-brand",

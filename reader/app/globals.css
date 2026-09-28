@@ -537,94 +537,18 @@ body {
 /**
  * Offline save control in the sidebar footer.
  *
- * One explicit action per Web Projection: Save for offline use with its
- * estimated size and trusted-device note, Saving progress, a Ready offline
- * state only after the whole export is cached, an explicit Remove offline
- * copy action, and an incomplete state with retry. The registry
- * SidebarFooter renders on desktop and inside the mobile sheet from one
- * mounted state. Surfaces stay grayscale
- * only, with dark variants matching the reader shell. Controls keep the
- * 44px touch target used by navigation.
+ * Utilities on offline-save.tsx own container, actions, status, sizing,
+ * hover/dark/focus/touch and wrapping (grid gap-2 with min/max
+ * containment, registry Button pills with min-h-11 floors plus token
+ * hover/dark/focus, text-sm muted with text-primary font-semibold on
+ * ready plus wrap-break-word, progress
+ * w-full h-3 max-w-96). The registry SidebarFooter renders on desktop and
+ * inside the mobile sheet from one mounted state. Copy keeps one explicit
+ * action per Web Projection: Save with estimated size and trusted-device
+ * note, Saving progress, Ready only after the whole export is cached,
+ * named Remove, and incomplete with retry. Hooks stay as non-visual
+ * DOM/test selectors; no scoped rules remain here.
  */
-.reader-offline {
-  display: grid;
-  gap: 0.5rem;
-  margin-top: 0.75rem;
-  max-width: 68ch;
-}
-
-.reader-offline-save,
-.reader-offline-retry,
-.reader-offline-reload,
-.reader-offline-remove {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 44px;
-  padding: 0.5rem 1rem;
-  font: inherit;
-  font-weight: 600;
-  color: #171717;
-  background: #fff;
-  border: 1px solid #d4d4d4;
-  border-radius: 8px;
-  cursor: pointer;
-  justify-self: start;
-}
-
-.reader-offline-save:hover,
-.reader-offline-retry:hover,
-.reader-offline-reload:hover,
-.reader-offline-remove:hover {
-  background: #f5f5f5;
-}
-
-.reader-offline-size,
-.reader-offline-trust,
-.reader-offline-status,
-.reader-offline-ready {
-  margin: 0;
-  font-size: 0.9rem;
-  color: #525252;
-  overflow-wrap: anywhere;
-}
-
-.reader-offline-ready {
-  color: #171717;
-  font-weight: 600;
-}
-
-.reader-offline-progress {
-  width: 100%;
-  max-width: 24rem;
-  height: 0.75rem;
-}
-
-.dark .reader-offline-save,
-.dark .reader-offline-retry,
-.dark .reader-offline-reload,
-.dark .reader-offline-remove {
-  color: #fafafa;
-  background: #171717;
-  border-color: #404040;
-}
-
-.dark .reader-offline-save:hover,
-.dark .reader-offline-retry:hover,
-.dark .reader-offline-reload:hover,
-.dark .reader-offline-remove:hover {
-  background: #262626;
-}
-
-.dark .reader-offline-size,
-.dark .reader-offline-trust,
-.dark .reader-offline-status {
-  color: #d4d4d4;
-}
-
-.dark .reader-offline-ready {
-  color: #fafafa;
-}
 
 /*---break---
  */
@@ -780,31 +704,19 @@ body {
 }
 
 /**
- * Appearance control (shadcn Button group) and dark surfaces.
+ * Appearance control (registry ToggleGroup pills) and dark surfaces.
  *
- * The control lives in the sidebar footer. Options
- * keep the 44px touch target and visible focus used by navigation. Dark surfaces stay grayscale only: near-black page, raised
- * cards, muted text, and borders that keep article, navigation, code,
- * tables, and interaction states readable.
+ * Utilities on appearance-control.tsx own the control visuals (flex-col
+ * gap-2 with min/max containment and w-full, muted pill container, flex-1
+ * pills with min-h-11/min-w-11 touch floors and aria-pressed token
+ * washes). The Toggle primitives own hover/focus/dark interaction and the
+ * global :focus-visible outline covers keyboard focus, so no per-option
+ * focus rule remains here. Hooks stay as non-visual DOM/test selectors.
+ * Dark page surface below stays as justified global (no TSX hosts it).
+ * Dark surfaces stay grayscale only: near-black page, raised cards, muted
+ * text, and borders that keep article, navigation, code, tables, and
+ * interaction states readable.
  */
-
-.reader-appearance {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  min-width: 0;
-  max-width: 100%;
-}
-
-.reader-appearance-option {
-  min-height: 44px;
-  min-width: 44px;
-}
-
-.reader-appearance-option:focus-visible {
-  outline: 2px solid #171717;
-  outline-offset: 2px;
-}
 
 .dark body {
   background: #0a0a0a;
@@ -910,41 +822,19 @@ body {
   outline-color: #fafafa;
 }
 
-.dark .reader-appearance-option:focus-visible {
-  outline-color: #fafafa;
-}
-
 /**
  * Sidebar footer owns offline plus appearance.
  *
- * The registry SidebarFooter holds the same Appearance group and
- * detailed offline actions on desktop and inside the mobile sheet from
- * one mounted state. The footer stays fixed while the tree scrolls: the
- * sidebar content owns its scroll, the footer keeps its own cap so short
- * viewports keep controls reachable. The closed-phone header cue is
- * phone-only and display-only.
+ * Utilities on app-sidebar.tsx own footer layout (SidebarFooter gap-4
+ * border-t border-border p-4 with overflow-y-auto so the capped footer
+ * scrolls). Tokens flip the border in dark mode, so no dark override
+ * remains. One scoped rule stays: the 45dvh cap keeps controls reachable
+ * on short viewports while the tree scrolls independently. It cannot move
+ * to utilities because shadcn/no-arbitrary-values bans bracket values
+ * such as max-h-[45dvh]. Offline container and appearance wrapping live in
+ * their own utilities, so no footer-descendant overrides remain. The
+ * closed-phone header cue is phone-only and display-only.
  */
 .reader-sidebar-footer {
-  border-top: 1px solid #e5e5e5;
   max-height: 45dvh;
-  overflow-y: auto;
-}
-
-.reader-sidebar-footer .reader-offline {
-  margin-top: 0;
-  max-width: 100%;
-}
-
-.reader-sidebar-footer .reader-appearance {
-  flex-wrap: wrap;
-}
-
-.dark .reader-sidebar-footer {
-  border-top-color: #262626;
-}
-
-@media (max-width: 767px) {
-  .reader-appearance-option span {
-    font-size: 0.8rem;
-  }
 }
