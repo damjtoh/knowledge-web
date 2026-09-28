@@ -193,18 +193,23 @@ const config: OxlintConfig = {
                 allow: ["text-13", "font-semibold"],
               },
               // Home root cards use the registry Card surface (not a
-              // hand-written CSS card). Hook classes carry only readable
-              // long-title wrapping and folder/note meta layout; the Card
-              // primitive owns the surface and there is no wrapper that can
-              // own them without breaking the card composition. The phone
-              // row (mobile port home-phone) reuses the same Card surface:
-              // max-md utilities switch padding and row layout below 768px,
-              // the desktop header hides there, and the phone-only row uses
-              // the slots below with token colors and scale type sizes.
+              // hand-written CSS card). Utilities on page.tsx own list,
+              // link, row, title, and meta visuals; scoped CSS keeps only
+              // the responsive column track (bracket values are banned)
+              // and the plain-card override against the unlayered
+              // article-link rule. Hooks stay as non-visual test selectors.
+              // The phone row (mobile port home-phone) reuses the same Card
+              // surface: max-md utilities switch padding and row layout
+              // below 768px, the desktop header hides there, and the
+              // phone-only row uses the slots below with token colors and
+              // scale type sizes.
               {
                 pattern: "^Card$",
                 allow: [
                   "reader-home-card",
+                  "h-full",
+                  "max-w-full",
+                  "min-w-0",
                   "max-md:flex-row",
                   "max-md:items-center",
                   "max-md:gap-3",
@@ -213,21 +218,37 @@ const config: OxlintConfig = {
               },
               {
                 pattern: "^CardHeader$",
-                allow: ["reader-home-card-header", "max-md:hidden"],
+                allow: ["reader-home-card-header", "max-w-full", "min-w-0", "max-md:hidden"],
               },
               // Phone-only home card row reuses the registry title and
               // description slots without the desktop hook classes (hooks
               // stay unique per card for the desktop selectors), carrying
               // the phone title and count-only meta type sizes. The desktop
-              // D3O3k6 row adds the 11px count-only meta token below.
+              // D3O3k6 row adds the 11px count-only meta token below, with
+              // containment and hover utilities owning the title/meta read.
               {
                 pattern: "^CardTitle$",
-                allow: ["reader-home-card-title", "truncate", "text-sm", "font-semibold"],
+                allow: [
+                  "reader-home-card-title",
+                  "max-w-full",
+                  "min-w-0",
+                  "wrap-break-word",
+                  "group-hover:underline",
+                  "group-hover:decoration-ring",
+                  "group-hover:underline-offset-3",
+                  "dark:group-hover:decoration-chart-3",
+                  "truncate",
+                  "text-sm",
+                  "font-semibold",
+                ],
               },
               {
                 pattern: "^CardDescription$",
                 allow: [
                   "reader-home-card-meta",
+                  "max-w-full",
+                  "min-w-0",
+                  "wrap-break-word",
                   "truncate",
                   "text-xs",
                   "text-2xs",
@@ -303,6 +324,9 @@ const config: OxlintConfig = {
         "shadcn/no-inline-styles": "error",
         // Hook classes with no declared CSS, kept as DOM/test selectors:
         // allow-listed by exact name so no other unknown class passes.
+        // Home card hooks stay for the browser journeys after their
+        // visuals move to utilities; only the responsive column track
+        // and the plain-card prose override keep scoped CSS.
         "shadcn/no-unknown-classes": [
           "error",
           {
@@ -330,6 +354,13 @@ const config: OxlintConfig = {
               "reader-search-result-title",
               "reader-search-result-url",
               "reader-search-result-excerpt",
+              "reader-home-cards",
+              "reader-home-card-item",
+              "reader-home-card",
+              "reader-home-card-header",
+              "reader-home-card-row",
+              "reader-home-card-title",
+              "reader-home-card-meta",
             ],
           },
         ],

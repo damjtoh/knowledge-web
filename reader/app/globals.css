@@ -564,45 +564,18 @@ body {
 /**
  * Home root cards: one responsive registry Card per published root.
  *
- * The grid fits desktop and phone widths: cards share a row when room
- * allows and stack to one column on narrow viewports. The Card primitive
- * owns the card surface; these classes only give the list responsive
- * shape, keep the whole card a usable static link, and keep long titles
- * and folder/note meta readable without horizontal overflow.
+ * Utilities on page.tsx own list reset, spacing, grid display, gaps,
+ * link touch targets, rows, titles, and meta. Two scoped rules remain:
+ * the responsive column track cannot move to utilities because
+ * shadcn/no-arbitrary-values bans bracket values such as
+ * grid-cols-[repeat(auto-fill,minmax(min(100%,15rem),1fr))], and the
+ * plain-card read needs an unlayered .reader-article override because
+ * the unlayered .reader-article a rule beats the layered no-underline
+ * utility. Hover underline, dark variants, and containment live in
+ * utilities on page.tsx.
  */
 .reader-area-list {
-  list-style: none;
-  margin: 1.5rem 0 0;
-  padding: 0;
-  display: grid;
-  gap: 0.75rem;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
-  max-width: 100%;
-  min-width: 0;
-}
-
-.reader-area-list > li {
-  min-width: 0;
-  max-width: 100%;
-}
-
-.reader-home-cards {
-  min-width: 0;
-}
-
-.reader-home-card-item {
-  min-width: 0;
-  max-width: 100%;
-}
-
-.reader-home-card-link {
-  display: block;
-  height: 100%;
-  min-height: 44px;
-  min-width: 0;
-  max-width: 100%;
-  text-decoration: none;
-  color: inherit;
 }
 
 /* Home cards are navigation rows, not prose links: the design keeps
@@ -611,55 +584,6 @@ body {
    so this exception must match it. */
 .reader-article .reader-home-card-link {
   text-decoration: none;
-}
-
-.reader-home-card-link:hover .reader-home-card-title {
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  text-decoration-color: #a3a3a3;
-}
-
-.reader-home-card {
-  height: 100%;
-  min-width: 0;
-  max-width: 100%;
-}
-
-.reader-home-card-header {
-  min-width: 0;
-  max-width: 100%;
-}
-
-/**
- * Desktop home card row (design D3O3k6 "Vault Area Row / Desktop"): 40px
- * muted icon box, stacked title plus count-only meta, and a trailing Open
- * plus chevron with 12px gaps. Icon, title, meta, and trailing sizes live
- * in utilities on the markup (the unlayered svg rule that sized the old
- * bare icon is gone: it would beat the size-4.5 utility). Padding 16
- * comes from the registry Card/CardHeader tokens, so no padding lives
- * here.
- */
-.reader-home-card-row {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  min-width: 0;
-  max-width: 100%;
-}
-
-.reader-home-card-title {
-  flex: 1 1 auto;
-  min-width: 0;
-  max-width: 100%;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
-
-.reader-home-card-meta {
-  min-width: 0;
-  max-width: 100%;
-  overflow-wrap: anywhere;
-  word-break: break-word;
 }
 
 /* Sibling/group sections: pinned hooks shared by folder pages and OtherNotes; rows keep the plain-anchor read. */
@@ -813,14 +737,6 @@ body {
 
   .reader-article h3 {
     font-size: 1.05rem;
-  }
-
-  /* Phone home card list keeps the 12px card gap from the base grid and
-     takes the 16px top gap before the list from design screen I1z3qM.
-     Same cascade note as the shell padding above: a max-md:mt-4 utility
-     would lose to the unlayered .reader-area-list margin. */
-  .reader-home-cards {
-    margin-top: 1rem;
   }
 }
 
@@ -1217,10 +1133,6 @@ body {
 
 .dark .reader-article input[type="checkbox"] {
   accent-color: #d4d4d4;
-}
-
-.dark .reader-home-card-link:hover .reader-home-card-title {
-  text-decoration-color: #525252;
 }
 
 .dark .reader-group {

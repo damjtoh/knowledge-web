@@ -86,16 +86,16 @@ export default async function HomePage() {
         </>
       )}
       {cards.length > 0 ? (
-        <ul className="reader-area-list reader-home-cards">
+        <ul className="reader-area-list reader-home-cards m-0 mt-6 grid max-w-full min-w-0 list-none gap-3 p-0 max-md:mt-4">
           {cards.map((root) => {
             const Icon = root.isFolder ? Folder : File
             const count = childCountText(root)
 
             return (
-              <li key={root.url} className="reader-home-card-item">
+              <li key={root.url} className="reader-home-card-item max-w-full min-w-0">
                 <a
                   href={root.url}
-                  className="reader-home-card-link"
+                  className="reader-home-card-link group block h-full max-w-full min-h-11 min-w-0 text-inherit no-underline"
                   data-kind={root.isFolder ? "folder" : "note"}
                 >
                   {/* Desktop card follows design D3O3k6 "Vault Area Row /
@@ -104,20 +104,26 @@ export default async function HomePage() {
                       Padding 16 comes from the registry Card/CardHeader
                       tokens (no p-4: it would double the header inset); the
                       title stays 16px via the CardTitle default (no 15px
-                      scale token exists). The phone row below is unchanged
+                      scale token exists). Utilities own list, link, row,
+                      title, and meta visuals; scoped CSS keeps only the
+                      responsive column track (bracket values are banned)
+                      and the plain-card override against the unlayered
+                      article-link rule. The phone row below is unchanged
                       (36px box, 14px title, count-only 12px meta, chevron).
                       Note roots carry no count, so the desktop meta omits
                       itself there instead of guessing. */}
-                  <Card className="reader-home-card max-md:flex-row max-md:items-center max-md:gap-3 max-md:p-3">
-                    <CardHeader className="reader-home-card-header max-md:hidden">
-                      <span className="reader-home-card-row">
+                  <Card className="reader-home-card h-full max-w-full min-w-0 max-md:flex-row max-md:items-center max-md:gap-3 max-md:p-3">
+                    <CardHeader className="reader-home-card-header max-w-full min-w-0 max-md:hidden">
+                      <span className="reader-home-card-row flex max-w-full min-w-0 items-center gap-3">
                         <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted">
                           <Icon aria-hidden="true" className="size-4.5" />
                         </span>
                         <span className="grid min-w-0 flex-1 gap-0.5">
-                          <CardTitle className="reader-home-card-title">{root.title}</CardTitle>
+                          <CardTitle className="reader-home-card-title max-w-full min-w-0 wrap-break-word group-hover:underline group-hover:decoration-ring group-hover:underline-offset-3 dark:group-hover:decoration-chart-3">
+                            {root.title}
+                          </CardTitle>
                           {count ? (
-                            <CardDescription className="reader-home-card-meta text-2xs text-muted-foreground">
+                            <CardDescription className="reader-home-card-meta text-2xs text-muted-foreground max-w-full min-w-0 wrap-break-word">
                               {count}
                             </CardDescription>
                           ) : null}
@@ -131,7 +137,7 @@ export default async function HomePage() {
                         </span>
                       </span>
                     </CardHeader>
-                    <span className="hidden min-w-0 flex-1 items-center gap-3 max-md:flex">
+                    <span className="hidden max-w-full min-w-0 flex-1 items-center gap-3 max-md:flex">
                       <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted">
                         <Icon aria-hidden="true" className="size-4" />
                       </span>
