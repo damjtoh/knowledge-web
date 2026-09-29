@@ -68,7 +68,7 @@ function CloseMobileSidebarOnNavigate() {
  * Control+K share its open state, and closing it returns focus to the
  * control that had focus before it opened.
  */
-export default function ReaderChrome({
+export default function ReaderShell({
   title,
   destinations,
   roots,
@@ -129,7 +129,7 @@ export default function ReaderChrome({
   }, [])
 
   return (
-    <div className="reader-chrome min-h-screen min-w-0 antialiased">
+    <div className="min-h-screen min-w-0 antialiased">
       <AppearanceProvider>
         <OfflineProvider>
           <SidebarProvider>

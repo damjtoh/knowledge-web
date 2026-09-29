@@ -2,7 +2,7 @@ import type { Metadata } from "next"
 import { getSiteMetadata, canonicalUrl } from "../lib/site"
 import { source } from "../lib/source"
 import { buildReaderNavigation, type NavigationNode } from "../lib/navigation"
-import ReaderChrome from "../components/reader-chrome"
+import ReaderShell from "../components/reader-shell"
 import "./globals.css"
 
 const site = getSiteMetadata()
@@ -67,9 +67,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body className="antialiased">
-        <ReaderChrome title={metadata.title} destinations={metadata.destinations} roots={roots}>
+        <ReaderShell title={metadata.title} destinations={metadata.destinations} roots={roots}>
           {children}
-        </ReaderChrome>
+        </ReaderShell>
       </body>
     </html>
   )

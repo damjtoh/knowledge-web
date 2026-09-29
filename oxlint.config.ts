@@ -497,7 +497,6 @@ const config: OxlintConfig = {
               "reader-tree-label",
               "reader-sidebar-home",
               "reader-sidebar-brand",
-              "reader-chrome",
               "reader-header",
               "reader-header-trail",
               "reader-header-actions",

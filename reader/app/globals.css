@@ -11,7 +11,7 @@
  *
  * Desktop sidebar layout comes from registry-installed sidebar-11
  * (SidebarProvider/Sidebar/SidebarInset). Reader shell/header visuals live
- * in Tailwind utilities on reader-chrome.tsx. Compiled Markdown prose lives
+ * in Tailwind utilities on reader-shell.tsx. Compiled Markdown prose lives
  * in the official Typeset stylesheet (./typeset.css, imported above) inside
  * a `typeset` scope; this stylesheet keeps global and library internals plus
  * reading-column layout only; it does not recreate the sidebar primitive
@@ -256,7 +256,7 @@ body {
  * index returns excerpt HTML with bare <mark> elements via
  * dangerouslySetInnerHTML in search-dialog.tsx, so no utility can target
  * them. Every other trigger, dialog, list, and row visual lives in
- * utilities on search-dialog.tsx, app-sidebar.tsx, and reader-chrome.tsx.
+ * utilities on search-dialog.tsx, app-sidebar.tsx, and reader-shell.tsx.
  * Tokens adapt to dark mode, so only the mark keeps a dark override.
  */
 .reader-search-list {
