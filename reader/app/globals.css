@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "./typeset.css";
 /*---break---
  */
 @custom-variant dark (&:is(.dark *));
@@ -10,9 +11,11 @@
  *
  * Desktop sidebar layout comes from registry-installed sidebar-11
  * (SidebarProvider/Sidebar/SidebarInset). Reader shell/header visuals live
- * in Tailwind utilities on reader-chrome.tsx. This stylesheet keeps global
- * and library internals plus generated-markdown styling only; it does not
- * recreate the sidebar primitive with custom CSS.
+ * in Tailwind utilities on reader-chrome.tsx. Compiled Markdown prose lives
+ * in the official Typeset stylesheet (./typeset.css, imported above) inside
+ * a `typeset` scope; this stylesheet keeps global and library internals plus
+ * reading-column layout only; it does not recreate the sidebar primitive
+ * with custom CSS.
  *
  * Palette is neutral grayscale only: white surfaces, neutral-50/100 washes,
  * neutral-200/300 borders, neutral-500/600 muted text, neutral-900 body text.
@@ -106,261 +109,23 @@ body {
    landmarks and aria, so no scoped rules remain here; dark mode follows
    the muted/foreground tokens. */
 
-/* Article prose ownership boundary: generated bare MDX owns the
-   .reader-article element selectors below, layered in components so
-   React-controlled utilities (a higher layer) win where both target the
-   same controlled node. Bare MDX arrives without classes, so no utility
-   can target it and the layered prose still styles it while staying
-   above base/preflight. Controlled home/group/crumb hooks below live in
-   the same layer after the prose so they win over prose by order where
-   no utility covers the state; the home-card plain read stays layered
-   as a lint-pinned hook with no specificity fight. Global
+/* Article layout ownership boundary: compiled Markdown prose is owned by
+   the official Typeset stylesheet (reader/app/typeset.css, imported above)
+   inside a `typeset` scope. This file keeps only reader layout that Typeset
+   must not own: the 68ch measure plus containment so long text wraps inside
+   the reading column. No bare element rules (h1/p/a/table/pre/...) live here;
+   Typeset styles those via :where() so utilities still win. Controlled
+   home/group/crumb hooks below live in the same layer; they sit outside the
+   inner `typeset` scope in the markup so Typeset never styles them. Global
    focus/sidebar/search/footer rules stay unlayered with their own
    justification. */
 @layer components {
-  /* Generated-markup root + bare MDX elements below (h1-h3/p/a/table/img/hr/checkbox): no TSX hosts utilities; dark variants below. */
+  /* Reading-column measure plus containment owned here; Typeset owns type. */
   .reader-article {
     max-width: 68ch;
     margin: 0;
-    line-height: 1.65;
-    font-size: 1rem;
-    color: #262626;
-    overflow-wrap: break-word;
     min-width: 0;
-  }
-
-  .reader-article h1 {
-    font-size: 1.75rem;
-    line-height: 1.2;
-    letter-spacing: -0.02em;
-    color: #171717;
-    margin: 0 0 0.75rem;
-    overflow-wrap: anywhere;
-  }
-
-  .reader-article h2,
-  .reader-article h3 {
-    line-height: 1.35;
-    letter-spacing: -0.01em;
-    color: #171717;
-    margin-top: 2em;
-    margin-bottom: 0.5em;
-    overflow-wrap: anywhere;
-  }
-
-  .reader-article h2 {
-    font-size: 1.3rem;
-    padding-bottom: 0.25rem;
-    border-bottom: 1px solid #e5e5e5;
-  }
-
-  .reader-article h3 {
-    font-size: 1.1rem;
-  }
-
-  .reader-article p,
-  .reader-article ul:not(.reader-area-list):not(.reader-group-list),
-  .reader-article ol:not(.reader-area-list):not(.reader-group-list) {
-    margin-block: 1em;
-  }
-
-  /* Generated-markup hooks live here, not in utilities: MDX body
-   markup (ul/ol/li) arrives without classes, so no utility can target
-   it. Bullets follow design Bullet Row pDRO9: 13px text with a 6px
-   round dot. A native ::marker cannot hit the 6px geometry (its disc
-   scales with font size), so the lists go marker-free and paint the
-   dot via li::before instead. Gaps are 8px on both viewports per the
-   h2 section spec, set on the base rule itself (not the phone query).
-   Task items keep no dot. Area/group navigation lists are excluded:
-   they own their marker-free treatment below. */
-  .reader-article ul:not(.reader-area-list):not(.reader-group-list) {
-    list-style: none;
-    padding-left: 1.5rem;
-  }
-
-  .reader-article ol:not(.reader-area-list):not(.reader-group-list) {
-    list-style: decimal outside;
-    padding-left: 1.5rem;
-  }
-
-  .reader-article ul:not(.reader-area-list):not(.reader-group-list) li,
-  .reader-article ol:not(.reader-area-list):not(.reader-group-list) li {
-    /* 13px on both viewports from this rule itself: the phone query
-     drops the article to 14px, so inheritance alone would miss. */
-    font-size: 13px;
-    position: relative;
-  }
-
-  /* 6px dot marker, #171717 via --primary so dark mode flips with the
-   token. Offset sits the dot inside the kept 1.5rem indent. */
-  .reader-article ul:not(.reader-area-list):not(.reader-group-list) li::before {
-    content: "";
-    position: absolute;
-    left: -1rem;
-    top: 0.55em;
-    width: 6px;
-    height: 6px;
-    border-radius: 9999px;
-    background: var(--primary);
-  }
-
-  .reader-article
-    ul:not(.reader-area-list):not(.reader-group-list)
-    li:has(> input[type="checkbox"])::before {
-    content: none;
-  }
-
-  .reader-article ul.reader-area-list,
-  .reader-article ul.reader-group-list,
-  .reader-article ol.reader-area-list,
-  .reader-article ol.reader-group-list {
-    list-style: none;
-    padding-left: 0;
-  }
-
-  .reader-article li:has(> input[type="checkbox"]) {
-    list-style: none;
-  }
-
-  .reader-article ul:not(.reader-area-list):not(.reader-group-list) li + li,
-  .reader-article ol:not(.reader-area-list):not(.reader-group-list) li + li {
-    margin-top: 0.5rem;
-  }
-
-  /* Article links stay clearly identifiable: dark text with a visible
-   underline offset. Navigation links above stay plain with surface
-   states, so reading and browsing areas remain distinct. */
-  .reader-article a {
-    color: #171717;
-    text-decoration: underline;
-    text-decoration-color: #a3a3a3;
-    text-decoration-thickness: 1px;
-    text-underline-offset: 3px;
-    overflow-wrap: anywhere;
-  }
-
-  .reader-article a:hover {
-    background: #f5f5f5;
-    text-decoration-color: #525252;
-  }
-
-  .reader-article a:visited {
-    color: #404040;
-  }
-
-  .reader-article table {
-    display: block;
-    width: 100%;
-    max-width: 100%;
-    overflow-x: auto;
-    border-collapse: collapse;
-    font-size: 0.925rem;
-  }
-
-  .reader-article thead th {
-    background: #fafafa;
-    font-weight: 700;
-    color: #171717;
-  }
-
-  .reader-article th,
-  .reader-article td {
-    border: 1px solid #d4d4d4;
-    padding: 0.4rem 0.6rem;
-    text-align: left;
-    vertical-align: top;
-  }
-
-  /* Generated-markup hook (same rationale as the list rules above):
-   MDX fenced code arrives as bare pre/code without classes. Code
-   follows the design frame: pad 12, radius 8, dark fill, 12px lines.
-   The fill is hardcoded #0a0a0a on purpose — no light token is
-   near-black (it matches the .dark body precedent below) because the
-   design block is inverted dark in LIGHT mode too. Code text stays
-   hardcoded #f5f5f5 in both modes for the same reason. Border and
-   12px size come from tokens/base so both viewports align. */
-  .reader-article pre {
-    max-width: 100%;
-    overflow-x: auto;
-    padding: 0.75rem;
-    background: #0a0a0a;
-    color: #f5f5f5;
-    border: 1px solid var(--border);
-    border-radius: 0.5rem;
-    font-size: 0.75rem;
-    line-height: 1.55;
-  }
-
-  .reader-article code {
-    font-size: 0.9em;
-    overflow-wrap: anywhere;
-  }
-
-  .reader-article p code,
-  .reader-article li code {
-    background: #f5f5f5;
-    border: 1px solid #e5e5e5;
-    border-radius: 4px;
-    padding: 0.1em 0.3em;
-  }
-
-  .reader-article pre code {
-    background: transparent;
-    border: 0;
-    padding: 0;
-    /* 12px lines: the generic code rule below shrinks to 0.9em, which
-     would drop block lines to ~10.8px against the 12px pre. */
-    font-size: 1em;
-  }
-
-  .reader-article img {
-    max-width: 100%;
-    height: auto;
-    border-radius: 6px;
-  }
-
-  /* Generated-markup hook (same rationale as the list rules above):
-   MDX blockquotes arrive without classes. Quote follows design
-   component Zk8lN: washed bordered block, pad 12, inner gap 6, 13px
-   text. Token map: wash #fafafa -> --muted (nearest grayscale wash;
-   no #fafafa token exists), border #e5e5e5 -> --border, text #171717
-   -> --primary, cite muted -> --muted-foreground. Tokens flip in dark
-   mode, so no separate dark palette is needed. 13px holds on phones
-   from this rule itself, not the phone query. The ↳ prefix is
-   authored content, never markup. The cite pattern styles a trailing
-   paragraph only when the quote holds two or more paragraphs
-   (p + p:last-child matches nothing on single-paragraph quotes). */
-  .reader-article blockquote {
-    margin: 1.5em 0;
-    padding: 0.75rem;
-    background: var(--muted);
-    border: 1px solid var(--border);
-    color: var(--primary);
-    font-size: 13px;
-    display: grid;
-    gap: 0.375rem;
-  }
-
-  .reader-article blockquote p {
-    margin: 0;
-  }
-
-  .reader-article blockquote p + p:last-child {
-    font-size: 11px;
-    color: var(--muted-foreground);
-  }
-
-  .reader-article hr {
-    border: 0;
-    border-top: 1px solid #e5e5e5;
-    margin: 2rem 0;
-  }
-
-  .reader-article input[type="checkbox"] {
-    width: 1.1rem;
-    height: 1.1rem;
-    margin-right: 0.4rem;
-    accent-color: #404040;
+    overflow-wrap: break-word;
   }
 
   /**
@@ -374,19 +139,19 @@ body {
  * grid-cols-[repeat(auto-fill,minmax(min(100%,15rem),1fr))], and the
  * plain-card hook stays layered (not unlayered) so the no-underline
  * utility wins directly with no specificity fight. Hover underline,
- * dark variants, and containment live in utilities on page.tsx.
+ * dark variants, and containment live in utilities on page.tsx. Cards
+ * sit outside the inner `typeset` scope so Typeset never styles them.
  */
   .reader-area-list {
     grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
   }
 
   /* Home-card plain read stays pinned in the same components layer (not
-     unlayered): with prose layered below utilities, the no-underline
-     utility on the link already wins directly, so this keeps no
-     specificity fight. It remains as the hook definition the
+     unlayered): the no-underline utility on the link already wins directly,
+     so this keeps no specificity fight. It remains as the hook definition the
      no-unknown-classes lint pins plus a fallback plain read where the
      utility is absent, keeping card titles plain on both viewports
-     (I1z3qM / D3O3k6). */
+     (I1z3qM / D3O3k6). Cards sit outside `typeset`, so no prose fight. */
   .reader-article .reader-home-card-link {
     text-decoration: none;
   }
@@ -399,18 +164,16 @@ body {
    token muted/hover colors, plain-anchor no-underline with hover
    underline offsets). Other-notes rows use 36px min-h-9 with 12px side
    padding, no dividers, and 13px labels, keeping the 44px floor on
-   phones via max-md:min-h-11. */
+   phones via max-md:min-h-11. Sections sit outside `typeset`. */
 
-  /* Group rows are navigation anchors, not prose links. Layered
-   utilities now win the normal state directly (layer order beats
-   specificity), so this same-layer exception only needs to cover what
-   no utility sets: visited stays muted so read rows never turn into
-   prose links, and hover keeps a transparent wash (the prose hover
-   wash would paint behind the row). Tokens flip in dark mode; the
-   matching dark exception sits after the dark prose link rules so it
-   wins by order and specificity. Normal color/decoration/background
-   also declare the plain-anchor read so the rows stay plain even where
-   a utility is absent. */
+  /* Group rows are navigation anchors, not Typeset prose links. They sit
+   outside the inner `typeset` scope, so Typeset never targets them; the
+   layered utilities win the normal state directly, and this same-layer
+   exception only covers what no utility sets: visited stays muted so read
+   rows never turn into prose links, and hover keeps a transparent wash.
+   Tokens flip in dark mode; the matching dark exception below wins by order
+   and specificity. Normal color/decoration/background also declare the
+   plain-anchor read so the rows stay plain even where a utility is absent. */
   .reader-article .reader-group-list a {
     color: var(--muted-foreground);
     text-decoration: none;
@@ -435,12 +198,11 @@ body {
  * plus pb-1/min/max containment in the markup own visibility, bottom
  * padding, and containment (an unlayered display declaration would beat
  * that layered utility, so no display rule lives here). The hook remains
- * in the same components layer after the prose: it wins the p margin
- * plus the 12px size, 1.5 line height, muted color, and wrapping over
- * the layered prose by order and specificity, and the crumb anchors
- * below win over layered prose links the same way because those
- * anchors carry no utilities of their own. Muted and hover colors use
- * tokens so dark mode follows the shell.
+ * in the same components layer: it owns the 12px size, 1.5 line height,
+ * muted color, and wrapping, and the crumb anchors below own their plain
+ * read because those anchors carry no utilities of their own. The trail
+ * sits outside `typeset`, so Typeset never styles it. Muted and hover
+ * colors use tokens so dark mode follows the shell.
  */
   .reader-article .reader-note-crumbs {
     margin: 0;
@@ -468,60 +230,16 @@ body {
   outline-offset: 2px;
 }
 
-/* Phone article scale stays in the same components layer so the
-   layered prose keeps beating base/preflight while layered utilities
-   keep winning over prose on controlled nodes. */
+/* Phone reading-column containment stays in the same components layer so
+   layered layout keeps beating base/preflight while layered utilities keep
+   winning on controlled nodes. Typeset owns the phone type scale; no 14px
+   body override or custom heading scale lives here. */
 @layer components {
   @media (max-width: 767px) {
     /* Phone tree indent lives in utilities (pl-3.5 with max-md:pl-2.5 on the
      branch wrapper); no scoped rule remains. */
     .reader-article {
       max-width: 100%;
-    }
-
-    /* Phone home cards are navigation rows, not prose links. The plain
-     read comes from the layered no-underline utility on the card link:
-     with prose in the components layer below, utilities win directly
-     with no specificity fight on either viewport. */
-    .reader-article h1 {
-      /* Note pages take the 24px/700 phone title from design screen pWNyV.
-       The homepage keeps its 26px value below via the card-list hook. */
-      font-size: 1.5rem;
-      font-weight: 700;
-    }
-
-    /* Homepage-only 26px phone h1 (item 5): the home article is the one
-     carrying the card list, so :has scopes the exception without a new
-     hook class. Desktop h1s are untouched. */
-    .reader-article:has(.reader-home-cards) h1 {
-      font-size: 1.625rem;
-    }
-
-    /* Phone type scale from design screen pWNyV: 14px body, 16px h2 with
-     16px space above and an 8px gap below, 12px code, 8px bullet gaps,
-     and a 12px muted meta line. Layered here so the scale still beats
-     base/preflight while staying below utilities on controlled nodes. */
-    .reader-article {
-      font-size: 0.875rem;
-    }
-
-    .reader-article h2 {
-      font-size: 1rem;
-      margin-top: 1rem;
-      margin-bottom: 0.5rem;
-    }
-
-    .reader-article pre {
-      font-size: 0.75rem;
-    }
-
-    .reader-article ul:not(.reader-area-list):not(.reader-group-list) li + li,
-    .reader-article ol:not(.reader-area-list):not(.reader-group-list) li + li {
-      margin-top: 0.5rem;
-    }
-
-    .reader-article h3 {
-      font-size: 1.05rem;
     }
   }
 } /* Close phone article components layer. */
@@ -752,52 +470,18 @@ body {
 
 /* Breadcrumb and group dark variants live in tokens
    (text-muted-foreground, hover:text-foreground, border-border,
-   decoration-ring/chart-3, plus the article group prose overrides
-   below); only the article group dark override keeps scoped CSS, placed
-   after the dark prose link rules so it wins by order and specificity. */
+   decoration-ring/chart-3); only the article group dark override keeps
+   scoped CSS. Typeset dark mode follows the same tokens, so no separate
+   dark prose palette lives here. */
 
-/* Dark article prose joins the same components layer: tokens flip with
-   the shell, layered utilities still win the normal state, and the
-   group dark exception below still wins visited/hover-wash by order. */
+/* Dark group exception joins the same components layer: tokens flip with
+   the shell and layered utilities still win the normal state. */
 @layer components {
-  .dark .reader-article {
-    color: #e5e5e5;
-  }
-
-  .dark .reader-article h1,
-  .dark .reader-article h2,
-  .dark .reader-article h3 {
-    color: #fafafa;
-  }
-
-  .dark .reader-article h2 {
-    border-bottom-color: #262626;
-  }
-
-  .dark .reader-article a {
-    color: #fafafa;
-    text-decoration-color: #737373;
-  }
-
-  .dark .reader-article a:hover {
-    background: #262626;
-    text-decoration-color: #d4d4d4;
-  }
-
-  .dark .reader-article a:visited {
-    color: #d4d4d4;
-  }
-
-  /* Group rows stay plain navigation anchors in dark mode too. The base
-   group override above ties with the layered dark prose link rules at
-   equal specificity, and those dark prose rules come later in the same
-   layer, so without this later, higher-specificity exception dark rows
-   would inherit the prose #fafafa/#d4d4d4 colors and the #262626 hover
-   wash. Layered hover utilities already win the underline/color intent
-   (dark:hover:decoration-chart-3); this keeps visited muted and the
-   wash transparent so exactly one wash layer paints. Tokens flip
-   with the shell. Background stays transparent so exactly one wash
-   layer paints. */
+  /* Group rows stay plain navigation anchors in dark mode too. They sit
+   outside `typeset`, so Typeset never targets them. Layered hover utilities
+   already win the underline/color intent
+   (dark:hover:decoration-chart-3); this keeps visited muted and the wash
+   transparent so exactly one wash layer paints. Tokens flip with the shell. */
   .dark .reader-article .reader-group-list a,
   .dark .reader-article .reader-group-list a:visited {
     color: var(--muted-foreground);
@@ -811,39 +495,6 @@ body {
     text-underline-offset: 3px;
     text-decoration-color: var(--chart-3);
     background: transparent;
-  }
-
-  .dark .reader-article thead th {
-    background: #171717;
-    color: #fafafa;
-  }
-
-  .dark .reader-article th,
-  .dark .reader-article td {
-    border-color: #404040;
-  }
-
-  .dark .reader-article pre {
-    /* Inverted block stays near-black in dark mode too; only the edge
-     follows the dark surface line. */
-    background: #0a0a0a;
-    border-color: #262626;
-    color: #f5f5f5;
-  }
-
-  .dark .reader-article p code,
-  .dark .reader-article li code {
-    background: #262626;
-    border-color: #404040;
-    color: #f5f5f5;
-  }
-
-  .dark .reader-article hr {
-    border-top-color: #262626;
-  }
-
-  .dark .reader-article input[type="checkbox"] {
-    accent-color: #d4d4d4;
   }
 } /* Close dark article components layer. */
 

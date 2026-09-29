@@ -76,10 +76,14 @@ export default async function HomePage() {
           body; md:hidden keeps every desktop viewport pixel-identical. */}
       <span className="mb-1 block text-xs text-muted-foreground md:hidden">Home</span>
       {AuthoredBody ? (
-        <AuthoredBody />
+        /* Authored home introduction owns the Typeset scope; the synthetic
+           fallback below and the root cards stay outside as React content. */
+        <div className="typeset">
+          <AuthoredBody />
+        </div>
       ) : (
         <>
-          <h1>{site.title}</h1>
+          <h1 className="text-3xl font-bold wrap-break-word max-md:text-2xl">{site.title}</h1>
           <p className="max-md:text-sm max-md:text-muted-foreground">
             Browse the published sections.
           </p>

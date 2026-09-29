@@ -1,12 +1,17 @@
 #!/usr/bin/env node
 /**
- * CSS styling ownership guardrail for reader/app/globals.css.
+ * CSS styling ownership guardrail for reader/app/globals.css plus the
+ * official Typeset stylesheet at reader/app/typeset.css.
  *
  * Component visuals belong in Tailwind utilities in JSX. Scoped CSS keeps
- * only theme tokens, base, focus, generated bare Markdown, library internals,
- * and documented sizing exceptions. The check parses with PostCSS (not regex
+ * only theme tokens, base, focus, reading-column layout (.reader-article
+ * measure in @layer components), library internals, and documented sizing
+ * exceptions. Compiled Markdown prose lives in the official Typeset file
+ * (.typeset in @layer components). The check parses with PostCSS (not regex
  * text scanning) and rejects new component selectors plus any unlayered
- * article rules with actionable ownership guidance.
+ * article rules with actionable ownership guidance. It checks both files
+ * without opening a general component CSS bypass: globals.css never owns
+ * `.typeset`, and typeset.css never owns `.reader-*` or other components.
  *
  * Usage:
  *   node scripts/check-css-ownership.mjs [css-file]
@@ -23,13 +28,16 @@ const PUBLISHER_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url))
 
 const DEFAULT_CSS_FILE = path.join(PUBLISHER_ROOT, "reader", "app", "globals.css")
 
+const TYPESET_CSS_FILE = path.join(PUBLISHER_ROOT, "reader", "app", "typeset.css")
+
 const OWNERSHIP_DOC = "docs/agents/styling-ownership.md"
 
 const GUIDANCE =
   `Component visuals belong in Tailwind utilities in JSX. ` +
-  `Scoped CSS is allowed only for theme/base/focus, generated Markdown ` +
-  `(.reader-article in @layer components), library internals ([data-slot]), ` +
-  `and documented exceptions. See ${OWNERSHIP_DOC}. ` +
+  `Scoped CSS is allowed only for theme/base/focus, reading-column layout ` +
+  `(.reader-article measure in @layer components), Typeset prose ` +
+  `(.typeset in reader/app/typeset.css @layer components), library ` +
+  `internals ([data-slot]), and documented exceptions. See ${OWNERSHIP_DOC}. ` +
   `To add a reviewed exception, update the allowlist in ` +
   `scripts/check-css-ownership.mjs with justification.`
 
@@ -71,6 +79,20 @@ const ALLOWED_COMPONENT_CLASSES = new Set([
   "reader-note-crumbs",
 ])
 
+// Official Typeset classes allowed only in reader/app/typeset.css, never in
+// globals.css. Every layered rule there must stay in `.typeset` scope
+// (or nested `&` inside it) and use only these classes; any `.reader-*`
+// or other component class fails so the approved file cannot become a
+// general component CSS bypass.
+const ALLOWED_TYPESET_CLASSES = new Set([
+  "typeset",
+  "not-typeset",
+  "typeset-scroll",
+  "footnotes",
+  "contains-task-list",
+  "task-list-item",
+])
+
 function normalizePart(part) {
   return part.replace(/\s+/g, " ").trim()
 }
@@ -91,6 +113,19 @@ function isComponentsAllowed(part) {
   if (startsWithScope(part, ".reader-article")) return true
 
   if (startsWithScope(part, ".dark .reader-article")) return true
+
+  return false
+}
+
+function isTypesetAllowed(part) {
+  if (part === ".typeset") return true
+
+  if (startsWithScope(part, ".typeset")) return true
+
+  // Nested rules inside the `.typeset` scope use `&` (for example
+  // `&:where(p)`); they are allowed only when their classes are reviewed
+  // below, so `& .reader-header` still fails on the class check.
+  if (part.startsWith("&")) return true
 
   return false
 }
@@ -182,6 +217,102 @@ function checkRuleParts(parts, layer) {
         `scopes (theme/base/focus, library internals, documented exceptions). ${GUIDANCE}`,
     })
   }
+
+  return violations
+}
+
+function checkTypesetRuleParts(parts, layer) {
+  const violations = []
+
+  for (const raw of parts) {
+    const part = normalizePart(raw)
+
+    if (layer !== "components") {
+      violations.push({
+        selector: part,
+        layer,
+        message:
+          `CSS ownership rejection: Typeset selector "${part}" must live in ` +
+          `@layer components so utilities keep winning over prose. ${GUIDANCE}`,
+      })
+      continue
+    }
+
+    if (!isTypesetAllowed(part)) {
+      violations.push({
+        selector: part,
+        layer,
+        message:
+          `CSS ownership rejection: selector "${part}" in reader/app/typeset.css is outside ` +
+          `the approved Typeset scope (.typeset only). ${GUIDANCE}`,
+      })
+      continue
+    }
+
+    const unreviewed = extractClasses(part).filter((name) => !ALLOWED_TYPESET_CLASSES.has(name))
+
+    if (unreviewed.length > 0) {
+      violations.push({
+        selector: part,
+        layer,
+        message:
+          `CSS ownership rejection: selector "${part}" uses unreviewed class ` +
+          `".${unreviewed[0]}" in reader/app/typeset.css; only official Typeset classes are ` +
+          `allowed. ${GUIDANCE}`,
+      })
+    }
+  }
+
+  return violations
+}
+
+/**
+ * Check the official Typeset stylesheet with a real PostCSS parse. Returns
+ * an array of violations; an empty array means pass. Only `.typeset`-scoped
+ * rules in `@layer components` pass, so the approved file cannot carry
+ * general component CSS.
+ */
+export function checkTypesetOwnership(cssText) {
+  let root
+
+  try {
+    root = postcss.parse(cssText)
+  } catch (error) {
+    return [
+      {
+        selector: "",
+        layer: null,
+        message: `CSS ownership rejection: typeset.css does not parse (${error.message}). ${GUIDANCE}`,
+      },
+    ]
+  }
+
+  const violations = []
+
+  function visit(node, layers) {
+    for (const child of node.nodes ?? []) {
+      if (child.type === "atrule") {
+        const action = checkAtRule(child, violations)
+
+        if (action === "recurse-layer") {
+          const layerName = (child.params ?? "").trim().split(/[,\s]/u)[0]
+          visit(child, [...layers, layerName])
+        } else if (action === "recurse-keep") {
+          visit(child, layers)
+        }
+      } else if (child.type === "rule") {
+        const layer = layers.length > 0 ? layers[layers.length - 1] : null
+        const parts = postcss.list.comma(child.selector ?? "")
+        violations.push(...checkTypesetRuleParts(parts, layer))
+
+        if ((child.nodes ?? []).some((n) => n.type === "rule" || n.type === "atrule")) {
+          visit(child, layers)
+        }
+      }
+    }
+  }
+
+  visit(root, [])
 
   return violations
 }
@@ -305,19 +436,43 @@ export function checkCssOwnership(cssText) {
   return violations
 }
 
-function main() {
-  const cssFile = process.argv[2] ? path.resolve(process.argv[2]) : DEFAULT_CSS_FILE
+function checkOneFile(cssFile) {
   const cssText = fs.readFileSync(cssFile, "utf8")
-  const violations = checkCssOwnership(cssText)
+  const isTypeset = cssFile.endsWith("typeset.css")
+  const violations = isTypeset ? checkTypesetOwnership(cssText) : checkCssOwnership(cssText)
 
-  if (violations.length === 0) return
+  if (violations.length === 0) return []
 
   const rel = path.relative(process.cwd(), cssFile) || cssFile
   console.error(`✗ CSS ownership check failed for ${rel}:`)
 
   for (const violation of violations) console.error(`  - ${violation.message}`)
 
-  process.exit(1)
+  return violations
+}
+
+function main() {
+  if (process.argv[2]) {
+    const cssFile = path.resolve(process.argv[2])
+    const violations = checkOneFile(cssFile)
+
+    if (violations.length > 0) process.exit(1)
+
+    return
+  }
+
+  // Default gate checks both approved files: globals.css owns layout plus
+  // exceptions, typeset.css owns official prose. Checking both keeps the
+  // approved Typeset file parsed without opening a component CSS bypass.
+  let failed = false
+
+  for (const cssFile of [DEFAULT_CSS_FILE, TYPESET_CSS_FILE]) {
+    const violations = checkOneFile(cssFile)
+
+    if (violations.length > 0) failed = true
+  }
+
+  if (failed) process.exit(1)
 }
 
 const invokedAsScript =

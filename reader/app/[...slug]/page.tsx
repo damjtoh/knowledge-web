@@ -40,7 +40,7 @@ function GroupSection({ title, nodes }: { title: string; nodes: NavigationNode[]
 
   return (
     <section aria-label={title} className="reader-group mt-10 border-t border-border pt-5">
-      <h2>{title}</h2>
+      <h2 className="text-xl font-semibold wrap-break-word max-md:text-base">{title}</h2>
       <ul className="reader-group-list m-0 mt-3 grid max-w-full min-w-0 list-none gap-2 p-0">
         {nodes.map((node) => (
           <li key={node.url} className="max-w-full min-w-0">
@@ -233,7 +233,11 @@ export default async function FolderOrNotePage({ params }: { params: Promise<Not
             readMinutes={readMinutesFromData(metaSource)}
             data={metaSource}
           />
-          <Body />
+          {/* Authored Markdown owns the Typeset scope; crumbs, meta, and
+              siblings stay outside so Typeset never styles React chrome. */}
+          <div className="typeset">
+            <Body />
+          </div>
           <OtherNotes parentTitle={parent?.title} siblings={siblings} />
         </article>
       )
@@ -241,7 +245,11 @@ export default async function FolderOrNotePage({ params }: { params: Promise<Not
 
     return (
       <article className="reader-article">
-        <Body />
+        {/* Authored folder introduction owns the Typeset scope; the Notes
+            and Folders groups stay outside as React navigation. */}
+        <div className="typeset">
+          <Body />
+        </div>
         <GroupSection title="Notes" nodes={directNotes} />
         <GroupSection title="Folders" nodes={childFolders} />
       </article>
@@ -254,7 +262,7 @@ export default async function FolderOrNotePage({ params }: { params: Promise<Not
 
     return (
       <article className="reader-article">
-        <h1>{node.title}</h1>
+        <h1 className="text-3xl font-bold wrap-break-word max-md:text-2xl">{node.title}</h1>
         <GroupSection title="Notes" nodes={directNotes} />
         <GroupSection title="Folders" nodes={childFolders} />
       </article>
@@ -289,7 +297,11 @@ export default async function FolderOrNotePage({ params }: { params: Promise<Not
         readMinutes={readMinutesFromData(metaSource)}
         data={metaSource}
       />
-      <Body />
+      {/* Authored Markdown owns the Typeset scope; crumbs, meta, and
+          siblings stay outside so Typeset never styles React chrome. */}
+      <div className="typeset">
+        <Body />
+      </div>
       <OtherNotes parentTitle={ancestor?.title} siblings={siblings} />
     </article>
   )

@@ -72,12 +72,11 @@ export default function Breadcrumbs({ items }: { items: Crumb[] }) {
  * shared trail derivation (`ReaderNavigation.breadcrumbs`, the server
  * flavor of the `crumbsFromRoots` core in lib/navigation).
  *
- * The `reader-note-crumbs` hook (not utilities alone) dodges the
- * unlayered `.reader-article p/a` rules: those rules beat layered
- * utilities for margin and link color, so the hook genuinely needs its
- * unlayered margin/color overrides in globals.css. No display rule lives
- * there — `md:hidden` in the markup owns visibility, since an unlayered
- * display declaration would beat that layered utility.
+ * The `reader-note-crumbs` hook owns the 12px muted read in globals.css
+ * because those anchors carry no utilities of their own. The trail sits
+ * outside the inner `typeset` scope, so Typeset never styles it. No display
+ * rule lives there — `md:hidden` in the markup owns visibility, since an
+ * unlayered display declaration would beat that layered utility.
  */
 export function NoteCrumbs({ crumbs }: { crumbs: Crumb[] }) {
   return (
