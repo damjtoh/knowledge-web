@@ -122,7 +122,7 @@ export default function AppearanceControl() {
     <div
       role="group"
       aria-label="Appearance"
-      className="reader-appearance flex flex-col gap-2"
+      className="reader-appearance flex min-w-0 max-w-full w-full flex-col gap-2"
       data-appearance={appearance}
     >
       <div className="flex items-center gap-1.5">
@@ -147,7 +147,7 @@ export default function AppearanceControl() {
             value={value}
             title={`${label} appearance`}
             aria-label={`${label} appearance`}
-            className="reader-appearance-option flex-1 rounded-full border border-transparent p-1.5 justify-center text-muted-foreground aria-pressed:bg-card aria-pressed:border-border aria-pressed:text-primary"
+            className="reader-appearance-option flex-1 rounded-full border border-transparent p-1.5 justify-center text-muted-foreground min-h-11 min-w-11 aria-pressed:bg-card aria-pressed:border-border aria-pressed:text-primary"
           >
             <Icon aria-hidden="true" className="size-3" />
             <span className="sr-only">{label}</span>

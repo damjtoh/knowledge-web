@@ -46,7 +46,7 @@ export default function OtherNotes({
   return (
     <section
       aria-label={`Other notes in ${parentTitle}`}
-      className="reader-group reader-other-notes"
+      className="reader-group reader-other-notes mt-10 border-t border-border pt-5"
     >
       <div className="flex items-center gap-2 p-3">
         <span className="text-13 font-semibold">{`Other notes in ${parentTitle}`}</span>
@@ -54,7 +54,7 @@ export default function OtherNotes({
           {siblings.length}
         </span>
       </div>
-      <ul className="reader-group-list">
+      <ul className="reader-group-list m-0 mt-3 grid max-w-full min-w-0 list-none gap-2 p-0">
         {visible.map((sibling) => {
           // Relative meta renders client-side from the serializable stamp
           // (design a4MmZf: 11px muted under the 13px label); a missing or
@@ -62,8 +62,11 @@ export default function OtherNotes({
           const relative = relativeUpdatedAt(sibling.updatedAt ?? undefined)
 
           return (
-            <li key={sibling.url}>
-              <a href={sibling.url}>
+            <li key={sibling.url} className="max-w-full min-w-0">
+              <a
+                href={sibling.url}
+                className="flex max-w-full min-h-9 min-w-0 items-center gap-2 border-b-0 px-3 py-1 text-13 leading-snug wrap-break-word text-muted-foreground no-underline hover:text-foreground hover:underline hover:decoration-ring hover:underline-offset-3 max-md:min-h-11 dark:hover:decoration-chart-3"
+              >
                 <File aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
                 <span className="grid min-w-0 flex-1 gap-0.5">
                   <span className="truncate text-13">{sibling.title}</span>

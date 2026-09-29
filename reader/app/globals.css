@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "./typeset.css";
 /*---break---
  */
 @custom-variant dark (&:is(.dark *));
@@ -9,14 +10,12 @@
  * Calm generic grayscale reader.
  *
  * Desktop sidebar layout comes from registry-installed sidebar-11
- * (SidebarProvider/Sidebar/SidebarInset). Tailwind CSS owns layout
- * utilities used in the reader shell components. This stylesheet keeps
- * the semantic reader classes the static and browser checks rely on
- * (reader-header, reader-sidebar-nav, reader-article, and overflow
- * containment) plus Markdown element styling
- * that utilities cannot express alone. It styles bespoke article
- * typography and needed responsive details only; it does not recreate
- * the sidebar primitive with custom CSS.
+ * (SidebarProvider/Sidebar/SidebarInset). Reader shell/header visuals live
+ * in Tailwind utilities on reader-shell.tsx. Compiled Markdown prose lives
+ * in the official Typeset stylesheet (./typeset.css, imported above) inside
+ * a `typeset` scope; this stylesheet keeps global and library internals plus
+ * reading-column layout only; it does not recreate the sidebar primitive
+ * with custom CSS.
  *
  * Palette is neutral grayscale only: white surfaces, neutral-50/100 washes,
  * neutral-200/300 borders, neutral-500/600 muted text, neutral-900 body text.
@@ -65,743 +64,165 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-/* Shell header layout: unlayered flex/border/padding must beat layered header utilities. */
-.reader-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  border-bottom: 1px solid #e5e5e5;
-  background: #fff;
-  padding: 0.75rem 1rem;
-}
-
-/**
- * Reading-header trail: registry SidebarTrigger, Separator, and one
- * route-derived Breadcrumb. The trail takes available room and shrinks
- * below actions, so long titles and deep paths wrap inside the header
- * without pushing the page wider.
- */
-.reader-header-trail {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex: 1 1 auto;
-  min-width: 0;
-  max-width: 100%;
-}
-
-/* Reader shell root: never forces page width. */
-.reader-chrome {
-  min-width: 0;
-}
-
-/* Reading shell: centered 1100px column; the phone padding variant below beats utilities unlayered. */
-.reader-shell {
-  display: flex;
-  gap: 2rem;
-  width: 100%;
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 1.5rem 1rem 3rem;
-  min-width: 0;
-  box-sizing: border-box;
-}
-
 /* Desktop sidebar layout comes from registry sidebar-11. Phone
    navigation is the registry mobile sidebar sheet; no inline phone
    panel remains in the reading column. */
 
-/* Sidebar header brand: current Web Projection name in the registry
-   SidebarHeader. Home and Search use registry SidebarMenuButton with
-   reader hooks for labels. */
-.reader-sidebar-brand {
-  overflow-wrap: anywhere;
-  min-width: 0;
-}
-
-/**
- * Projection switcher: registry SidebarMenuButton trigger plus registry
- * DropdownMenu choices. The trigger shows the current Web Projection even
- * when no destinations are declared; each declared destination is an
- * ordinary cross-origin anchor. Long projection names wrap instead of
- * pushing the sidebar wider.
- */
-.reader-projection-switcher {
-  margin-bottom: 0.25rem;
-}
-
-.reader-projection-trigger {
-  min-height: 44px;
-}
-
-.reader-projection-name {
-  flex: 1 1 auto;
-  min-width: 0;
-  max-width: 100%;
-  text-align: left;
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-
+/* Sidebar header brand and projection switcher: utilities on
+   projection-switcher.tsx own trigger, brand, name, and choice visuals
+   (44px floor, truncate, wrapping, containment). Hooks stay as non-visual
+   DOM/test selectors. Two scoped rules remain: the menu max-width needs
+   min(16rem, calc(100vw - 2rem)) which shadcn/no-arbitrary-values bans as
+   max-w-[...] on the portal popup, and the open-row link must stay
+   transparent so exactly one wash layer paints (dark --border is
+   translucent, so a link-level wash would stack to a two-tone patch). */
 .reader-projection-menu {
-  min-width: 12rem;
   max-width: min(16rem, calc(100vw - 2rem));
 }
 
-.reader-projection-current,
-.reader-projection-choice {
-  overflow-wrap: anywhere;
-}
-
-.reader-projection-link {
-  overflow-wrap: anywhere;
-}
-
-/* Sidebar links: pinned hooks the tree journeys query (ul/a/hover/active). */
-.reader-sidebar-nav ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 0.25rem;
-}
-
-.reader-sidebar-nav a {
-  display: flex;
-  align-items: center;
-  padding: 0.65rem 0.75rem;
-  min-height: 44px;
-  line-height: 1.4;
-  font-size: 0.95rem;
-  text-decoration: none;
-  color: #404040;
-  border-radius: 6px;
-  overflow-wrap: break-word;
-}
-
-.reader-sidebar-nav a:hover {
-  background: #f5f5f5;
-  color: #171717;
-}
-
-.reader-sidebar-nav a.is-active {
-  font-weight: 600;
-  color: var(--primary);
-  background: var(--border);
-}
-
-/* Folder-and-note tree: nested branches under each published root keep
-   the sidebar link style. Root order follows generated metadata and
-   child order follows the navigation tree. Each folder row holds its
-   page link plus a glyph-free disclosure hit target at the row's right
-   edge, so visiting a folder never collides with expanding it. */
-.reader-tree,
-.reader-tree-children {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 0.25rem;
-  min-width: 0;
-}
-
-.reader-tree-children {
-  margin-top: 0.25rem;
-  padding-left: 0.85rem;
-  border-left: 1px solid #e5e5e5;
-  min-width: 0;
-}
-
-.reader-tree-collapsible {
-  min-width: 0;
-}
-
-/* Grid items default to min-width auto, which lets one unbroken
-   single-line label force its whole branch wider than the sidebar or
-   mobile sheet. Zeroing it keeps every branch inside its container so labels
-   truncate instead of overflowing. */
-.reader-tree > li,
-.reader-tree-children > li {
-  min-width: 0;
-}
-
-.reader-tree-row {
-  display: flex;
-  align-items: stretch;
-  gap: 0.25rem;
-  min-width: 0;
-}
-
-/* Expanded folder header wash: full-row $--border fill with 6px radius,
-   matching the design's active row. The row container paints so the wash
-   covers the link plus the trailing toggle zone. The link inside an open
-   row stays transparent at rest and on hover so exactly one wash layer
-   paints (dark --border is translucent, so a link-level wash would stack
-   to a two-tone patch). Non-open a.is-active rows keep their own wash. */
-.reader-tree-row.reader-tree-open {
-  background: var(--border);
-  border-radius: 6px;
-}
-
+/* Expanded folder header wash: the row container paints so the wash covers
+   the link plus the trailing toggle zone. The link inside an open row stays
+   transparent at rest and on hover so exactly one wash layer paints. This
+   stays unlayered so it beats the layered SidebarMenuButton
+   data-active/hover washes from the registry primitive. Non-open
+   a.is-active rows keep their own bg-border wash from utilities. */
 .reader-sidebar-nav .reader-tree-row.reader-tree-open a,
 .reader-sidebar-nav .reader-tree-row.reader-tree-open a:hover {
   background: transparent;
 }
 
-.reader-tree-row a {
-  flex: 1 1 auto;
-  min-width: 0;
-  width: auto;
-  overflow-wrap: anywhere;
-}
+/* Folder-and-note tree: utilities on sidebar.tsx own rows, links, labels,
+   toggle, indent, washes, and containment (flex rows, min-h-11 touch
+   floors, bg-border washes, hover:bg-muted, group-hover caret reveal,
+   min-w-0 containment, wrap-break-word, responsive pl-3.5/max-md:pl-2.5
+   indent, border-border guide with token dark variants). Hooks
+   (reader-sidebar-nav, reader-tree, reader-tree-row, reader-tree-toggle,
+   and kin) stay as non-visual DOM/test selectors; no other scoped rules
+   remain. */
 
-.reader-tree-label {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
+/* Breadcrumb trail: pinned hook the journeys click. Utilities on
+   breadcrumbs.tsx own the trail visuals (flex-1 containment on the
+   wrapper, list reset plus min-w-0/max-w-full on the registry List/Item,
+   44px touch floors with wrap-break-word containment and token
+   muted/hover colors plus underline offsets on Link/Page, registry
+   flex-wrap for wrapping). The registry Breadcrumb primitives own
+   landmarks and aria, so no scoped rules remain here; dark mode follows
+   the muted/foreground tokens. */
 
-/* Disclosure hit target at the row's right edge: a separate
-   flex sibling of the page link, so label clicks navigate while right-edge
-   clicks expand or collapse. Collapsed rows hold a chevron-right glyph
-   that stays hidden until row hover or focus; expanded rows keep the
-   slot empty (their caret leads). Stretch keeps the 44px touch target
-   the journeys assert. */
-.reader-tree-toggle {
-  flex-shrink: 0;
-  align-self: stretch;
-  width: 1.5rem;
-  min-height: 44px;
-  padding: 0;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  cursor: pointer;
-}
+/* Article layout ownership boundary: compiled Markdown prose is owned by
+   the official Typeset stylesheet (reader/app/typeset.css, imported above)
+   inside a `typeset` scope. This file keeps only reader layout that Typeset
+   must not own: the 68ch measure plus containment so long text wraps inside
+   the reading column. No bare element rules (h1/p/a/table/pre/...) live here;
+   Typeset styles those via :where() so utilities still win. Controlled
+   home/group/crumb hooks below live in the same layer; they sit outside the
+   inner `typeset` scope in the markup so Typeset never styles them. Global
+   focus/sidebar/search/footer rules stay unlayered with their own
+   justification. */
+@layer components {
+  /* Reading-column measure plus containment owned here; Typeset owns type. */
+  .reader-article {
+    max-width: 68ch;
+    margin: 0;
+    min-width: 0;
+    overflow-wrap: break-word;
+  }
 
-/* Collapsed-row hover caret: the chevron-right glyph stays in the DOM but
-   hidden at rest, and appears on row hover or keyboard focus. Expanded
-   rows render no svg child, so they keep their empty trailing zone. */
-.reader-tree-toggle svg {
-  opacity: 0;
-  transition: opacity 150ms ease;
-}
-
-.reader-tree-row:hover .reader-tree-toggle svg,
-.reader-tree-row:focus-within .reader-tree-toggle svg {
-  opacity: 1;
-}
-
-/* Reading column: flex share with clip containment so wide tables never push the viewport. */
-.reader-main {
-  flex: 1;
-  min-width: 0;
-  max-width: 100%;
-  padding: 0;
-  overflow-x: clip;
-}
-
-/* Breadcrumb trail: pinned hook the journeys click; descendants reach registry slots. */
-.reader-breadcrumbs {
-  flex: 1 1 auto;
-  min-width: 0;
-  max-width: 100%;
-  margin-bottom: 0;
-}
-
-/* Header trail owns the single breadcrumb landmark; article pages no
-   longer render a second row above content. */
-.reader-header .reader-breadcrumbs {
-  margin-bottom: 0;
-}
-
-.reader-breadcrumbs nav,
-.reader-breadcrumbs [data-slot="breadcrumb"],
-.reader-breadcrumbs [data-slot="breadcrumb-list"],
-.reader-breadcrumbs [data-slot="breadcrumb-item"],
-.reader-breadcrumbs [data-slot="breadcrumb-link"],
-.reader-breadcrumbs [data-slot="breadcrumb-page"] {
-  min-width: 0;
-  max-width: 100%;
-}
-
-.reader-breadcrumbs [data-slot="breadcrumb-link"],
-.reader-breadcrumbs [data-slot="breadcrumb-page"] {
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
-
-.reader-breadcrumbs ol {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem 0.5rem;
-  font-size: 0.9rem;
-  color: #525252;
-  min-width: 0;
-  max-width: 100%;
-}
-
-.reader-breadcrumbs li {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  min-width: 0;
-  max-width: 100%;
-  overflow-wrap: anywhere;
-}
-
-.reader-breadcrumbs a {
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
-  color: #404040;
-  text-decoration: none;
-  min-width: 0;
-  max-width: 100%;
-  overflow-wrap: anywhere;
-}
-
-.reader-breadcrumbs a:hover {
-  color: #171717;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  text-decoration-color: #a3a3a3;
-}
-
-/* Generated-markup root + bare MDX elements below (h1-h3/p/a/table/img/hr/checkbox): no TSX hosts utilities; dark variants below. */
-.reader-article {
-  max-width: 68ch;
-  margin: 0;
-  line-height: 1.65;
-  font-size: 1rem;
-  color: #262626;
-  overflow-wrap: break-word;
-  min-width: 0;
-}
-
-.reader-article h1 {
-  font-size: 1.75rem;
-  line-height: 1.2;
-  letter-spacing: -0.02em;
-  color: #171717;
-  margin: 0 0 0.75rem;
-  overflow-wrap: anywhere;
-}
-
-.reader-article h2,
-.reader-article h3 {
-  line-height: 1.35;
-  letter-spacing: -0.01em;
-  color: #171717;
-  margin-top: 2em;
-  margin-bottom: 0.5em;
-  overflow-wrap: anywhere;
-}
-
-.reader-article h2 {
-  font-size: 1.3rem;
-  padding-bottom: 0.25rem;
-  border-bottom: 1px solid #e5e5e5;
-}
-
-.reader-article h3 {
-  font-size: 1.1rem;
-}
-
-.reader-article p,
-.reader-article ul:not(.reader-area-list):not(.reader-group-list),
-.reader-article ol:not(.reader-area-list):not(.reader-group-list) {
-  margin-block: 1em;
-}
-
-/* Generated-markup hooks live here, not in utilities: MDX body
-   markup (ul/ol/li) arrives without classes, so no utility can target
-   it. Bullets follow design Bullet Row pDRO9: 13px text with a 6px
-   round dot. A native ::marker cannot hit the 6px geometry (its disc
-   scales with font size), so the lists go marker-free and paint the
-   dot via li::before instead. Gaps are 8px on both viewports per the
-   h2 section spec, set on the base rule itself (not the phone query).
-   Task items keep no dot. Area/group navigation lists are excluded:
-   they own their marker-free treatment below. */
-.reader-article ul:not(.reader-area-list):not(.reader-group-list) {
-  list-style: none;
-  padding-left: 1.5rem;
-}
-
-.reader-article ol:not(.reader-area-list):not(.reader-group-list) {
-  list-style: decimal outside;
-  padding-left: 1.5rem;
-}
-
-.reader-article ul:not(.reader-area-list):not(.reader-group-list) li,
-.reader-article ol:not(.reader-area-list):not(.reader-group-list) li {
-  /* 13px on both viewports from this rule itself: the phone query
-     drops the article to 14px, so inheritance alone would miss. */
-  font-size: 13px;
-  position: relative;
-}
-
-/* 6px dot marker, #171717 via --primary so dark mode flips with the
-   token. Offset sits the dot inside the kept 1.5rem indent. */
-.reader-article ul:not(.reader-area-list):not(.reader-group-list) li::before {
-  content: "";
-  position: absolute;
-  left: -1rem;
-  top: 0.55em;
-  width: 6px;
-  height: 6px;
-  border-radius: 9999px;
-  background: var(--primary);
-}
-
-.reader-article
-  ul:not(.reader-area-list):not(.reader-group-list)
-  li:has(> input[type="checkbox"])::before {
-  content: none;
-}
-
-.reader-article ul.reader-area-list,
-.reader-article ul.reader-group-list,
-.reader-article ol.reader-area-list,
-.reader-article ol.reader-group-list {
-  list-style: none;
-  padding-left: 0;
-}
-
-.reader-article li:has(> input[type="checkbox"]) {
-  list-style: none;
-}
-
-.reader-article ul:not(.reader-area-list):not(.reader-group-list) li + li,
-.reader-article ol:not(.reader-area-list):not(.reader-group-list) li + li {
-  margin-top: 0.5rem;
-}
-
-/* Article links stay clearly identifiable: dark text with a visible
-   underline offset. Navigation links above stay plain with surface
-   states, so reading and browsing areas remain distinct. */
-.reader-article a {
-  color: #171717;
-  text-decoration: underline;
-  text-decoration-color: #a3a3a3;
-  text-decoration-thickness: 1px;
-  text-underline-offset: 3px;
-  overflow-wrap: anywhere;
-}
-
-.reader-article a:hover {
-  background: #f5f5f5;
-  text-decoration-color: #525252;
-}
-
-.reader-article a:visited {
-  color: #404040;
-}
-
-.reader-article table {
-  display: block;
-  width: 100%;
-  max-width: 100%;
-  overflow-x: auto;
-  border-collapse: collapse;
-  font-size: 0.925rem;
-}
-
-.reader-article thead th {
-  background: #fafafa;
-  font-weight: 700;
-  color: #171717;
-}
-
-.reader-article th,
-.reader-article td {
-  border: 1px solid #d4d4d4;
-  padding: 0.4rem 0.6rem;
-  text-align: left;
-  vertical-align: top;
-}
-
-/* Generated-markup hook (same rationale as the list rules above):
-   MDX fenced code arrives as bare pre/code without classes. Code
-   follows the design frame: pad 12, radius 8, dark fill, 12px lines.
-   The fill is hardcoded #0a0a0a on purpose — no light token is
-   near-black (it matches the .dark body precedent below) because the
-   design block is inverted dark in LIGHT mode too. Code text stays
-   hardcoded #f5f5f5 in both modes for the same reason. Border and
-   12px size come from tokens/base so both viewports align. */
-.reader-article pre {
-  max-width: 100%;
-  overflow-x: auto;
-  padding: 0.75rem;
-  background: #0a0a0a;
-  color: #f5f5f5;
-  border: 1px solid var(--border);
-  border-radius: 0.5rem;
-  font-size: 0.75rem;
-  line-height: 1.55;
-}
-
-.reader-article code {
-  font-size: 0.9em;
-  overflow-wrap: anywhere;
-}
-
-.reader-article p code,
-.reader-article li code {
-  background: #f5f5f5;
-  border: 1px solid #e5e5e5;
-  border-radius: 4px;
-  padding: 0.1em 0.3em;
-}
-
-.reader-article pre code {
-  background: transparent;
-  border: 0;
-  padding: 0;
-  /* 12px lines: the generic code rule below shrinks to 0.9em, which
-     would drop block lines to ~10.8px against the 12px pre. */
-  font-size: 1em;
-}
-
-.reader-article img {
-  max-width: 100%;
-  height: auto;
-  border-radius: 6px;
-}
-
-/* Generated-markup hook (same rationale as the list rules above):
-   MDX blockquotes arrive without classes. Quote follows design
-   component Zk8lN: washed bordered block, pad 12, inner gap 6, 13px
-   text. Token map: wash #fafafa -> --muted (nearest grayscale wash;
-   no #fafafa token exists), border #e5e5e5 -> --border, text #171717
-   -> --primary, cite muted -> --muted-foreground. Tokens flip in dark
-   mode, so no separate dark palette is needed. 13px holds on phones
-   from this rule itself, not the phone query. The ↳ prefix is
-   authored content, never markup. The cite pattern styles a trailing
-   paragraph only when the quote holds two or more paragraphs
-   (p + p:last-child matches nothing on single-paragraph quotes). */
-.reader-article blockquote {
-  margin: 1.5em 0;
-  padding: 0.75rem;
-  background: var(--muted);
-  border: 1px solid var(--border);
-  color: var(--primary);
-  font-size: 13px;
-  display: grid;
-  gap: 0.375rem;
-}
-
-.reader-article blockquote p {
-  margin: 0;
-}
-
-.reader-article blockquote p + p:last-child {
-  font-size: 11px;
-  color: var(--muted-foreground);
-}
-
-.reader-article hr {
-  border: 0;
-  border-top: 1px solid #e5e5e5;
-  margin: 2rem 0;
-}
-
-.reader-article input[type="checkbox"] {
-  width: 1.1rem;
-  height: 1.1rem;
-  margin-right: 0.4rem;
-  accent-color: #404040;
-}
-
-/**
+  /**
  * Home root cards: one responsive registry Card per published root.
  *
- * The grid fits desktop and phone widths: cards share a row when room
- * allows and stack to one column on narrow viewports. The Card primitive
- * owns the card surface; these classes only give the list responsive
- * shape, keep the whole card a usable static link, and keep long titles
- * and folder/note meta readable without horizontal overflow.
+ * Utilities on page.tsx own list reset, spacing, grid display, gaps,
+ * link touch targets, rows, titles, and meta. Two scoped rules remain,
+ * both layered in components below utilities: the responsive column
+ * track cannot move to utilities because shadcn/no-arbitrary-values
+ * bans bracket values such as
+ * grid-cols-[repeat(auto-fill,minmax(min(100%,15rem),1fr))], and the
+ * plain-card hook stays layered (not unlayered) so the no-underline
+ * utility wins directly with no specificity fight. Hover underline,
+ * dark variants, and containment live in utilities on page.tsx. Cards
+ * sit outside the inner `typeset` scope so Typeset never styles them.
  */
-.reader-area-list {
-  list-style: none;
-  margin: 1.5rem 0 0;
-  padding: 0;
-  display: grid;
-  gap: 0.75rem;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
-  max-width: 100%;
-  min-width: 0;
-}
+  .reader-area-list {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
+  }
 
-.reader-area-list > li {
-  min-width: 0;
-  max-width: 100%;
-}
+  /* Home-card plain read stays pinned in the same components layer (not
+     unlayered): the no-underline utility on the link already wins directly,
+     so this keeps no specificity fight. It remains as the hook definition the
+     no-unknown-classes lint pins plus a fallback plain read where the
+     utility is absent, keeping card titles plain on both viewports
+     (I1z3qM / D3O3k6). Cards sit outside `typeset`, so no prose fight. */
+  .reader-article .reader-home-card-link {
+    text-decoration: none;
+  }
 
-.reader-home-cards {
-  min-width: 0;
-}
+  /* Sibling/group sections: pinned hooks shared by folder pages and
+   OtherNotes. Utilities on [...slug]/page.tsx and other-notes.tsx own
+   section separation (mt-10 border-t border-border pt-5), list reset
+   (m-0 mt-3 grid list-none gap-2 p-0 with min/max containment), and row
+   layout (flex 44px touch floors with px/py, leading, wrap-break-word,
+   token muted/hover colors, plain-anchor no-underline with hover
+   underline offsets). Other-notes rows use 36px min-h-9 with 12px side
+   padding, no dividers, and 13px labels, keeping the 44px floor on
+   phones via max-md:min-h-11. Sections sit outside `typeset`. */
 
-.reader-home-card-item {
-  min-width: 0;
-  max-width: 100%;
-}
+  /* Group rows are navigation anchors, not Typeset prose links. They sit
+   outside the inner `typeset` scope, so Typeset never targets them; the
+   layered utilities win the normal state directly, and this same-layer
+   exception only covers what no utility sets: visited stays muted so read
+   rows never turn into prose links, and hover keeps a transparent wash.
+   Tokens flip in dark mode; the matching dark exception below wins by order
+   and specificity. Normal color/decoration/background also declare the
+   plain-anchor read so the rows stay plain even where a utility is absent. */
+  .reader-article .reader-group-list a {
+    color: var(--muted-foreground);
+    text-decoration: none;
+    background: transparent;
+  }
 
-.reader-home-card-link {
-  display: block;
-  height: 100%;
-  min-height: 44px;
-  min-width: 0;
-  max-width: 100%;
-  text-decoration: none;
-  color: inherit;
-}
+  .reader-article .reader-group-list a:visited {
+    color: var(--muted-foreground);
+  }
 
-/* Home cards are navigation rows, not prose links: the design keeps
-   card titles plain on both viewports (I1z3qM / D3O3k6). The unlayered
-   article-link rule above has higher specificity than a bare class,
-   so this exception must match it. */
-.reader-article .reader-home-card-link {
-  text-decoration: none;
-}
+  .reader-article .reader-group-list a:hover {
+    color: var(--foreground);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    text-decoration-color: var(--ring);
+    background: transparent;
+  }
 
-.reader-home-card-link:hover .reader-home-card-title {
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  text-decoration-color: #a3a3a3;
-}
-
-.reader-home-card {
-  height: 100%;
-  min-width: 0;
-  max-width: 100%;
-}
-
-.reader-home-card-header {
-  min-width: 0;
-  max-width: 100%;
-}
-
-/**
- * Desktop home card row (design D3O3k6 "Vault Area Row / Desktop"): 40px
- * muted icon box, stacked title plus count-only meta, and a trailing Open
- * plus chevron with 12px gaps. Icon, title, meta, and trailing sizes live
- * in utilities on the markup (the unlayered svg rule that sized the old
- * bare icon is gone: it would beat the size-4.5 utility). Padding 16
- * comes from the registry Card/CardHeader tokens, so no padding lives
- * here.
- */
-.reader-home-card-row {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  min-width: 0;
-  max-width: 100%;
-}
-
-.reader-home-card-title {
-  flex: 1 1 auto;
-  min-width: 0;
-  max-width: 100%;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
-
-.reader-home-card-meta {
-  min-width: 0;
-  max-width: 100%;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
-
-/* Sibling/group sections: pinned hooks shared by folder pages and OtherNotes; rows keep the plain-anchor read. */
-.reader-group {
-  margin-top: 2.5rem;
-  border-top: 1px solid #e5e5e5;
-  padding-top: 1.25rem;
-}
-
-.reader-group-list {
-  list-style: none;
-  margin: 0.75rem 0 0;
-  padding: 0;
-  display: grid;
-  gap: 0.5rem;
-}
-
-.reader-group-list a {
-  display: flex;
-  align-items: center;
-  padding: 0.75rem 0.25rem;
-  min-height: 44px;
-  line-height: 1.4;
-  color: #404040;
-  text-decoration: none;
-  border-bottom: 1px solid #f5f5f5;
-  overflow-wrap: anywhere;
-}
-
-.reader-group-list a:hover {
-  color: #171717;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  text-decoration-color: #a3a3a3;
-}
-
-/**
+  /**
  * Phone-only body crumb trail for note pages (design screen pWNyV):
  * 12px muted slash-separated crumbs above the body. The md:hidden utility
- * in the markup hides it on desktop, so no display rule lives here (an
- * unlayered display declaration would beat that layered utility). The
- * hook exists because the unlayered .reader-article p/a rules beat
- * utilities for margin and link color, so both genuinely need an
- * unlayered override. Muted and hover colors use tokens so dark mode
- * follows the shell.
+ * plus pb-1/min/max containment in the markup own visibility, bottom
+ * padding, and containment (an unlayered display declaration would beat
+ * that layered utility, so no display rule lives here). The hook remains
+ * in the same components layer: it owns the 12px size, 1.5 line height,
+ * muted color, and wrapping, and the crumb anchors below own their plain
+ * read because those anchors carry no utilities of their own. The trail
+ * sits outside `typeset`, so Typeset never styles it. Muted and hover
+ * colors use tokens so dark mode follows the shell.
  */
-.reader-article .reader-note-crumbs {
-  margin: 0;
-  padding: 0 0 0.25rem;
-  font-size: 0.75rem;
-  line-height: 1.5;
-  color: var(--muted-foreground);
-  overflow-wrap: anywhere;
-}
+  .reader-article .reader-note-crumbs {
+    margin: 0;
+    font-size: 0.75rem;
+    line-height: 1.5;
+    color: var(--muted-foreground);
+    overflow-wrap: anywhere;
+  }
 
-.reader-article .reader-note-crumbs a {
-  color: var(--muted-foreground);
-  text-decoration: none;
-}
+  .reader-article .reader-note-crumbs a {
+    color: var(--muted-foreground);
+    text-decoration: none;
+  }
 
-.reader-article .reader-note-crumbs a:hover {
-  color: var(--primary);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
-/**
- * Other-notes sibling section (design screen pWNyV, all viewports).
- *
- * Separation reuses the reader-group hook and rows reuse the
- * reader-group-list hook, so the section matches article sections and
- * rows keep the plain-anchor read, hover, and dark variants. The single
- * reader-other-notes hook scopes only what utilities cannot express
- * against those unlayered list rules: 36px rows with 12px side padding,
- * no dividers, and the 13px label. The head and foot are utilities-only
- * in the component (no unlayered article rule targets them).
- */
-.reader-article .reader-other-notes .reader-group-list a {
-  min-height: 2.25rem;
-  padding: 0.25rem 0.75rem;
-  gap: 0.5rem;
-  /* 13px label: --text-13 lives in @theme inline (never emitted as a
-     runtime variable), so the value is written out here. */
-  font-size: 13px;
-  border-bottom: 0;
-}
+  .reader-article .reader-note-crumbs a:hover {
+    color: var(--primary);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+} /* Close light article components layer: focus below stays unlayered. */
 
 /* Visible keyboard focus everywhere: unlayered outline must beat layered utilities and primitives. */
 :focus-visible {
@@ -809,204 +230,37 @@ body {
   outline-offset: 2px;
 }
 
-@media (max-width: 767px) {
-  .reader-shell {
-    flex-direction: column;
-    gap: 1rem;
-    /* Phone body padding from design screen I1z3qM: [20, 16, 32, 16].
-       A max-md utility cannot win here: this unlayered declaration beats
-       layered Tailwind utilities, so the responsive value lives here. */
-    padding: 1.25rem 1rem 2rem;
+/* Phone reading-column containment stays in the same components layer so
+   layered layout keeps beating base/preflight while layered utilities keep
+   winning on controlled nodes. Typeset owns the phone type scale; no 14px
+   body override or custom heading scale lives here. */
+@layer components {
+  @media (max-width: 767px) {
+    /* Phone tree indent lives in utilities (pl-3.5 with max-md:pl-2.5 on the
+     branch wrapper); no scoped rule remains. */
+    .reader-article {
+      max-width: 100%;
+    }
   }
-
-  /* Narrow screens indent less so deep branches keep readable titles. */
-  .reader-tree-children {
-    padding-left: 0.6rem;
-  }
-
-  .reader-article {
-    max-width: 100%;
-  }
-
-  /* Phone home cards are navigation rows, not prose links. The plain
-     read lives at the base .reader-home-card-link rule below: the same
-     specificity fight applies on desktop, where the design keeps the
-     card titles plain as well. */
-  .reader-article h1 {
-    /* Note pages take the 24px/700 phone title from design screen pWNyV.
-       The homepage keeps its 26px value below via the card-list hook. */
-    font-size: 1.5rem;
-    font-weight: 700;
-  }
-
-  /* Homepage-only 26px phone h1 (item 5): the home article is the one
-     carrying the card list, so :has scopes the exception without a new
-     hook class. Desktop h1s are untouched. */
-  .reader-article:has(.reader-home-cards) h1 {
-    font-size: 1.625rem;
-  }
-
-  /* Phone type scale from design screen pWNyV: 14px body, 16px h2 with
-     16px space above and an 8px gap below, 12px code, 8px bullet gaps,
-     and a 12px muted meta line. Same cascade note as the shell padding
-     above: max-md utilities would lose to these unlayered rules. */
-  .reader-article {
-    font-size: 0.875rem;
-  }
-
-  .reader-article h2 {
-    font-size: 1rem;
-    margin-top: 1rem;
-    margin-bottom: 0.5rem;
-  }
-
-  .reader-article pre {
-    font-size: 0.75rem;
-  }
-
-  .reader-article ul:not(.reader-area-list):not(.reader-group-list) li + li,
-  .reader-article ol:not(.reader-area-list):not(.reader-group-list) li + li {
-    margin-top: 0.5rem;
-  }
-
-  /* Other-notes rows keep the 44px touch floor on phones through
-     min-height (the same pattern as the group lists), never a fixed
-     height. Desktop rows stay at the 36px design read. */
-  .reader-article .reader-other-notes .reader-group-list a {
-    min-height: 44px;
-  }
-
-  .reader-article h3 {
-    font-size: 1.05rem;
-  }
-
-  /* Phone home card list keeps the 12px card gap from the base grid and
-     takes the 16px top gap before the list from design screen I1z3qM.
-     Same cascade note as the shell padding above: a max-md:mt-4 utility
-     would lose to the unlayered .reader-area-list margin. */
-  .reader-home-cards {
-    margin-top: 1rem;
-  }
-}
+} /* Close phone article components layer. */
 
 /**
- * Search controls and dialog (design screen MnMak).
+ * Search results list height cap plus excerpt highlights (scoped CSS only).
  *
- * Two trigger controls share one dialog: a full-width control above the
- * tree in the desktop sidebar and a compact control in the phone header.
- * Dialog chrome comes from the registry Dialog primitive composed in
- * search-dialog.tsx (max-w-lg for the 512px desktop width with the
- * registry full-width-minus-margins phone fallback, p-4, gap-3 on card
- * fill, row header with gap-2). Type sizes and spacing on the hooked
- * elements below use the scale tokens (14px query and titles, 13px
- * status/states and excerpts, 12px urls and hints, 11px kbd chips,
- * [10,12] input and row padding, 8px row radius) and colors use the
- * grayscale tokens, so both modes adapt without overrides except the
- * excerpt mark. Unlayered declarations keep only what utilities cannot
- * own: the trigger touch floors, list containment, and the data-active
- * wash, which keyboard highlight and hover share.
+ * The list cap uses max-height: min(50vh, 24rem) so short phone viewports
+ * cap the list at half the viewport and the dialog footer stays reachable.
+ * It cannot move to utilities: the scale token max-h-96 covers only the
+ * 24rem half, and shadcn/no-arbitrary-values bans bracket values such as
+ * max-h-[min(50vh,24rem)]. Overflow, reset, and layout stay in utilities
+ * on search-dialog.tsx, so this rule owns only the height cap. The search
+ * index returns excerpt HTML with bare <mark> elements via
+ * dangerouslySetInnerHTML in search-dialog.tsx, so no utility can target
+ * them. Every other trigger, dialog, list, and row visual lives in
+ * utilities on search-dialog.tsx, app-sidebar.tsx, and reader-shell.tsx.
+ * Tokens adapt to dark mode, so only the mark keeps a dark override.
  */
-.reader-search-trigger {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  min-height: 44px;
-  padding: 0.5rem 0.625rem;
-  font: inherit;
-  color: inherit;
-  background: transparent;
-  border: 0;
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-.reader-search-trigger:hover {
-  background: var(--muted);
-}
-
-.reader-search-sidebar {
-  width: 100%;
-  justify-content: flex-start;
-  padding: 0.5rem 0.625rem;
-}
-
-/* The header Search icon renders at all widths in the desktop inset header. */
-.reader-search-header {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  min-width: 44px;
-}
-
-.reader-search-body {
-  display: grid;
-  gap: 0.75rem;
-}
-
-/* Input chrome (radius, border, fill, type) lives in scale utilities on
-   the element; the touch floor stays here so no utility must own it. */
-.reader-search-input {
-  min-height: 44px;
-}
-
-/* Status and state type/color live in utilities; the spacer floor stays. */
-.reader-search-status {
-  min-height: 1.5em;
-}
-
-/* Hints layout and type live in utilities; the hook keeps a containment
-   anchor so it stays a known selector without owning visuals. */
-.reader-search-hints {
-  min-width: 0;
-}
-
-/* List layout gap lives in utilities; containment and reset stay here. */
 .reader-search-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
   max-height: min(50vh, 24rem);
-  overflow-y: auto;
-}
-
-.reader-search-option {
-  border-radius: 8px;
-}
-
-/* Keyboard highlight and hover share the muted wash. Tokens adapt to
-   dark mode, so no dark override is needed. */
-.reader-search-option[data-active="true"] {
-  background: var(--muted);
-  outline: 2px solid var(--primary);
-  outline-offset: -2px;
-}
-
-.reader-search-option:hover {
-  background: var(--muted);
-}
-
-/* Row padding, inner gap, and layout live in utilities; the touch
-   floor, plain-anchor read, and radius stay here. */
-.reader-search-result {
-  min-height: 44px;
-  text-decoration: none;
-  color: inherit;
-  border-radius: 8px;
-}
-
-/* Row type lives in utilities; long titles wrap instead of overflowing. */
-.reader-search-result-title {
-  overflow-wrap: anywhere;
-}
-
-.reader-search-result-url {
-  overflow-wrap: anywhere;
-}
-
-.reader-search-result-excerpt {
-  overflow-wrap: anywhere;
 }
 
 .reader-search-result-excerpt mark {
@@ -1014,16 +268,6 @@ body {
   color: inherit;
   border-radius: 2px;
   padding: 0 1px;
-}
-
-.dark .reader-search-trigger {
-  color: inherit;
-  background: transparent;
-  border-color: transparent;
-}
-
-.dark .reader-search-trigger:hover {
-  background: var(--muted);
 }
 
 .dark .reader-search-result-excerpt mark {
@@ -1034,94 +278,18 @@ body {
 /**
  * Offline save control in the sidebar footer.
  *
- * One explicit action per Web Projection: Save for offline use with its
- * estimated size and trusted-device note, Saving progress, a Ready offline
- * state only after the whole export is cached, an explicit Remove offline
- * copy action, and an incomplete state with retry. The registry
- * SidebarFooter renders on desktop and inside the mobile sheet from one
- * mounted state. Surfaces stay grayscale
- * only, with dark variants matching the reader shell. Controls keep the
- * 44px touch target used by navigation.
+ * Utilities on offline-save.tsx own container, actions, status, sizing,
+ * hover/dark/focus/touch and wrapping (grid gap-2 with min/max
+ * containment, registry Button pills with min-h-11 floors plus token
+ * hover/dark/focus, text-sm muted with text-primary font-semibold on
+ * ready plus wrap-break-word, progress
+ * w-full h-3 max-w-96). The registry SidebarFooter renders on desktop and
+ * inside the mobile sheet from one mounted state. Copy keeps one explicit
+ * action per Web Projection: Save with estimated size and trusted-device
+ * note, Saving progress, Ready only after the whole export is cached,
+ * named Remove, and incomplete with retry. Hooks stay as non-visual
+ * DOM/test selectors; no scoped rules remain here.
  */
-.reader-offline {
-  display: grid;
-  gap: 0.5rem;
-  margin-top: 0.75rem;
-  max-width: 68ch;
-}
-
-.reader-offline-save,
-.reader-offline-retry,
-.reader-offline-reload,
-.reader-offline-remove {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 44px;
-  padding: 0.5rem 1rem;
-  font: inherit;
-  font-weight: 600;
-  color: #171717;
-  background: #fff;
-  border: 1px solid #d4d4d4;
-  border-radius: 8px;
-  cursor: pointer;
-  justify-self: start;
-}
-
-.reader-offline-save:hover,
-.reader-offline-retry:hover,
-.reader-offline-reload:hover,
-.reader-offline-remove:hover {
-  background: #f5f5f5;
-}
-
-.reader-offline-size,
-.reader-offline-trust,
-.reader-offline-status,
-.reader-offline-ready {
-  margin: 0;
-  font-size: 0.9rem;
-  color: #525252;
-  overflow-wrap: anywhere;
-}
-
-.reader-offline-ready {
-  color: #171717;
-  font-weight: 600;
-}
-
-.reader-offline-progress {
-  width: 100%;
-  max-width: 24rem;
-  height: 0.75rem;
-}
-
-.dark .reader-offline-save,
-.dark .reader-offline-retry,
-.dark .reader-offline-reload,
-.dark .reader-offline-remove {
-  color: #fafafa;
-  background: #171717;
-  border-color: #404040;
-}
-
-.dark .reader-offline-save:hover,
-.dark .reader-offline-retry:hover,
-.dark .reader-offline-reload:hover,
-.dark .reader-offline-remove:hover {
-  background: #262626;
-}
-
-.dark .reader-offline-size,
-.dark .reader-offline-trust,
-.dark .reader-offline-status {
-  color: #d4d4d4;
-}
-
-.dark .reader-offline-ready {
-  color: #fafafa;
-}
 
 /*---break---
  */
@@ -1277,202 +445,76 @@ body {
 }
 
 /**
- * Appearance control (shadcn Button group) and dark surfaces.
+ * Appearance control (registry ToggleGroup pills) and dark surfaces.
  *
- * The control lives in the sidebar footer. Options
- * keep the 44px touch target and visible focus used by navigation. Dark surfaces stay grayscale only: near-black page, raised
- * cards, muted text, and borders that keep article, navigation, code,
- * tables, and interaction states readable.
+ * Utilities on appearance-control.tsx own the control visuals (flex-col
+ * gap-2 with min/max containment and w-full, muted pill container, flex-1
+ * pills with min-h-11/min-w-11 touch floors and aria-pressed token
+ * washes). The Toggle primitives own hover/focus/dark interaction and the
+ * global :focus-visible outline covers keyboard focus, so no per-option
+ * focus rule remains here. Hooks stay as non-visual DOM/test selectors.
+ * Dark page surface below stays as justified global (no TSX hosts it).
+ * Dark surfaces stay grayscale only: near-black page, raised cards, muted
+ * text, and borders that keep article, navigation, code, tables, and
+ * interaction states readable.
  */
-.reader-header {
-  flex-wrap: wrap;
-}
-
-.reader-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-  margin-left: auto;
-  min-width: 0;
-}
-
-.reader-appearance {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  min-width: 0;
-  max-width: 100%;
-}
-
-.reader-appearance-option {
-  min-height: 44px;
-  min-width: 44px;
-}
-
-.reader-appearance-option:focus-visible {
-  outline: 2px solid #171717;
-  outline-offset: 2px;
-}
 
 .dark body {
   background: #0a0a0a;
   color: #f5f5f5;
 }
 
-.dark .reader-header {
-  background: #0a0a0a;
-  border-bottom-color: #262626;
-}
+/* Tree dark variants live in tokens (hover:bg-muted, bg-border washes,
+   border-border guide, text-primary/muted-foreground labels); no scoped
+   dark rules remain. */
 
-.dark .reader-sidebar-nav a {
-  color: #d4d4d4;
-}
+/* Breadcrumb and group dark variants live in tokens
+   (text-muted-foreground, hover:text-foreground, border-border,
+   decoration-ring/chart-3); only the article group dark override keeps
+   scoped CSS. Typeset dark mode follows the same tokens, so no separate
+   dark prose palette lives here. */
 
-.dark .reader-sidebar-nav a:hover {
-  background: #262626;
-  color: #fafafa;
-}
+/* Dark group exception joins the same components layer: tokens flip with
+   the shell and layered utilities still win the normal state. */
+@layer components {
+  /* Group rows stay plain navigation anchors in dark mode too. They sit
+   outside `typeset`, so Typeset never targets them. Layered hover utilities
+   already win the underline/color intent
+   (dark:hover:decoration-chart-3); this keeps visited muted and the wash
+   transparent so exactly one wash layer paints. Tokens flip with the shell. */
+  .dark .reader-article .reader-group-list a,
+  .dark .reader-article .reader-group-list a:visited {
+    color: var(--muted-foreground);
+    text-decoration: none;
+    background: transparent;
+  }
 
-.dark .reader-tree-children {
-  border-left-color: #262626;
-}
-
-.dark .reader-breadcrumbs ol {
-  color: #d4d4d4;
-}
-
-.dark .reader-breadcrumbs a {
-  color: #d4d4d4;
-}
-
-.dark .reader-breadcrumbs a:hover {
-  color: #fff;
-  text-decoration-color: #525252;
-}
-
-.dark .reader-article {
-  color: #e5e5e5;
-}
-
-.dark .reader-article h1,
-.dark .reader-article h2,
-.dark .reader-article h3 {
-  color: #fafafa;
-}
-
-.dark .reader-article h2 {
-  border-bottom-color: #262626;
-}
-
-.dark .reader-article a {
-  color: #fafafa;
-  text-decoration-color: #737373;
-}
-
-.dark .reader-article a:hover {
-  background: #262626;
-  text-decoration-color: #d4d4d4;
-}
-
-.dark .reader-article a:visited {
-  color: #d4d4d4;
-}
-
-.dark .reader-article thead th {
-  background: #171717;
-  color: #fafafa;
-}
-
-.dark .reader-article th,
-.dark .reader-article td {
-  border-color: #404040;
-}
-
-.dark .reader-article pre {
-  /* Inverted block stays near-black in dark mode too; only the edge
-     follows the dark surface line. */
-  background: #0a0a0a;
-  border-color: #262626;
-  color: #f5f5f5;
-}
-
-.dark .reader-article p code,
-.dark .reader-article li code {
-  background: #262626;
-  border-color: #404040;
-  color: #f5f5f5;
-}
-
-.dark .reader-article hr {
-  border-top-color: #262626;
-}
-
-.dark .reader-article input[type="checkbox"] {
-  accent-color: #d4d4d4;
-}
-
-.dark .reader-home-card-link:hover .reader-home-card-title {
-  text-decoration-color: #525252;
-}
-
-.dark .reader-group {
-  border-top-color: #262626;
-}
-
-.dark .reader-group-list a {
-  color: #d4d4d4;
-  border-bottom-color: #262626;
-}
-
-.dark .reader-group-list a:hover {
-  color: #fff;
-  text-decoration-color: #525252;
-}
+  .dark .reader-article .reader-group-list a:hover {
+    color: var(--foreground);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    text-decoration-color: var(--chart-3);
+    background: transparent;
+  }
+} /* Close dark article components layer. */
 
 .dark :focus-visible {
-  outline-color: #fafafa;
-}
-
-.dark .reader-appearance-option:focus-visible {
   outline-color: #fafafa;
 }
 
 /**
  * Sidebar footer owns offline plus appearance.
  *
- * The registry SidebarFooter holds the same Appearance group and
- * detailed offline actions on desktop and inside the mobile sheet from
- * one mounted state. The footer stays fixed while the tree scrolls: the
- * sidebar content owns its scroll, the footer keeps its own cap so short
- * viewports keep controls reachable. The closed-phone header cue is
- * phone-only and display-only.
+ * Utilities on app-sidebar.tsx own footer layout (SidebarFooter gap-4
+ * border-t border-border p-4 with overflow-y-auto so the capped footer
+ * scrolls). Tokens flip the border in dark mode, so no dark override
+ * remains. One scoped rule stays: the 45dvh cap keeps controls reachable
+ * on short viewports while the tree scrolls independently. It cannot move
+ * to utilities because shadcn/no-arbitrary-values bans bracket values
+ * such as max-h-[45dvh]. Offline container and appearance wrapping live in
+ * their own utilities, so no footer-descendant overrides remain. The
+ * closed-phone header cue is phone-only and display-only.
  */
 .reader-sidebar-footer {
-  border-top: 1px solid #e5e5e5;
   max-height: 45dvh;
-  overflow-y: auto;
-}
-
-.reader-sidebar-footer .reader-offline {
-  margin-top: 0;
-  max-width: 100%;
-}
-
-.reader-sidebar-footer .reader-appearance {
-  flex-wrap: wrap;
-}
-
-.dark .reader-sidebar-footer {
-  border-top-color: #262626;
-}
-
-@media (max-width: 767px) {
-  .reader-header-actions {
-    gap: 0.4rem;
-  }
-
-  .reader-appearance-option span {
-    font-size: 0.8rem;
-  }
 }

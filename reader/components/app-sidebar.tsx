@@ -69,7 +69,7 @@ export function AppSidebar({
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
-              className="reader-search-trigger reader-search-sidebar gap-2 rounded-md px-2.5 py-2"
+              className="reader-search-trigger reader-search-sidebar min-h-11 w-full justify-start gap-2 rounded-md px-2.5 py-2 hover:bg-muted"
               onClick={(event) => {
                 // SAFETY: SidebarMenuButton renders a button here, so currentTarget is that button element.
                 onSearch(event.currentTarget as HTMLElement)
@@ -89,7 +89,7 @@ export function AppSidebar({
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter className="reader-sidebar-footer gap-4 border-t p-4">
+      <SidebarFooter className="reader-sidebar-footer gap-4 border-t border-border p-4 overflow-y-auto">
         <OfflineSave />
         <Separator />
         <AppearanceControl />

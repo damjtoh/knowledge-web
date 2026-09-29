@@ -56,8 +56,15 @@ function fetchSearchIndex(): Promise<SearchIndex | null> {
  * with a leading icon, a 13px muted count line over results, the existing
  * empty/loading/no-results states restyled as a padded 13px strip, 14/12/13
  * title/url/excerpt rows with the muted active wash, and a 12px hint row
- * with 11px kbd chips. Hook classes stay on the same elements; behavior,
- * copy (plus the design's count line), and focus flow are unchanged.
+ * with 11px kbd chips. Utilities own every trigger/dialog/list/row visual
+ * (44px touch floors via min-h-11/min-w-11, grid gaps, muted washes, token
+ * type sizes); hook classes stay as non-visual test/state selectors. The
+ * only scoped CSS is the list height cap (viewport-relative min() the
+ * banned arbitrary values cannot express) and the excerpt <mark> wash
+ * for generated index HTML.
+ * Behavior, copy (plus the design's count line), and focus flow are
+ * unchanged. The dialog sits outside .reader-article, so the unlayered
+ * article-link rule never competes with row utilities.
  */
 export default function SearchDialog({
   open,
@@ -157,7 +164,7 @@ export default function SearchDialog({
         <DialogHeader className="flex-row items-center gap-2">
           <DialogTitle>Search</DialogTitle>
         </DialogHeader>
-        <div className="reader-search-body">
+        <div className="reader-search-body grid gap-3">
           <label htmlFor={SEARCH_INPUT_ID} className="sr-only">
             Search notes
           </label>
@@ -183,7 +190,7 @@ export default function SearchDialog({
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               onKeyDown={onInputKeyDown}
-              className="reader-search-input w-full rounded-md border border-border bg-card py-2.5 pr-3 pl-9 text-sm text-primary placeholder:text-muted-foreground"
+              className="reader-search-input min-h-11 w-full rounded-md border border-border bg-card py-2.5 pr-3 pl-9 text-sm text-primary placeholder:text-muted-foreground"
             />
           </div>
           {results.length > 0 ? (
@@ -191,7 +198,7 @@ export default function SearchDialog({
               id={statusId}
               role="status"
               aria-live="polite"
-              className="reader-search-status text-13 text-muted-foreground"
+              className="reader-search-status min-h-5 text-13 text-muted-foreground"
             >
               <span>{countText}</span>
             </div>
@@ -200,7 +207,7 @@ export default function SearchDialog({
               id={statusId}
               role="status"
               aria-live="polite"
-              className="reader-search-status rounded-md p-3 text-13 text-primary"
+              className="reader-search-status min-h-5 rounded-md p-3 text-13 text-primary"
             >
               {statusText !== "" ? <span>{statusText}</span> : null}
               {open && trimmed === "" ? <span>Type to find a note.</span> : null}
@@ -211,7 +218,7 @@ export default function SearchDialog({
               id={listId}
               role="listbox"
               aria-label="Search results"
-              className="reader-search-list grid gap-1"
+              className="reader-search-list m-0 grid list-none gap-1 overflow-y-auto p-0"
             >
               {results.map((hit, i) => (
                 <li
@@ -220,22 +227,22 @@ export default function SearchDialog({
                   role="option"
                   aria-selected={i === clamped}
                   data-active={i === clamped ? "true" : undefined}
-                  className="reader-search-option"
+                  className="reader-search-option rounded-md hover:bg-muted aria-selected:bg-muted aria-selected:outline-2 aria-selected:-outline-offset-2 aria-selected:outline-primary"
                   onMouseMove={() => setActive(i)}
                 >
                   <a
                     href={hit.url}
                     tabIndex={-1}
-                    className="reader-search-result grid gap-0.5 px-3 py-2.5"
+                    className="reader-search-result grid min-h-11 min-w-0 gap-0.5 rounded-md px-3 py-2.5 text-inherit no-underline"
                   >
-                    <span className="reader-search-result-title text-sm font-bold text-primary">
+                    <span className="reader-search-result-title min-w-0 wrap-break-word text-sm font-bold text-primary">
                       {hit.title}
                     </span>
-                    <span className="reader-search-result-url text-xs text-muted-foreground">
+                    <span className="reader-search-result-url min-w-0 wrap-break-word text-xs text-muted-foreground">
                       {hit.url}
                     </span>
                     <span
-                      className="reader-search-result-excerpt text-13 text-muted-foreground"
+                      className="reader-search-result-excerpt min-w-0 wrap-break-word text-13 text-muted-foreground"
                       dangerouslySetInnerHTML={{ __html: hit.excerpt }}
                     />
                   </a>
@@ -243,7 +250,7 @@ export default function SearchDialog({
               ))}
             </ul>
           ) : null}
-          <div className="reader-search-hints flex items-center gap-3 text-xs text-muted-foreground">
+          <div className="reader-search-hints flex min-w-0 items-center gap-3 text-xs text-muted-foreground">
             <span className="inline-flex items-center gap-1">
               <Kbd className="border border-border bg-card text-2xs">↑↓</Kbd>
               <span>navigate</span>

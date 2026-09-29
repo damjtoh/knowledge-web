@@ -53,12 +53,36 @@ const config: OxlintConfig = {
           {
             contracts: [
               // Touch-target styling must live on the trigger button itself;
-              // a wrapper would break focus and the 44px touch target.
-              { pattern: "^CollapsibleTrigger$", allow: ["reader-tree-toggle"] },
-              // Branch hook carries only min-width containment; moving it to
-              // the parent <li> would break the browser-test selector
-              // li > .reader-tree-collapsible > .reader-tree-panel.
-              { pattern: "^Collapsible$", allow: ["reader-tree-collapsible"] },
+              // a wrapper would break focus and the 44px touch target. The
+              // toggle owns its hit area, centering, and transparent
+              // surface in utilities; the caret reveal uses group-hover and
+              // group-focus-within opacity on the icon.
+              {
+                pattern: "^CollapsibleTrigger$",
+                allow: [
+                  "reader-tree-toggle",
+                  "flex",
+                  "min-h-11",
+                  "w-6",
+                  "shrink-0",
+                  "cursor-pointer",
+                  "items-center",
+                  "justify-center",
+                  "self-stretch",
+                  "rounded-md",
+                  "border",
+                  "border-transparent",
+                  "bg-transparent",
+                  "p-0",
+                ],
+              },
+              // Branch hook carries containment; moving it to the parent
+              // <li> would break the browser-test selector li >
+              // .reader-tree-collapsible > .reader-tree-panel.
+              {
+                pattern: "^Collapsible$",
+                allow: ["reader-tree-collapsible", "min-w-0", "max-w-full"],
+              },
               // Panel hook is a DOM selector only (no CSS declared); it must
               // stay on the collapsible content element.
               { pattern: "^CollapsibleContent$", allow: ["reader-tree-panel"] },
@@ -72,9 +96,11 @@ const config: OxlintConfig = {
               // 8px gap); the header renders no wrapper DOM.
               { pattern: "^DialogHeader$", allow: ["flex-row", "items-center", "gap-2"] },
               // Touch-target sizing must live on the button itself, same as
-              // the tree toggle above. Offline actions share the same
-              // 44px target and the browser journeys query them by hook
-              // class; a wrapper would break activation and selectors.
+              // the tree toggle above. Offline actions own the 44px floor
+              // in utilities (min-h-11, plus min-w-11 on icon-only Remove)
+              // with token hover/dark from the Button primitive; the browser
+              // journeys query them by hook class, so a wrapper would break
+              // activation and selectors.
               {
                 pattern: "^Button$",
                 allow: [
@@ -88,19 +114,38 @@ const config: OxlintConfig = {
                   "px-2.5",
                   "py-1.5",
                   "gap-1.5",
+                  "min-h-11",
+                  "min-w-11",
                 ],
               },
               // Registry sidebar-11 tree hooks: published root order and
               // active cues must stay on the menu elements the browser
               // journeys query; wrappers would break
-              // .reader-sidebar-nav > ul > li and active selectors.
+              // .reader-sidebar-nav > ul > li and active selectors. Utilities
+              // own list reset, gaps, touch floors, washes, wrapping, and
+              // containment; hooks stay as non-visual selectors.
               {
                 pattern: "^SidebarMenu$",
-                allow: ["reader-tree", "reader-projection-switcher", "gap-1"],
+                allow: [
+                  "reader-tree",
+                  "reader-projection-switcher",
+                  "gap-1",
+                  "mb-1",
+                  "m-0",
+                  "list-none",
+                  "p-0",
+                  "min-w-0",
+                  "max-w-full",
+                ],
               },
+              // Tree list items keep containment so one unbroken label never
+              // forces its branch wider than the sidebar or mobile sheet.
+              { pattern: "^SidebarMenuItem$", allow: ["min-w-0", "max-w-full"] },
               // Published tree children indent and guide must stay on the
               // menu sub itself; a wrapper would break the
               // li > .reader-tree-collapsible > .reader-tree-panel selector.
+              // Utilities own the guide, spacing, wrapping, and containment;
+              // the responsive indent lives on the branch wrapper.
               {
                 pattern: "^SidebarMenuSub$",
                 allow: [
@@ -110,6 +155,8 @@ const config: OxlintConfig = {
                   "border-border",
                   "py-1",
                   "pl-2.5",
+                  "min-w-0",
+                  "max-w-full",
                 ],
               },
               // Published section label owns its muted 11px/600/0.6px
@@ -122,6 +169,11 @@ const config: OxlintConfig = {
               // a wrapper would break focus return and the 44px touch target.
               // The tree selected wash lives on the button with the active
               // hook so folder and note rows share one active-row element.
+              // Utilities own touch floors, padding, wrapping, containment,
+              // and washes: bg-border with data-active:bg-border beats the
+              // primitive data-active wash, while open rows use transparent
+              // washes (plus the unlayered open-row rule for the dark
+              // two-tone stack).
               {
                 pattern: "^SidebarMenuButton$",
                 allow: [
@@ -133,8 +185,24 @@ const config: OxlintConfig = {
                   "rounded-md",
                   "px-2.5",
                   "py-2",
+                  "px-3",
+                  "py-2.5",
                   "gap-2",
                   "bg-border",
+                  "bg-transparent",
+                  "min-h-11",
+                  "min-w-0",
+                  "max-w-full",
+                  "flex-1",
+                  "w-full",
+                  "w-auto",
+                  "justify-start",
+                  "no-underline",
+                  "wrap-break-word",
+                  "hover:bg-muted",
+                  "hover:bg-transparent",
+                  "data-active:bg-border",
+                  "data-active:bg-transparent",
                 ],
               },
               // Desktop top chrome owns its header spacing from design.pen:
@@ -150,17 +218,31 @@ const config: OxlintConfig = {
               },
               // Projection switcher trigger owns its hook through the
               // dropdown trigger render composition; the menu button has
-              // no other wrapper that can own it.
-              { pattern: "^DropdownMenuTrigger$", allow: ["reader-projection-trigger"] },
+              // no other wrapper that can own it. The 44px floor lives on
+              // the trigger itself to keep the touch target.
+              {
+                pattern: "^DropdownMenuTrigger$",
+                allow: ["reader-projection-trigger", "min-h-11"],
+              },
               // Projection menu width must stay on the dropdown popup: the
-              // menu renders in a portal with no wrapper DOM.
-              { pattern: "^DropdownMenuContent$", allow: ["reader-projection-menu"] },
-              // Projection choices carry only readable long-name wrapping;
-              // the DropdownMenu primitive owns the menu surface and the
-              // anchors must stay on the menu items.
+              // menu renders in a portal with no wrapper DOM. Min-width
+              // lives as min-w-48 in utilities; only the viewport-relative
+              // max-width stays in scoped CSS (bracket values are banned).
+              {
+                pattern: "^DropdownMenuContent$",
+                allow: ["reader-projection-menu", "min-w-48"],
+              },
+              // Projection choices carry readable long-name wrapping plus
+              // containment; the DropdownMenu primitive owns the menu
+              // surface and the anchors must stay on the menu items.
               {
                 pattern: "^DropdownMenuItem$",
-                allow: ["reader-projection-current", "reader-projection-choice"],
+                allow: [
+                  "reader-projection-current",
+                  "reader-projection-choice",
+                  "min-w-0",
+                  "wrap-break-word",
+                ],
               },
               // Registry shell layout: trigger owns the design inset-header
               // treatment (bordered 28px square) plus its sample offset and
@@ -177,30 +259,69 @@ const config: OxlintConfig = {
                 pattern: "^Separator$",
                 allow: ["mr-2", "hidden", "md:block", "w-px", "h-4"],
               },
-              // Reading-header trail keeps 13px/600 crumbs on the link
-              // and current-page elements; the Breadcrumb primitives own
-              // landmarks and aria, so utilities stay on the items.
+              // Reading-header trail owns wrapping, containment, touch,
+              // and plain-anchor visuals in utilities; the Breadcrumb
+              // primitives own landmarks and aria, so utilities stay on
+              // the items. The wrapper div owns flex-1 containment, the
+              // List owns reset plus containment (registry owns flex,
+              // wrap, gap, and muted type), Items own containment, and
+              // Link/Page own 13px/600 type with wrapping, touch floors,
+              // and token hover underlines. No scoped breadcrumb rules
+              // remain; dark mode follows the tokens.
+              {
+                pattern: "^Breadcrumb$",
+                allow: ["min-w-0", "max-w-full"],
+              },
+              {
+                pattern: "^BreadcrumbList$",
+                allow: ["m-0", "list-none", "p-0", "min-w-0", "max-w-full"],
+              },
+              {
+                pattern: "^BreadcrumbItem$",
+                allow: ["min-w-0", "max-w-full"],
+              },
               {
                 pattern: "^BreadcrumbLink$",
-                allow: ["text-13", "font-semibold"],
+                allow: [
+                  "text-13",
+                  "font-semibold",
+                  "inline-flex",
+                  "items-center",
+                  "min-h-11",
+                  "min-w-0",
+                  "max-w-full",
+                  "wrap-break-word",
+                  "text-muted-foreground",
+                  "no-underline",
+                  "hover:text-foreground",
+                  "hover:underline",
+                  "hover:decoration-ring",
+                  "hover:underline-offset-3",
+                  "dark:hover:decoration-chart-3",
+                ],
               },
               {
                 pattern: "^BreadcrumbPage$",
-                allow: ["text-13", "font-semibold"],
+                allow: ["text-13", "font-semibold", "min-w-0", "max-w-full", "wrap-break-word"],
               },
               // Home root cards use the registry Card surface (not a
-              // hand-written CSS card). Hook classes carry only readable
-              // long-title wrapping and folder/note meta layout; the Card
-              // primitive owns the surface and there is no wrapper that can
-              // own them without breaking the card composition. The phone
-              // row (mobile port home-phone) reuses the same Card surface:
-              // max-md utilities switch padding and row layout below 768px,
-              // the desktop header hides there, and the phone-only row uses
-              // the slots below with token colors and scale type sizes.
+              // hand-written CSS card). Utilities on page.tsx own list,
+              // link, row, title, and meta visuals; scoped CSS keeps only
+              // the responsive column track (bracket values are banned)
+              // and the plain-card override against the unlayered
+              // article-link rule. Hooks stay as non-visual test selectors.
+              // The phone row (mobile port home-phone) reuses the same Card
+              // surface: max-md utilities switch padding and row layout
+              // below 768px, the desktop header hides there, and the
+              // phone-only row uses the slots below with token colors and
+              // scale type sizes.
               {
                 pattern: "^Card$",
                 allow: [
                   "reader-home-card",
+                  "h-full",
+                  "max-w-full",
+                  "min-w-0",
                   "max-md:flex-row",
                   "max-md:items-center",
                   "max-md:gap-3",
@@ -209,21 +330,37 @@ const config: OxlintConfig = {
               },
               {
                 pattern: "^CardHeader$",
-                allow: ["reader-home-card-header", "max-md:hidden"],
+                allow: ["reader-home-card-header", "max-w-full", "min-w-0", "max-md:hidden"],
               },
               // Phone-only home card row reuses the registry title and
               // description slots without the desktop hook classes (hooks
               // stay unique per card for the desktop selectors), carrying
               // the phone title and count-only meta type sizes. The desktop
-              // D3O3k6 row adds the 11px count-only meta token below.
+              // D3O3k6 row adds the 11px count-only meta token below, with
+              // containment and hover utilities owning the title/meta read.
               {
                 pattern: "^CardTitle$",
-                allow: ["reader-home-card-title", "truncate", "text-sm", "font-semibold"],
+                allow: [
+                  "reader-home-card-title",
+                  "max-w-full",
+                  "min-w-0",
+                  "wrap-break-word",
+                  "group-hover:underline",
+                  "group-hover:decoration-ring",
+                  "group-hover:underline-offset-3",
+                  "dark:group-hover:decoration-chart-3",
+                  "truncate",
+                  "text-sm",
+                  "font-semibold",
+                ],
               },
               {
                 pattern: "^CardDescription$",
                 allow: [
                   "reader-home-card-meta",
+                  "max-w-full",
+                  "min-w-0",
+                  "wrap-break-word",
                   "truncate",
                   "text-xs",
                   "text-2xs",
@@ -231,16 +368,24 @@ const config: OxlintConfig = {
                 ],
               },
               // Sidebar footer owns offline plus appearance layout
-              // (border, scroll cap, safe-area reachability). The registry
+              // (token border, scroll cap, safe-area reachability). The registry
               // Footer element renders no wrapper DOM, so the hook must
               // stay on the footer itself; a parent would scope the wrong
               // element and break the fixed-footer/tree-scroll split.
-              // Design footer stack adds a top border with padded gaps;
-              // the divider between On Device and Appearance is the
+              // Design footer stack adds a top border-border with padded gaps
+              // plus overflow-y-auto so the 45dvh-capped footer scrolls; the
+              // divider between On Device and Appearance is the
               // registry Separator with no wrapper.
               {
                 pattern: "^SidebarFooter$",
-                allow: ["reader-sidebar-footer", "gap-4", "border-t", "p-4"],
+                allow: [
+                  "reader-sidebar-footer",
+                  "gap-4",
+                  "border-t",
+                  "border-border",
+                  "p-4",
+                  "overflow-y-auto",
+                ],
               },
               // Appearance segmented control owns its muted pill container;
               // the ToggleGroup primitive renders no wrapper DOM, so the
@@ -251,9 +396,10 @@ const config: OxlintConfig = {
               },
               // Appearance options keep the DOM hook for touch sizing plus
               // the pill option layout; the toggle primitive renders the
-              // button itself, so flex and active-state utilities must stay
-              // on the item. Active state uses aria-pressed variants; the
-              // readable names live in screen-reader labels.
+              // button itself, so flex, 44px floors (min-h-11/min-w-11),
+              // and active-state utilities must stay on the item. Active
+              // state uses aria-pressed variants; the readable names live
+              // in screen-reader labels.
               {
                 pattern: "^ToggleGroupItem$",
                 allow: [
@@ -265,6 +411,8 @@ const config: OxlintConfig = {
                   "p-1.5",
                   "justify-center",
                   "text-muted-foreground",
+                  "min-h-11",
+                  "min-w-11",
                   "aria-pressed:bg-card",
                   "aria-pressed:border-border",
                   "aria-pressed:text-primary",
@@ -299,16 +447,85 @@ const config: OxlintConfig = {
         "shadcn/no-inline-styles": "error",
         // Hook classes with no declared CSS, kept as DOM/test selectors:
         // allow-listed by exact name so no other unknown class passes.
+        // Home card hooks stay for the browser journeys after their
+        // visuals move to utilities; only the responsive column track
+        // and the plain-card prose override keep scoped CSS. Tree,
+        // navigation, and projection hooks stay after their visuals move
+        // to utilities; only the menu max-width and the open-row
+        // transparent wash keep scoped CSS. Breadcrumb, group, and
+        // other-notes hooks stay after their visuals move to utilities;
+        // only the article group plain-anchor override and the
+        // phone-crumb prose override keep scoped CSS. Offline, appearance,
+        // and footer hooks stay after their visuals move to utilities;
+        // only the footer 45dvh cap keeps scoped CSS (bracket values are
+        // banned).
         "shadcn/no-unknown-classes": [
           "error",
           {
             allow: [
               "reader-tree-panel",
+              "is-active",
+              "reader-tree",
+              "reader-tree-children",
+              "reader-tree-collapsible",
+              "reader-tree-row",
+              "reader-tree-open",
+              "reader-tree-toggle",
+              "reader-sidebar-nav",
+              "reader-projection-switcher",
+              "reader-projection-trigger",
+              "reader-projection-menu",
+              "reader-projection-current",
+              "reader-projection-choice",
+              "reader-projection-link",
+              "reader-projection-name",
               "reader-offline-cue",
               "reader-offline-remove-error",
+              "reader-offline",
+              "reader-offline-save",
+              "reader-offline-retry",
+              "reader-offline-reload",
+              "reader-offline-remove",
+              "reader-offline-size",
+              "reader-offline-trust",
+              "reader-offline-status",
+              "reader-offline-ready",
+              "reader-offline-progress",
+              "reader-appearance",
+              "reader-appearance-option",
+              "reader-sidebar-footer",
               "reader-tree-label",
               "reader-sidebar-home",
               "reader-sidebar-brand",
+              "reader-header",
+              "reader-header-trail",
+              "reader-header-actions",
+              "reader-shell",
+              "reader-main",
+              "reader-search-trigger",
+              "reader-search-sidebar",
+              "reader-search-header",
+              "reader-search-body",
+              "reader-search-input",
+              "reader-search-status",
+              "reader-search-hints",
+              "reader-search-option",
+              "reader-search-result",
+              "reader-search-result-title",
+              "reader-search-result-url",
+              "reader-search-result-excerpt",
+              "reader-home-cards",
+              "reader-home-card-item",
+              "reader-home-card",
+              "reader-home-card-header",
+              "reader-home-card-row",
+              "reader-home-card-title",
+              "reader-home-card-meta",
+              "reader-breadcrumbs",
+              "reader-group",
+              "reader-group-list",
+              "reader-other-notes",
+              "reader-note-crumbs",
             ],
           },
         ],

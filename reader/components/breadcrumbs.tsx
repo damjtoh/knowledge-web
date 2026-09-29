@@ -18,28 +18,37 @@ import {
  * text. Long titles and deep paths wrap inside the reading header without
  * horizontal overflow; all links stay keyboard reachable with visible focus.
  *
- * Custom styling lives on the wrapping element so registry components keep
- * their contracts; inner elements are reached by descendant selectors.
+ * Utilities own the trail visuals (wrapper containment, List reset plus
+ * containment, Item containment, Link/Page wrapping with 44px touch
+ * floors and token colors); the registry primitives own landmarks and
+ * aria. Hooks stay as non-visual DOM/test selectors with no scoped CSS.
  */
 export default function Breadcrumbs({ items }: { items: Crumb[] }) {
   return (
-    <div className="reader-breadcrumbs">
-      <Breadcrumb aria-label="Breadcrumb">
-        <BreadcrumbList>
+    <div className="reader-breadcrumbs mb-0 max-w-full min-w-0 flex-1">
+      <Breadcrumb aria-label="Breadcrumb" className="max-w-full min-w-0">
+        <BreadcrumbList className="m-0 max-w-full min-w-0 list-none p-0">
           {items.map((item, i) => {
             const isLast = i === items.length - 1
 
             return (
               <Fragment key={`${item.title}-${i}`}>
-                <BreadcrumbItem>
+                <BreadcrumbItem className="max-w-full min-w-0">
                   {item.url && !item.isCurrent ? (
-                    <BreadcrumbLink href={item.url} className="text-13 font-semibold">
+                    <BreadcrumbLink
+                      href={item.url}
+                      className="inline-flex max-w-full min-w-0 min-h-11 items-center text-13 font-semibold wrap-break-word text-muted-foreground no-underline hover:text-foreground hover:underline hover:decoration-ring hover:underline-offset-3 dark:hover:decoration-chart-3"
+                    >
                       {item.title}
                     </BreadcrumbLink>
                   ) : item.isCurrent ? (
-                    <BreadcrumbPage className="text-13 font-semibold">{item.title}</BreadcrumbPage>
+                    <BreadcrumbPage className="max-w-full min-w-0 text-13 font-semibold wrap-break-word">
+                      {item.title}
+                    </BreadcrumbPage>
                   ) : (
-                    <span className="text-13 font-semibold">{item.title}</span>
+                    <span className="max-w-full min-w-0 text-13 font-semibold wrap-break-word">
+                      {item.title}
+                    </span>
                   )}
                 </BreadcrumbItem>
                 {!isLast ? <BreadcrumbSeparator /> : null}
@@ -63,16 +72,15 @@ export default function Breadcrumbs({ items }: { items: Crumb[] }) {
  * shared trail derivation (`ReaderNavigation.breadcrumbs`, the server
  * flavor of the `crumbsFromRoots` core in lib/navigation).
  *
- * The `reader-note-crumbs` hook (not utilities alone) dodges the
- * unlayered `.reader-article p/a` rules: those rules beat layered
- * utilities for margin and link color, so the hook genuinely needs its
- * unlayered margin/color overrides in globals.css. No display rule lives
- * there — `md:hidden` in the markup owns visibility, since an unlayered
- * display declaration would beat that layered utility.
+ * The `reader-note-crumbs` hook owns the 12px muted read in globals.css
+ * because those anchors carry no utilities of their own. The trail sits
+ * outside the inner `typeset` scope, so Typeset never styles it. No display
+ * rule lives there — `md:hidden` in the markup owns visibility, since an
+ * unlayered display declaration would beat that layered utility.
  */
 export function NoteCrumbs({ crumbs }: { crumbs: Crumb[] }) {
   return (
-    <p className="reader-note-crumbs md:hidden">
+    <p className="reader-note-crumbs max-w-full min-w-0 pb-1 md:hidden">
       {crumbs.map((crumb, index) => (
         <Fragment key={`${crumb.title}-${index}`}>
           {index > 0 ? <span aria-hidden="true"> / </span> : null}

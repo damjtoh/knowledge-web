@@ -27,8 +27,8 @@ function normalizeMinutes(value: number | undefined): number | undefined {
  * source is missing; both missing renders nothing (no freshness claim).
  * Utilities only: 11px is the text-2xs token, muted is
  * text-muted-foreground, the dot is bg-border. A div (not a paragraph)
- * keeps the unlayered `.reader-article p` margin rule from beating the
- * row, so no unlayered CSS is added for this component.
+ * keeps the row outside Typeset block rhythm, so no scoped CSS is added
+ * for this component.
  */
 export default function MetaLine({
   parentTitle,
