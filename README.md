@@ -45,6 +45,8 @@ Enabled (the current release scope):
 - Virtual static folder pages for selected directories without an
   authored `index.md`; authored indexes own their folder route
 - Local full-text search (no external service)
+- Mermaid diagram rendering for authored ` ```mermaid ` fences: local
+  on-demand renderer, strict authoring, no CDN or external service
 - Wikilink resolution compatible with Obsidian and Tolaria
 - A synthetic landing page when selected content has no root `index.md`
 

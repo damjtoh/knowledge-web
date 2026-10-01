@@ -3,6 +3,7 @@ import wikiLinkPlugin from "@flowershow/remark-wiki-link"
 import path from "node:path"
 import { buildWikiLinkMaps } from "./lib/wiki-aliases.js"
 import remarkReadingTime from "./lib/reading-time.js"
+import remarkMermaid from "./lib/remark-mermaid.js"
 import remarkRelativeLinks from "./lib/relative-links.js"
 
 /**
@@ -47,6 +48,12 @@ export const content = defineCollections({
  * `read_minutes` onto parsed frontmatter, where it flows to page data like
  * `updated_at`. The collection declares no schema, so the unknown field
  * passes through without validation changes.
+ *
+ * Authored ```mermaid fences stay standard Markdown here and become one
+ * `<Mermaid source="..." />` MDX element through `remarkMermaid`; the
+ * shared component map in `components/mdx-components.tsx` binds that
+ * element to the local client renderer in every body renderer. The diagram
+ * text crosses as a serialized string, never as executable MDX.
  */
 const wikiMaps = buildWikiLinkMaps(resolveContentDir())
 
@@ -54,6 +61,10 @@ export default defineConfig({
   mdxOptions: {
     remarkImageOptions: false,
     remarkPlugins: [
+      // Authored ```mermaid fences become the local <Mermaid> client
+      // component (serialized source string only); every other fence stays
+      // a plain code block.
+      remarkMermaid,
       [
         wikiLinkPlugin,
         { format: "regular", files: wikiMaps.files, permalinks: wikiMaps.permalinks },

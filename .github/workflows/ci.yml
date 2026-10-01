@@ -31,7 +31,8 @@ jobs:
       - name: Focused publisher suites
         run: >-
           pnpm test tests/stage-content.test.mjs
-          tests/knowledge-reader-contract.test.mjs tests/navigation.test.mjs
+          tests/knowledge-reader-contract.test.mjs
+          tests/knowledge-reader-mermaid.test.mjs tests/navigation.test.mjs
           tests/wiki-aliases.test.mjs
       - name: Install Playwright Chromium
         run: pnpm exec playwright install chromium --with-deps

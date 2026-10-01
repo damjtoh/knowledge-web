@@ -137,6 +137,35 @@ non-Markdown assets never enter the index. Pages omitted from the
 `navigation` presentation list stay searchable. No API route or server
 is involved.
 
+## Mermaid diagrams
+
+Standard ` ```mermaid ` fenced Markdown renders as an SVG diagram on
+every authored route (root index, folder index, and notes):
+
+````markdown
+```mermaid
+flowchart LR
+  accTitle: Water flow
+  A[Rain] --> B[Soil]
+  B --> C[Roots]
+```
+````
+
+- Rendering stays local and static. Only a diagram page loads the bundled
+  Mermaid renderer, on demand; no CDN or external service is contacted,
+  and the exported site keeps working offline.
+- Light, Dark, and System follow the reader appearance and re-render
+  diagrams after a change.
+- Multiple diagrams share a page safely, and wide diagrams scroll inside
+  their own container on phones instead of widening the page.
+- Rendering is strict. Authored `click` callbacks and HTML labels stay
+  inert, and a directive cannot loosen the security settings.
+- An invalid diagram falls back to its escaped source with a short note;
+  valid neighbors still render, and without JavaScript every diagram
+  shows its readable source.
+- Name diagrams for assistive technology with Mermaid's `accTitle:` and
+  `accDescr:` statements, as in the example.
+
 ## Contract tests
 
 All commands run from the publisher root through the `tsx` test runner.

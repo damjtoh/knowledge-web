@@ -55,6 +55,11 @@ import {
 import {
   HIDDEN_NOTE_PATH,
   LONG_SLUG,
+  MERMAID_INVALID_SOURCE,
+  MERMAID_NOTE_CODE,
+  MERMAID_ROOT_ACC_DESCR,
+  MERMAID_ROOT_ACC_TITLE,
+  MERMAID_SECURITY_FLAG,
   SYNTHETIC_DESTINATIONS,
   SYNTHETIC_TITLE,
   UNSELECTED_SENTINEL,
@@ -2810,6 +2815,41 @@ async function runStaticExportChecks({
   assert.match(garden, /Garden Plots/, "authored folder introduction renders")
   assert.ok(garden.includes('href="/garden/alpha"'), "folder body links to emitted note route")
   assert.ok(garden.includes("Alpha Bed"), "folder body names its notes")
+
+  // Authored Mermaid fences stay Markdown: every fence becomes a named
+  // figure whose no-JS/loading fallback is the escaped diagram source, a
+  // plain JS fence keeps its code block, and security-directive text stays
+  // inert escaped source.
+  assert.match(home, /<figure[^>]*data-mermaid/, "root diagram renders a figure")
+  assert.ok(
+    home.includes(`aria-label="${MERMAID_ROOT_ACC_TITLE}"`),
+    "root diagram carries its authored accTitle as the container name",
+  )
+  assert.ok(
+    home.includes(MERMAID_ROOT_ACC_DESCR),
+    "root diagram keeps its authored accDescr in the escaped fallback",
+  )
+  assert.match(garden, /<figure[^>]*data-mermaid/, "folder diagram renders a figure")
+  assert.match(garden, /sequenceDiagram/, "folder sequence source is the static fallback")
+  const alpha = readOut(outDir, "garden/alpha.html")
+  assert.equal(
+    countOccurrences(alpha, "data-mermaid-viewport"),
+    4,
+    "note carries one overflow container per authored diagram",
+  )
+  assert.ok(
+    alpha.includes("A --&lt; B"),
+    "invalid diagram source stays escaped text in the static fallback",
+  )
+  assert.ok(
+    alpha.includes(`&lt;script&gt;window.${MERMAID_SECURITY_FLAG}`),
+    "security-probe label is encoded source, never markup",
+  )
+  assert.ok(
+    !alpha.includes(`<script>window.${MERMAID_SECURITY_FLAG}`),
+    "security-probe label does not become an executable script",
+  )
+  assert.match(alpha, /<pre class="shiki/, "a plain JS fence keeps its code block")
   const orchard = readOut(outDir, "orchard.html")
   assert.match(orchard, /<h1[^>]*>Orchard<\/h1>/, "virtual flat folder supplies a humanized title")
 
@@ -2975,6 +3015,8 @@ async function runStaticExportChecks({
   }
 
   // Static and read-only runtime: fixed deps, static export, no API routes.
+  // `mermaid` is the approved local diagram renderer: client-only, bundled
+  // into the static export, and loaded on demand by diagram pages.
   const pkg = JSON.parse(fs.readFileSync(path.join(READER_ROOT, "package.json"), "utf8"))
 
   const allowedDeps = new Set([
@@ -2985,6 +3027,7 @@ async function runStaticExportChecks({
     "fumadocs-core",
     "fumadocs-mdx",
     "lucide-react",
+    "mermaid",
     "minisearch",
     "next",
     "react",
@@ -4592,7 +4635,22 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
   await assertBackgroundScrollLock(page, `${label} drawer`)
   await assertLandmarks(page, `${label} drawer`)
 
-  // Focus moves into the drawer while it is open.
+  // Focus moves into the drawer while it is open. The home page renders its
+  // diagram asynchronously, so wait for the registry focus transfer instead
+  // of sampling one instant; the assertion still checks the same behavior.
+  await page
+    .waitForFunction(
+      () => {
+        const panel = document.querySelector('[data-sidebar="sidebar"][data-mobile="true"]')
+        const active = document.activeElement
+
+        return !!panel && !!active && panel.contains(active)
+      },
+      null,
+      { timeout: 5000 },
+    )
+    .catch(() => {})
+
   const focusInDrawer = await page.evaluate(() => {
     const panel = document.querySelector('[data-sidebar="sidebar"][data-mobile="true"]')
     const active = document.activeElement
@@ -5197,6 +5255,7 @@ async function runOutputInspection(outDir, workDir, kbRoot, sentinel) {
 
   const pkg = JSON.parse(fs.readFileSync(path.join(READER_ROOT, "package.json"), "utf8"))
 
+  // `mermaid` is the approved local diagram renderer (static bundle only).
   const allowedDeps = new Set([
     "@base-ui/react",
     "@flowershow/remark-wiki-link",
@@ -5205,6 +5264,7 @@ async function runOutputInspection(outDir, workDir, kbRoot, sentinel) {
     "fumadocs-core",
     "fumadocs-mdx",
     "lucide-react",
+    "mermaid",
     "minisearch",
     "next",
     "react",
@@ -6667,6 +6727,339 @@ test("synthetic browse journey covers home → folder → nested note → Back",
     await runOfflineRemove(context, baseUrl, {
       leafRoute: journey.leafRoute,
     })
+  } finally {
+    await browser.close()
+    await closeServer(server)
+  }
+})
+
+/** Chunk paths one route requested; a fresh context avoids HTTP cache reuse. */
+async function collectChunkRequests(browser, baseUrl, route, { waitForDiagrams = false } = {}) {
+  const context = await createDesktopContext(browser)
+  const page = await context.newPage()
+  const chunks = []
+
+  page.on("response", (response) => {
+    const url = new URL(response.url())
+
+    if (url.origin === new URL(baseUrl).origin && url.pathname.startsWith("/_next/static/chunks/"))
+      chunks.push(url.pathname)
+  })
+
+  try {
+    await goto(page, `${baseUrl}${route}`)
+
+    if (waitForDiagrams) {
+      await page.waitForFunction(
+        () => document.querySelectorAll("figure[data-mermaid] svg").length === 3,
+        null,
+        { timeout: 30000 },
+      )
+    }
+
+    return chunks
+  } finally {
+    await context.close()
+  }
+}
+
+test("synthetic mermaid diagrams render locally, follow themes, and fall back safely", async () => {
+  assert.ok(
+    fs.existsSync(path.join(READER_ROOT, "node_modules", "mermaid")),
+    "reader dependencies must be installed (run `pnpm install` in reader/)",
+  )
+  const shared = await getSharedSyntheticBuild()
+  const outDir = shared.outDir
+  const { server, baseUrl } = await serveOut(outDir)
+  const browser = await launchBrowser()
+
+  try {
+    await withDesktopPage(browser, async (page) => {
+      const pageErrors = []
+      page.on("pageerror", (error) => pageErrors.push(String(error)))
+      await goto(page, `${baseUrl}/garden/alpha`)
+      await page.waitForFunction(
+        () => document.querySelectorAll("figure[data-mermaid] svg").length === 3,
+        null,
+        { timeout: 30000 },
+      )
+
+      const diagrams = await page.evaluate((flag) => {
+        const figures = Array.from(document.querySelectorAll("figure[data-mermaid]"))
+
+        return {
+          count: figures.length,
+          svgCount: figures.filter((figure) => figure.querySelector("svg")).length,
+          svgIds: figures.map((figure) => figure.querySelector("svg")?.id || "").filter(Boolean),
+          fallbackSources: figures
+            .filter((figure) => figure.querySelector("[data-mermaid-source]"))
+            .map((figure) => figure.querySelector("code")?.textContent || ""),
+          statuses: figures.map(
+            (figure) => figure.querySelector('[role="status"]')?.textContent || "",
+          ),
+          invalidBoldTags: document.querySelectorAll("figure[data-mermaid] b").length,
+          scripts: document.querySelectorAll("figure[data-mermaid] svg script").length,
+          callbacks: document.querySelectorAll("figure[data-mermaid] [onclick]").length,
+          javascriptLinks: document.querySelectorAll('figure[data-mermaid] a[href^="javascript:"]')
+            .length,
+          injected: flag in window,
+          codeFences: Array.from(document.querySelectorAll("pre code")).map(
+            (code) => code.textContent || "",
+          ),
+        }
+      }, MERMAID_SECURITY_FLAG)
+
+      assert.equal(diagrams.count, 4, "every authored fence becomes one figure")
+      assert.equal(diagrams.svgCount, 3, "valid diagrams render; the invalid one does not")
+      assert.equal(diagrams.fallbackSources.length, 1, "only the invalid diagram keeps its source")
+      assert.equal(diagrams.fallbackSources[0], MERMAID_INVALID_SOURCE)
+      assert.ok(diagrams.statuses[2], "invalid diagram shows a readable status note")
+      assert.equal(diagrams.invalidBoldTags, 0, "invalid source is escaped text, not markup")
+      assert.ok(
+        diagrams.codeFences.includes(MERMAID_NOTE_CODE),
+        "a plain JS fence keeps its normal code block",
+      )
+      assert.equal(
+        new Set(diagrams.svgIds).size,
+        3,
+        "multiple diagrams never collide on one render id",
+      )
+
+      assert.equal(diagrams.scripts, 0, "no script element survives strict rendering")
+      assert.equal(diagrams.callbacks, 0, "strict security binds no click callback")
+      assert.equal(diagrams.javascriptLinks, 0, "strict security injects no javascript link")
+      assert.equal(diagrams.injected, false, "an authored script label never runs")
+
+      const beforeTheme = await page.evaluate(() =>
+        Array.from(document.querySelectorAll("figure[data-mermaid] svg")).map(
+          (svg) => svg.outerHTML,
+        ),
+      )
+
+      const waitForAllDiagrams = (previous) =>
+        page.waitForFunction(
+          (old) => {
+            const now = Array.from(document.querySelectorAll("figure[data-mermaid] svg")).map(
+              (svg) => svg.outerHTML,
+            )
+
+            return now.length === old.length && now.every((html, index) => html !== old[index])
+          },
+          previous,
+          { timeout: 30000 },
+        )
+
+      await page.emulateMedia({ colorScheme: "dark" })
+      await page.waitForFunction(() => document.documentElement.classList.contains("dark"), null, {
+        timeout: 5000,
+      })
+      await waitForAllDiagrams(beforeTheme)
+
+      const darkTheme = await page.evaluate(() => ({
+        dark: document.documentElement.classList.contains("dark"),
+        html: Array.from(document.querySelectorAll("figure[data-mermaid] svg")).map(
+          (svg) => svg.outerHTML,
+        ),
+        uniqueIds: new Set(
+          Array.from(document.querySelectorAll("figure[data-mermaid] svg")).map((svg) => svg.id),
+        ).size,
+      }))
+
+      assert.equal(darkTheme.dark, true, "system dark updates the resolved appearance")
+      assert.equal(darkTheme.uniqueIds, 3, "theme re-renders keep every render id unique")
+
+      await page.emulateMedia({ colorScheme: "light" })
+      await page.waitForFunction(() => !document.documentElement.classList.contains("dark"), null, {
+        timeout: 5000,
+      })
+      await waitForAllDiagrams(darkTheme.html)
+
+      const lightTheme = await page.evaluate(() =>
+        Array.from(document.querySelectorAll("figure[data-mermaid] svg")).map(
+          (svg) => svg.outerHTML,
+        ),
+      )
+
+      await page.evaluate(() => {
+        const buttons = Array.from(
+          document.querySelectorAll(
+            '.reader-sidebar-footer [role="group"][aria-label="Appearance"] button',
+          ),
+        )
+
+        buttons.find((button) => (button.textContent || "").includes("Dark"))?.click()
+      })
+      await page.waitForFunction(() => document.documentElement.classList.contains("dark"), null, {
+        timeout: 5000,
+      })
+      await waitForAllDiagrams(lightTheme)
+
+      assert.equal(
+        await page.evaluate(() => window.localStorage.getItem("knowledge-reader-appearance")),
+        "dark",
+        "explicit Dark is stored by the appearance provider",
+      )
+
+      await page.emulateMedia({ colorScheme: "light" })
+      await page.waitForTimeout(500)
+      assert.equal(
+        await page.evaluate(() => document.documentElement.classList.contains("dark")),
+        true,
+        "an explicit Dark choice outranks later system changes",
+      )
+
+      await goto(page, `${baseUrl}/`)
+      await page.waitForFunction(() => !!document.querySelector("figure[data-mermaid] svg"), null, {
+        timeout: 30000,
+      })
+
+      const homeDiagram = await page.evaluate(() => {
+        const figure = document.querySelector("figure[data-mermaid]")
+
+        return {
+          label: figure?.getAttribute("aria-label") || "",
+          title: figure?.querySelector("svg title")?.textContent || "",
+          desc: figure?.querySelector("svg desc")?.textContent || "",
+          h1Count: document.querySelectorAll("article h1").length,
+        }
+      })
+
+      assert.equal(homeDiagram.label, MERMAID_ROOT_ACC_TITLE, "root figure uses authored accTitle")
+      assert.equal(homeDiagram.title, MERMAID_ROOT_ACC_TITLE, "root SVG carries the accTitle")
+      assert.ok(
+        homeDiagram.desc.includes(MERMAID_ROOT_ACC_DESCR),
+        "root SVG carries the authored accDescr",
+      )
+      assert.equal(homeDiagram.h1Count, 1, "a root diagram never adds a heading")
+
+      await goto(page, `${baseUrl}/garden`)
+      await page.waitForFunction(() => !!document.querySelector("figure[data-mermaid] svg"), null, {
+        timeout: 30000,
+      })
+
+      const folderDiagram = await page.evaluate(() => ({
+        label: document.querySelector("figure[data-mermaid]")?.getAttribute("aria-label") || "",
+        text: document.querySelector("figure[data-mermaid] svg")?.textContent || "",
+      }))
+
+      assert.equal(
+        folderDiagram.label,
+        "Mermaid diagram",
+        "an unnamed diagram keeps a generic name",
+      )
+      assert.ok(folderDiagram.text.includes("Gardener"), "folder sequence diagram renders")
+
+      assert.deepEqual(pageErrors, [], "no uncaught page error while diagrams render")
+    })
+
+    await withPhonePage(browser, "narrow", async (phone) => {
+      await goto(phone, `${baseUrl}/garden/alpha`)
+      await phone.waitForFunction(
+        () => document.querySelectorAll("figure[data-mermaid] svg").length === 3,
+        null,
+        { timeout: 30000 },
+      )
+
+      const geometry = await phone.evaluate(() => ({
+        doc: document.documentElement.scrollWidth,
+        inner: window.innerWidth,
+        figures: Array.from(document.querySelectorAll("figure[data-mermaid]")).map(
+          (figure) => figure.getBoundingClientRect().width,
+        ),
+        viewports: Array.from(document.querySelectorAll("[data-mermaid-viewport]")).map(
+          (viewport) => ({
+            scroll: viewport.scrollWidth,
+            client: viewport.clientWidth,
+          }),
+        ),
+      }))
+
+      assert.ok(
+        geometry.doc <= geometry.inner + 1,
+        `phone page width ${geometry.doc} exceeds viewport ${geometry.inner}`,
+      )
+
+      for (const width of geometry.figures) {
+        assert.ok(width <= geometry.inner + 1, `diagram figure ${width} stays inside the page`)
+      }
+
+      assert.ok(
+        geometry.viewports.some((viewport) => viewport.scroll > viewport.client + 1),
+        "the wide diagram scrolls inside its own container",
+      )
+      await assertNoPageOverflow(phone, "narrow phone mermaid note")
+    })
+
+    const noJsContext = await browser.newContext({
+      viewport: { width: 360, height: 800 },
+      javaScriptEnabled: false,
+    })
+
+    try {
+      const page = await noJsContext.newPage()
+      await page.goto(`${baseUrl}/garden/alpha`, {
+        waitUntil: "domcontentloaded",
+        timeout: 15000,
+      })
+
+      const noJsNote = await page.evaluate(() => {
+        const figures = Array.from(document.querySelectorAll("figure[data-mermaid]"))
+
+        return {
+          count: figures.length,
+          svg: document.querySelectorAll("figure[data-mermaid] svg").length,
+          sources: figures.filter((figure) => figure.querySelector("[data-mermaid-source]")).length,
+          scripts: document.querySelectorAll("figure[data-mermaid] script").length,
+          invalid: (
+            figures
+              .find((figure) => figure.querySelector("code")?.textContent?.includes("A --< B"))
+              ?.querySelector("code")?.textContent || ""
+          ).trimEnd(),
+        }
+      })
+
+      assert.equal(noJsNote.count, 4, "no-JS note keeps every authored figure")
+      assert.equal(noJsNote.svg, 0, "no-JS renders no diagram SVG")
+      assert.equal(noJsNote.sources, 4, "no-JS shows the escaped source for every diagram")
+      assert.equal(noJsNote.scripts, 0, "no-JS security probe injects no script")
+      assert.equal(noJsNote.invalid, MERMAID_INVALID_SOURCE, "invalid source stays readable")
+
+      await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded", timeout: 15000 })
+
+      const noJsHome = await page.evaluate(() => {
+        const figure = document.querySelector("figure[data-mermaid]")
+
+        return {
+          label: figure?.getAttribute("aria-label") || "",
+          source: figure?.querySelector("code")?.textContent || "",
+        }
+      })
+
+      assert.equal(noJsHome.label, MERMAID_ROOT_ACC_TITLE, "no-JS root figure keeps its name")
+      assert.ok(noJsHome.source.includes("flowchart LR"), "no-JS root shows its diagram source")
+    } finally {
+      await noJsContext.close()
+    }
+
+    const plainChunks = await collectChunkRequests(browser, baseUrl, "/standalone")
+
+    const diagramChunks = await collectChunkRequests(browser, baseUrl, "/garden/alpha", {
+      waitForDiagrams: true,
+    })
+
+    const rendererChunks = [
+      ...new Set(diagramChunks.filter((chunk) => !plainChunks.includes(chunk))),
+    ]
+
+    assert.ok(rendererChunks.length > 0, "a diagram page loads renderer chunks on demand")
+    const offlineManifest = JSON.parse(readOut(outDir, "offline.json"))
+
+    for (const chunk of rendererChunks) {
+      assert.ok(
+        offlineManifest.urls.includes(chunk),
+        `${chunk} stays a local precached export asset`,
+      )
+    }
   } finally {
     await browser.close()
     await closeServer(server)

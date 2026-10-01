@@ -2,12 +2,13 @@ import { ChevronRight, File, Folder } from "lucide-react"
 import { source } from "../lib/source"
 import { buildReaderNavigation, type NavigationNode } from "../lib/navigation"
 import { getSiteMetadata } from "../lib/site"
+import { mdxComponents, type MdxBody } from "../components/mdx-components"
 import { Card, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 
 /** Staged root fields owned by the MDX pipeline. */
 interface RootPageFields {
   synthetic?: unknown
-  body?: React.ComponentType
+  body?: MdxBody
   title?: string
   updated_at?: string | Date | null
 }
@@ -79,7 +80,7 @@ export default async function HomePage() {
         /* Authored home introduction owns the Typeset scope; the synthetic
            fallback below and the root cards stay outside as React content. */
         <div className="typeset">
-          <AuthoredBody />
+          <AuthoredBody components={mdxComponents} />
         </div>
       ) : (
         <>

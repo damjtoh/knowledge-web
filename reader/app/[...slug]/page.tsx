@@ -6,6 +6,7 @@ import { docTitle } from "../../lib/title"
 import MetaLine, { type MetaLineData } from "../../components/last-edited"
 import { NoteCrumbs } from "../../components/breadcrumbs"
 import OtherNotes, { type SiblingNote } from "../../components/other-notes"
+import { mdxComponents, type MdxBody } from "../../components/mdx-components"
 import { readMinutesFromData } from "../../lib/reading-time"
 import {
   buildReaderNavigation,
@@ -208,7 +209,7 @@ export default async function FolderOrNotePage({ params }: { params: Promise<Not
 
   if (node?.page) {
     // SAFETY: authored index pages own a compiled body component; node.page exists only for authored routes.
-    const Body = node.page.data.body as React.ComponentType
+    const Body = node.page.data.body as MdxBody
     const directNotes = getDirectNotes(node)
     const childFolders = getChildFolders(node)
 
@@ -236,7 +237,7 @@ export default async function FolderOrNotePage({ params }: { params: Promise<Not
           {/* Authored Markdown owns the Typeset scope; crumbs, meta, and
               siblings stay outside so Typeset never styles React chrome. */}
           <div className="typeset">
-            <Body />
+            <Body components={mdxComponents} />
           </div>
           <OtherNotes parentTitle={parent?.title} siblings={siblings} />
         </article>
@@ -248,7 +249,7 @@ export default async function FolderOrNotePage({ params }: { params: Promise<Not
         {/* Authored folder introduction owns the Typeset scope; the Notes
             and Folders groups stay outside as React navigation. */}
         <div className="typeset">
-          <Body />
+          <Body components={mdxComponents} />
         </div>
         <GroupSection title="Notes" nodes={directNotes} />
         <GroupSection title="Folders" nodes={childFolders} />
@@ -273,7 +274,7 @@ export default async function FolderOrNotePage({ params }: { params: Promise<Not
 
   if (!page) notFound()
   // SAFETY: staged Markdown pages own a compiled body component; getPage returned a page for an existing slug.
-  const Body = (page.data as { body: React.ComponentType }).body
+  const Body = (page.data as { body: MdxBody }).body
   // SAFETY: loader page data carries frontmatter fields; MetaLine reads only the named updated_at/read_minutes fields.
   const metaSource = page.data as MetaLineData
   // Routes outside visible navigation still get the phone note treatment;
@@ -300,7 +301,7 @@ export default async function FolderOrNotePage({ params }: { params: Promise<Not
       {/* Authored Markdown owns the Typeset scope; crumbs, meta, and
           siblings stay outside so Typeset never styles React chrome. */}
       <div className="typeset">
-        <Body />
+        <Body components={mdxComponents} />
       </div>
       <OtherNotes parentTitle={ancestor?.title} siblings={siblings} />
     </article>

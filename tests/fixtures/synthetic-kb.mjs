@@ -9,6 +9,11 @@
  * Publication Manifest declares the title, canonical hostname, allowlist,
  * ordered navigation roots, and two HTTPS projection destinations.
  *
+ * It also carries authored Mermaid diagrams for every route shape: a titled
+ * flowchart on the root index, a sequence diagram on the folder index, and
+ * one note with several diagrams (valid neighbors, a wide diagram, an
+ * invalid diagram, a security-directive attempt, and a plain JS fence).
+ *
  * `writeSyntheticKb` only writes files; staging stays with the harness
  * (`tests/helpers/reader-env.mjs`) so items 02-03 own the build.
  */
@@ -43,6 +48,39 @@ export const HIDDEN_NOTE_PATH = "hidden/secret.md"
 /** Never allowlisted: must never reach staged content. */
 export const UNSELECTED_NOTE_PATH = "unselected.md"
 
+/** Authored accessible title on the root index diagram. */
+export const MERMAID_ROOT_ACC_TITLE = "Garden water flow"
+
+/** Authored accessible description on the root index diagram. */
+export const MERMAID_ROOT_ACC_DESCR = "Rain reaches the roots through the soil."
+
+/** Invalid diagram body: must stay escaped source with a status note. */
+export const MERMAID_INVALID_SOURCE = "flowchart LR\n  A --< B"
+
+/** Global flag a successful script injection would create. */
+export const MERMAID_SECURITY_FLAG = "__syntheticMermaidInjected"
+
+/**
+ * Security probe: an authored init directive tries to loosen security and
+ * enable HTML labels, a node label embeds a script, and a click callback is
+ * declared. Strict rendering must keep all three inert.
+ */
+export const MERMAID_SECURITY_SOURCE = [
+  '%%{init: {"securityLevel": "loose", "htmlLabels": true}}%%',
+  "flowchart LR",
+  `  S[<script>window.${MERMAID_SECURITY_FLAG} = true</script>] --> T[Safe]`,
+  '  click S callback "tip"',
+].join("\n")
+
+/** Wide flowchart: eight nodes in a row, wider than a phone reading column. */
+export const MERMAID_WIDE_SOURCE = [
+  "flowchart LR",
+  "  A[Alpha] --> B[Bravo] --> C[Charlie] --> D[Delta] --> E[Echo] --> F[Foxtrot] --> G[Golf] --> H[Hotel]",
+].join("\n")
+
+/** Plain JS fence that must keep standard code-block rendering. */
+export const MERMAID_NOTE_CODE = "const fence = 'unchanged'"
+
 export function writeFile(root, rel, content) {
   const abs = path.join(root, rel)
   fs.mkdirSync(path.dirname(abs), { recursive: true })
@@ -63,14 +101,67 @@ export function writeSyntheticKb(kbRoot) {
       "",
       "Welcome to the canonical synthetic garden.",
       "",
+      "## Water flow",
+      "",
+      "```mermaid",
+      "flowchart LR",
+      `  accTitle: ${MERMAID_ROOT_ACC_TITLE}`,
+      `  accDescr: ${MERMAID_ROOT_ACC_DESCR}`,
+      "  A[Rain] --> B[Soil]",
+      "  B --> C[Roots]",
+      "```",
+      "",
     ].join("\n"),
   )
   writeFile(
     kbRoot,
     "garden/index.md",
-    "# Garden Plots\n\nCultivated beds with an authored introduction.\n",
+    [
+      "# Garden Plots",
+      "",
+      "Cultivated beds with an authored introduction.",
+      "",
+      "```mermaid",
+      "sequenceDiagram",
+      "  participant G as Gardener",
+      "  participant B as Bed",
+      "  G->>B: Sow seeds",
+      "  B-->>G: Sprouts",
+      "```",
+      "",
+    ].join("\n"),
   )
-  writeFile(kbRoot, "garden/alpha.md", "# Alpha Bed\n\nFirst bed.\n")
+  writeFile(
+    kbRoot,
+    "garden/alpha.md",
+    [
+      "# Alpha Bed",
+      "",
+      "First bed.",
+      "",
+      "```mermaid",
+      "flowchart LR",
+      "  A[Alpha] --> B[Bravo]",
+      "```",
+      "",
+      "```js",
+      MERMAID_NOTE_CODE,
+      "```",
+      "",
+      "```mermaid",
+      MERMAID_WIDE_SOURCE,
+      "```",
+      "",
+      "```mermaid",
+      MERMAID_INVALID_SOURCE,
+      "```",
+      "",
+      "```mermaid",
+      MERMAID_SECURITY_SOURCE,
+      "```",
+      "",
+    ].join("\n"),
+  )
   writeFile(kbRoot, "garden/beta.md", "# Beta Bed\n\nSecond bed.\n")
   writeFile(
     kbRoot,
