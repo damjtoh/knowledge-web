@@ -6,6 +6,8 @@
  * virtual folder without an index, a standalone direct note, a long-title
  * note, a staged-but-unnavigated hidden note, and notes with valid (`Z`,
  * `+02:00`) plus invalid (date-only, Feb-30) `updated_at` stamps. The
+ * `notes/nest` folder holds thirteen direct notes (above the twelve-note
+ * Filter notes threshold), three of them with valid stamps. The
  * Publication Manifest declares the title, canonical hostname, allowlist,
  * ordered navigation roots, and two HTTPS projection destinations.
  *
@@ -80,6 +82,16 @@ export const MERMAID_WIDE_SOURCE = [
 
 /** Plain JS fence that must keep standard code-block rendering. */
 export const MERMAID_NOTE_CODE = "const fence = 'unchanged'"
+
+/** Direct notes in `notes/nest`: more than the folder Filter notes threshold. */
+export const NEST_NOTE_COUNT = 13
+
+/** Valid `updated_at` stamps by `notes/nest` note number; the rest stay unstamped. */
+export const NEST_STAMPS = {
+  3: "2026-10-05T09:00:00Z",
+  7: "2026-10-01T18:00:00+02:00",
+  11: "2026-07-04T00:00:00Z",
+}
 
 export function writeFile(root, rel, content) {
   const abs = path.join(root, rel)
@@ -268,6 +280,23 @@ export function writeSyntheticKb(kbRoot) {
       "",
     ].join("\n"),
   )
+
+  for (let i = 1; i <= NEST_NOTE_COUNT; i++) {
+    const n = String(i).padStart(2, "0")
+    const stamp = NEST_STAMPS[i]
+
+    writeFile(
+      kbRoot,
+      `notes/nest/trail-stop-${n}.md`,
+      [
+        ...(stamp ? ["---", `updated_at: "${stamp}"`, "---", ""] : []),
+        `# Trail Stop ${n}`,
+        "",
+        `Trail stop body ${n}.`,
+        "",
+      ].join("\n"),
+    )
+  }
 
   for (let i = 1; i <= 12; i++) {
     const n = String(i).padStart(2, "0")

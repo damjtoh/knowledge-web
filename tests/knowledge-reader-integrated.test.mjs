@@ -6,7 +6,8 @@
  * browse journey (home -> published folder -> nested note -> Back, tree
  * sidebar, collapse, search, offline save/update/remove) and the phone
  * journey (Browse drawer, overflow probes, keyboard, search, offline
- * placement, refresh), plus build-free offline revision checks and
+ * placement, refresh), the home Recently updated rows and folder
+ * listings (counted groups, dated rows, Filter notes), plus build-free offline revision checks and
  * env-gated real-corpus coverage.
  *
  * The synthetic fixture always runs (no vault needed). Expected areas,
@@ -411,16 +412,18 @@ async function runJourney(page, baseUrl, expect) {
     `folder exposes generic groups (got ${folder.groupHeadings.join("|")})`,
   )
 
+  // Group headings carry a count so they never repeat the folder H1.
   for (const heading of folder.groupHeadings) {
-    assert.ok(
-      heading === "Notes" || heading === "Folders",
+    assert.match(
+      heading,
+      /^(Notes|Folders) \(\d+\)$/,
       `folder group heading is generic (got ${heading})`,
     )
   }
 
   assert.ok(
-    folder.groupHeadings.includes("Notes") || folder.groupHeadings.includes("Folders"),
-    "folder uses the generic Notes/Folders groups",
+    folder.groupHeadings.some((heading) => /^(Notes|Folders) \(/.test(heading ?? "")),
+    "folder uses the generic Folders/Notes groups",
   )
   assert.equal(folder.sidebarCurrent, expect.folderTitle, "tree indicates the open folder")
 
@@ -2810,6 +2813,69 @@ async function runStaticExportChecks({
   assert.match(section, />12 items</, "phone card meta is count-only for the flat folder")
   assert.match(section, />2 items</, "phone card meta is count-only for the authored folder")
 
+  // Browse surfaces: the card is one link, so it carries no "Open" label.
+  assert.ok(!/>\s*Open\s*</.test(section), "home cards carry no redundant Open label")
+
+  // Recently updated lists the newest valid stamps across the published
+  // tree in date order: no date-only, invalid, or unnavigated notes.
+  const recent = home.split('aria-label="Recently updated"')[1]?.split("</section>")[0] ?? ""
+  assert.ok(recent, "home renders a Recently updated section")
+
+  assert.deepEqual(
+    [...recent.matchAll(/<a[^>]*href="([^"]+)"/g)].map((m) => m[1]),
+    [
+      "/notes/nest/trail-stop-03",
+      "/notes/nest/trail-stop-07",
+      "/notes/valid-offset",
+      "/notes/valid-z",
+      "/notes/nest/trail-stop-11",
+    ],
+    "Recently updated lists valid stamps newest first",
+  )
+  assert.deepEqual(
+    [...recent.matchAll(/<time[^>]*>([^<]*)<\/time>/g)].map((m) => m[1]),
+    ["Oct 5, 2026", "Oct 1, 2026", "Sep 20, 2026", "Aug 27, 2026", "Jul 4, 2026"],
+    "Recently updated shows short source dates",
+  )
+  assert.match(recent, />Valid Offset</, "row shows the note title")
+  assert.match(recent, />Notes</, "row shows the parent folder name")
+
+  for (const hidden of ["Date Only", "Feb Thirty", "Plain Meadow", "Hidden Draft"]) {
+    assert.ok(!recent.includes(hidden), `Recently updated omits ${hidden}`)
+  }
+
+  // Folder pages: counted group headings (never the H1 text), Folders
+  // before Notes, dated note rows, and the full list in static HTML.
+  const articleHtml = (html) => html.slice(html.indexOf("<article"), html.indexOf("</article>"))
+
+  const h2sOf = (html) =>
+    [...articleHtml(html).matchAll(/<h2[^>]*>([^<]*)<\/h2>/g)].map((m) => m[1])
+
+  const notesFolder = readOut(outDir, "notes.html")
+
+  assert.deepEqual(
+    h2sOf(notesFolder),
+    ["Folders (1)", "Notes (7)"],
+    "virtual folder groups are counted, Folders first, and never repeat the H1",
+  )
+  assert.match(articleHtml(notesFolder), /<h1[^>]*>Notes<\/h1>/, "virtual folder keeps its H1")
+  assert.match(
+    notesFolder,
+    /date[Tt]ime="2026-09-20T12:30:00\.000Z"[^>]*>Sep 20, 2026</,
+    "note rows show the updated date",
+  )
+  assert.ok(!notesFolder.includes('aria-label="Filter notes"'), "seven notes need no filter")
+
+  const nestFolder = readOut(outDir, "notes/nest.html")
+
+  assert.deepEqual(h2sOf(nestFolder), ["Folders (1)", "Notes (13)"], "nest groups are counted")
+  assert.equal(
+    countOccurrences(nestFolder, 'href="/notes/nest/trail-stop-'),
+    13,
+    "static HTML lists every note without JavaScript",
+  )
+  assert.ok(nestFolder.includes('aria-label="Filter notes"'), "thirteen notes offer a filter")
+
   // Indexed folder owns its route and introduction; virtual folders supply titles.
   const garden = readOut(outDir, "garden.html")
   assert.match(garden, /Garden Plots/, "authored folder introduction renders")
@@ -3613,6 +3679,93 @@ async function runHomeCardsDetail(page, baseUrl, expect) {
  * deep ancestry by visible text, parent navigation plus Back, the
  * hidden-route staged title, registry composition, and keyboard reach.
  */
+/**
+ * Browse surfaces in a real browser: the home Recently updated rows and the
+ * folder Filter notes input. Runs on desktop and phone viewports.
+ */
+async function runBrowseSurfaces(page, baseUrl, label) {
+  await goto(page, `${baseUrl}/`)
+
+  const home = await page.evaluate(() => ({
+    cardText: Array.from(document.querySelectorAll(".reader-area-list a")).map(
+      (a) => a.textContent?.trim() || "",
+    ),
+    recent: Array.from(
+      document.querySelectorAll('article section[aria-label="Recently updated"] a'),
+    ).map((a) => a.getAttribute("href")),
+  }))
+
+  assert.ok(
+    !home.cardText.some((text) => /\bOpen\b/.test(text)),
+    `${label}: home cards carry no Open label`,
+  )
+  assert.equal(home.recent.length, 5, `${label}: Recently updated lists the stamped notes`)
+
+  for (const height of await visibleHeights(page, 'section[aria-label="Recently updated"] a')) {
+    assert.ok(height >= 44, `${label}: Recently updated row is ${height}px (expected >= 44)`)
+  }
+
+  await goto(page, `${baseUrl}/notes/nest`)
+
+  const read = () =>
+    page.evaluate(() => ({
+      h1: document.querySelector("article h1")?.textContent?.trim() || "",
+      h2s: Array.from(document.querySelectorAll("article h2")).map((h) => h.textContent?.trim()),
+      hrefs: Array.from(document.querySelectorAll("article .reader-group-list a")).map((a) =>
+        a.getAttribute("href"),
+      ),
+      status: document.querySelector('article [role="status"]')?.textContent?.trim() || "",
+    }))
+
+  const waitForRows = (count) =>
+    page.waitForFunction(
+      (expected) => document.querySelectorAll("article .reader-group-list a").length === expected,
+      count,
+      { timeout: 5000 },
+    )
+
+  const full = await read()
+  assert.equal(full.h1, "Nest", `${label}: folder H1`)
+  assert.deepEqual(full.h2s, ["Folders (1)", "Notes (13)"], `${label}: counted group headings`)
+  assert.equal(full.hrefs[0], "/notes/nest/inner", `${label}: folders list before notes`)
+  assert.equal(full.hrefs.length, 14, `${label}: every row shows before filtering`)
+  assert.equal(full.status, "", `${label}: no empty state before filtering`)
+
+  const dated = await page.evaluate(
+    () =>
+      document
+        .querySelector('article a[href="/notes/nest/trail-stop-03"] time')
+        ?.textContent?.trim() || "",
+  )
+
+  assert.equal(dated, "Oct 5, 2026", `${label}: note row shows its updated date`)
+
+  const filter = page.getByRole("searchbox", { name: "Filter notes" })
+  await filter.fill("TRAIL STOP 1")
+  await waitForRows(5)
+  assert.deepEqual(
+    (await read()).hrefs.slice(1),
+    [10, 11, 12, 13].map((n) => `/notes/nest/trail-stop-${n}`),
+    `${label}: filter narrows note rows by title, case-insensitively`,
+  )
+
+  await filter.fill("zzz")
+  await waitForRows(1)
+  const empty = await read()
+  assert.equal(empty.status, "No notes match “zzz”.", `${label}: empty state names the query`)
+  assert.deepEqual(empty.hrefs, ["/notes/nest/inner"], `${label}: folders stay listed`)
+
+  await filter.fill("")
+  await waitForRows(14)
+  assert.equal((await read()).status, "", `${label}: clearing the filter restores every row`)
+
+  for (const height of await visibleHeights(page, "article .reader-group-list a")) {
+    assert.ok(height >= 44, `${label}: folder row is ${height}px (expected >= 44)`)
+  }
+
+  await assertNoPageOverflow(page, `${label} folder listing`)
+}
+
 async function runBreadcrumbsDetail(page, baseUrl, expect) {
   await page.goto(`${baseUrl}${expect.deepRoute}`, { waitUntil: "networkidle", timeout: 15000 })
 
@@ -4058,9 +4211,10 @@ async function runDirectNoteDetail(page, baseUrl, expect) {
 
     assert.equal(folder.h1, expect.virtualTitle, `virtual folder title ${expect.virtualTitle}`)
     assert.ok(
-      folder.groups.includes("Notes") || folder.groups.includes("Folders"),
+      folder.groups.some((group) => /^(Notes|Folders) \(\d+\)$/.test(group ?? "")),
       "virtual folder uses generic groups",
     )
+    assert.ok(!folder.groups.includes(folder.h1), "group headings never repeat the folder H1")
   }
 }
 
@@ -6516,6 +6670,9 @@ test("synthetic phone journey covers drawer, overflow, keyboard, and refresh", a
       await runPhoneNoteDetail(page, built.baseUrl, "narrow phone")
     })
     await withPhonePage(browser, "narrow", async (page) => {
+      await runBrowseSurfaces(page, built.baseUrl, "narrow phone")
+    })
+    await withPhonePage(browser, "narrow", async (page) => {
       await runPhoneBreadcrumbsDetail(page, built.baseUrl, built.contentDir, "narrow phone")
     })
     await withPhonePage(browser, "narrow", async (page) => {
@@ -6687,6 +6844,7 @@ test("synthetic browse journey covers home → folder → nested note → Back",
       hiddenTitle,
     })
     await runMetaLineBrowser(page, baseUrl)
+    await runBrowseSurfaces(page, baseUrl, "desktop")
     await page.close()
     const projectionPage = await context.newPage()
     await projectionPage.setViewportSize({ width: 1280, height: 800 })

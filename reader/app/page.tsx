@@ -3,6 +3,8 @@ import { source } from "../lib/source"
 import { buildReaderNavigation, type NavigationNode } from "../lib/navigation"
 import { getSiteMetadata } from "../lib/site"
 import { mdxComponents, type MdxBody } from "../components/mdx-components"
+import RecentlyUpdated from "../components/recently-updated"
+import { recentNotes } from "../lib/browse-rows"
 import { Card, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 
 /** Staged root fields owned by the MDX pipeline. */
@@ -105,7 +107,7 @@ export default async function HomePage() {
                 >
                   {/* Desktop card follows design D3O3k6 "Vault Area Row /
                       Desktop": a row of 40px muted icon box, stacked title
-                      plus count-only meta, and a trailing Open plus chevron.
+                      plus count-only meta, and a trailing chevron.
                       Padding 16 comes from the registry Card/CardHeader
                       tokens (no p-4: it would double the header inset); the
                       title stays 16px via the CardTitle default (no 15px
@@ -133,13 +135,10 @@ export default async function HomePage() {
                             </CardDescription>
                           ) : null}
                         </span>
-                        <span className="flex shrink-0 items-center gap-1">
-                          <span className="text-xs text-muted-foreground">Open</span>
-                          <ChevronRight
-                            aria-hidden="true"
-                            className="size-3.5 shrink-0 text-muted-foreground"
-                          />
-                        </span>
+                        <ChevronRight
+                          aria-hidden="true"
+                          className="size-3.5 shrink-0 text-muted-foreground"
+                        />
                       </span>
                     </CardHeader>
                     <span className="hidden max-w-full min-w-0 flex-1 items-center gap-3 max-md:flex">
@@ -166,6 +165,7 @@ export default async function HomePage() {
           })}
         </ul>
       ) : null}
+      <RecentlyUpdated notes={recentNotes(navigation.roots)} />
     </article>
   )
 }
