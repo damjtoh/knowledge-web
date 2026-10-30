@@ -4,6 +4,7 @@ import {
   type RelativeUpdatedAt,
   type UpdatedAtSource,
 } from "../lib/last-edited"
+import { cn } from "../lib/utils"
 import { readMinutesFromData, type ReadMinutesSource } from "../lib/reading-time"
 
 /** Page data carrying both meta-line sources (date plus read minutes). */
@@ -25,7 +26,8 @@ function normalizeMinutes(value: number | undefined): number | undefined {
  * (no parent) drop the category segment and its dot, rendering `{N} min
  * read · Updated …`. Either segment omits itself gracefully when its
  * source is missing; both missing renders nothing (no freshness claim).
- * Utilities only: 11px is the text-2xs token, muted is
+ * Below md the category segment hides: the phone slash trail above
+ * already names the parent. Utilities only: 12px is text-xs, muted is
  * text-muted-foreground, the dot is bg-border. A div (not a paragraph)
  * keeps the row outside Typeset block rhythm, so no scoped CSS is added
  * for this component.
@@ -49,17 +51,25 @@ export default function MetaLine({
 
   if (!hasFirst && relative === null) return null
 
-  let first = ""
-
-  if (hasCategory && hasMinutes) first = `${category} • ${minutes} min read`
-  else if (hasMinutes) first = `${minutes} min read`
-  else first = category
+  // A category-only first segment has nothing left to show on phones, so
+  // its dot hides with it.
+  const phoneHidden = hasMinutes ? undefined : "max-md:hidden"
 
   return (
-    <div className="flex items-center gap-1.5 text-2xs text-muted-foreground">
-      {hasFirst ? <span>{first}</span> : null}
+    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      {hasFirst ? (
+        <span className={phoneHidden}>
+          {hasCategory ? (
+            <span className="max-md:hidden">{hasMinutes ? `${category} • ` : category}</span>
+          ) : null}
+          {hasMinutes ? `${minutes} min read` : null}
+        </span>
+      ) : null}
       {hasFirst && relative !== null ? (
-        <span aria-hidden="true" className="size-0.75 shrink-0 rounded-full bg-border" />
+        <span
+          aria-hidden="true"
+          className={cn("size-0.75 shrink-0 rounded-full bg-border", phoneHidden)}
+        />
       ) : null}
       {relative !== null ? (
         <time dateTime={relative.isoDatetime}>{`Updated ${relative.label}`}</time>

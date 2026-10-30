@@ -2764,7 +2764,15 @@ function metaLineFromHtml(html) {
 
   if (!divMatch) return null
   const inner = divMatch[1]
-  const first = inner.match(/<span>([^<]*)<\/span>/)?.[1].trim() ?? null
+
+  // The first segment may nest a phone-hidden category span, so read its
+  // text with inner tags stripped.
+  const first =
+    inner
+      .match(/^\s*<span[^>]*>([\s\S]*?)<\/span>(?=\s*(?:<span|<time|$))/)?.[1]
+      .replace(/<[^>]+>/g, "")
+      .trim() ?? null
+
   const dot = /aria-hidden=['"]true['"]/.test(inner)
   const time = inner.match(/<time[^>]*date[Tt]ime="([^"]+)"[^>]*>([^<]*)<\/time>/)
 
@@ -3452,6 +3460,49 @@ async function runStaticExportChecks({
     assert.match(label, /ago|just now/, `sibling meta stays relative: ${label}`)
   }
 
+  // Table of contents: the guide carries three h2/h3 headings, so its
+  // contents block links each heading id; the plain note carries one
+  // heading and gets none. Folder pages and home never render one.
+  assert.ok(guideNote.includes("On this page"), "guide renders a table of contents")
+
+  for (const id of ["provisions", "forecast", "drizzle"]) {
+    assert.match(guideNote, new RegExp(`<h[23][^>]* id="${id}"`), `guide heading carries id ${id}`)
+    assert.ok(guideNote.includes(`href="#${id}"`), `guide contents links #${id}`)
+  }
+
+  for (const rel of ["notes/plain.html", "garden.html", "notes.html", "index.html"]) {
+    assert.ok(!readOut(outDir, rel).includes("On this page"), `${rel} renders no contents`)
+  }
+
+  // Previous/next follow sidebar order within the parent folder: titles
+  // sort Feb Thirty < Field Guide < Plain Meadow, the first note has no
+  // previous side, and the last has no next side.
+  const pagerHrefs = (rel) => {
+    const nav = readOut(outDir, rel).match(
+      /<nav aria-label="Previous and next notes"[\s\S]*?<\/nav>/,
+    )
+
+    return nav ? [...nav[0].matchAll(/href="([^"]+)"/g)].map((m) => m[1]) : []
+  }
+
+  assert.deepEqual(
+    pagerHrefs("notes/guide.html"),
+    ["/notes/feb-thirty", "/notes/plain"],
+    "guide links its previous and next sibling notes",
+  )
+  assert.deepEqual(
+    pagerHrefs(`notes/${LONG_SLUG}.html`),
+    ["/notes/date-only"],
+    "first sibling note has only a next link",
+  )
+  assert.deepEqual(
+    pagerHrefs("notes/valid-z.html"),
+    ["/notes/valid-offset"],
+    "last sibling note has only a previous link",
+  )
+  assert.deepEqual(pagerHrefs("standalone.html"), [], "root note has no siblings to page")
+  assert.deepEqual(pagerHrefs("notes.html"), [], "folder pages render no pager")
+
   assert.ok(garden.includes('href="/"'), "folder trail links Home")
   assert.ok(standalone.includes("Lone Pine"), "root note shows its authored title")
 
@@ -4135,7 +4186,89 @@ async function runDirectNoteDetail(page, baseUrl, expect) {
     assert.match(text, /ago|just now/, `sibling meta stays relative: ${text}`)
   }
 
+  // Table of contents (xl): the sticky aside sits right of the article,
+  // the collapsed phone block stays hidden, links jump to their heading.
+  const toc = await page.evaluate(() => {
+    const article = document.querySelector("article.reader-article")
+    const aside = document.querySelector('aside[aria-label="On this page"]')
+    const details = article?.querySelector("details")
+    const box = (el) => (el ? el.getBoundingClientRect() : null)
+    const pager = article?.querySelector('nav[aria-label="Previous and next notes"]')
+    const pagerLinks = Array.from(pager?.querySelectorAll("a") ?? [])
+
+    return {
+      asideLinks: Array.from(aside?.querySelectorAll("a") ?? []).map((a) => ({
+        href: a.getAttribute("href"),
+        text: a.textContent?.trim() || "",
+      })),
+      asideVisible: !!aside && getComputedStyle(aside).display !== "none",
+      asideLeft: box(aside)?.left ?? 0,
+      tableRight: box(article?.querySelector("table"))?.right ?? 0,
+      articleRight: box(article)?.right ?? 0,
+      detailsVisible: !!details && getComputedStyle(details).display !== "none",
+      metaFontSize: Array.from(article?.querySelectorAll("div") ?? [])
+        .filter((el) => (el.textContent ?? "").includes("min read"))
+        .map((el) => parseFloat(getComputedStyle(el).fontSize))[0],
+      pager: pagerLinks.map((a) => ({
+        href: a.getAttribute("href"),
+        text: a.textContent?.trim() || "",
+        top: a.getBoundingClientRect().top,
+        left: a.getBoundingClientRect().left,
+        height: a.getBoundingClientRect().height,
+      })),
+      doc: document.documentElement.scrollWidth,
+      inner: window.innerWidth,
+    }
+  })
+
+  assert.deepEqual(
+    toc.asideLinks,
+    [
+      { href: "#provisions", text: "Provisions" },
+      { href: "#forecast", text: "Forecast" },
+      { href: "#drizzle", text: "Drizzle" },
+    ],
+    "desktop aside lists the guide h2/h3 headings",
+  )
+  assert.ok(toc.asideVisible, "desktop aside is visible")
+  assert.ok(!toc.detailsVisible, "phone contents block is hidden on desktop")
+  assert.ok(toc.asideLeft >= toc.articleRight, "aside sits right of the article")
+  assert.ok(toc.tableRight <= toc.asideLeft, "wide table stays out from under the aside")
+  assert.ok(toc.doc <= toc.inner + 1, `desktop note keeps no page overflow (${toc.doc})`)
+  assert.ok(toc.metaFontSize >= 12, `meta line is at least 12px (got ${toc.metaFontSize})`)
+  assert.deepEqual(
+    toc.pager.map((link) => link.href),
+    ["/notes/feb-thirty", "/notes/plain"],
+    "pager links previous then next sibling",
+  )
+  assert.deepEqual(
+    toc.pager.map((link) => link.text),
+    ["PreviousFeb Thirty", "NextPlain Meadow"],
+    "pager shows direction and title",
+  )
+  assert.equal(toc.pager[0].top, toc.pager[1].top, "desktop pager is two columns")
+  assert.ok(toc.pager[0].left < toc.pager[1].left, "previous sits left of next")
+
+  for (const link of toc.pager) {
+    assert.ok(link.height >= 44, `pager touch target is ${link.height}px (expected >= 44)`)
+  }
+
+  await page.locator('aside[aria-label="On this page"] a[href="#forecast"]').click()
+  assert.equal(new URL(page.url()).hash, "#forecast", "contents link updates the hash")
+  assert.ok(
+    await page.evaluate(() => {
+      const top = document.getElementById("forecast")?.getBoundingClientRect().top ?? -1
+
+      return top >= 0 && top < window.innerHeight
+    }),
+    "contents link brings its heading into view",
+  )
   await page.goto(`${baseUrl}/notes/plain`, { waitUntil: "networkidle", timeout: 15000 })
+  assert.equal(
+    await page.locator('aside[aria-label="On this page"]').count(),
+    0,
+    "short note renders no contents aside",
+  )
 
   const plainExtras = await page.evaluate(() => {
     const article = document.querySelector("article.reader-article")
@@ -6137,6 +6270,27 @@ async function runPhoneNoteDetail(page, baseUrl, label) {
   )
   await assertNoPageOverflow(page, `${label} note type scale`)
 
+  // The slash trail already names the parent, so the meta line drops its
+  // category segment on phones (innerText skips display:none) and keeps
+  // minutes plus the date at 12px or larger.
+  const phoneMeta = await page.evaluate(() => {
+    const article = document.querySelector(".reader-article")
+
+    const line = Array.from(article?.querySelectorAll("div") ?? []).find(
+      (el) => (el.textContent ?? "").includes("min read") && el.getBoundingClientRect().height > 0,
+    )
+
+    return {
+      visibleText: line?.innerText.replace(/\s+/g, " ").trim() || "",
+      fontSize: line ? parseFloat(getComputedStyle(line).fontSize) : 0,
+    }
+  })
+
+  assert.ok(!phoneMeta.visibleText.includes("Notes"), `${label}: meta repeats no parent folder`)
+  assert.match(phoneMeta.visibleText, /^1 min read\s+Updated /, `${label}: meta keeps minutes`)
+  assert.ok(phoneMeta.fontSize >= 12, `${label}: meta line is ${phoneMeta.fontSize}px`)
+  assert.ok(note.trailText.includes("Notes"), `${label}: trail still names the parent`)
+
   // Body elements render on notes carrying them.
   await goto(page, `${baseUrl}/notes/plain`)
 
@@ -6164,6 +6318,68 @@ async function runPhoneNoteDetail(page, baseUrl, label) {
   }))
 
   assert.ok(codeDetail.hasCode, `${label}: phone code block renders`)
+
+  // Contents block: collapsed details between meta and body; the desktop
+  // aside stays hidden; opening it reveals working heading links.
+  const phoneToc = await page.evaluate(() => {
+    const details = document.querySelector("article.reader-article details")
+    const aside = document.querySelector('aside[aria-label="On this page"]')
+    const pager = document.querySelector('article nav[aria-label="Previous and next notes"]')
+    const links = Array.from(pager?.querySelectorAll("a") ?? [])
+
+    return {
+      present: !!details,
+      open: details?.open ?? true,
+      summary: details?.querySelector("summary")?.textContent?.trim() || "",
+      asideVisible: !!aside && getComputedStyle(aside).display !== "none",
+      pager: links.map((a) => ({
+        href: a.getAttribute("href"),
+        top: a.getBoundingClientRect().top,
+        height: a.getBoundingClientRect().height,
+        width: a.getBoundingClientRect().width,
+      })),
+      inner: window.innerWidth,
+    }
+  })
+
+  assert.ok(phoneToc.present, `${label}: phone note renders the contents block`)
+  assert.equal(phoneToc.open, false, `${label}: contents block starts collapsed`)
+  assert.equal(phoneToc.summary, "On this page", `${label}: contents block label`)
+  assert.equal(phoneToc.asideVisible, false, `${label}: desktop aside stays hidden`)
+  assert.deepEqual(
+    phoneToc.pager.map((link) => link.href),
+    ["/notes/feb-thirty", "/notes/plain"],
+    `${label}: pager links the sibling notes`,
+  )
+  assert.ok(phoneToc.pager[0].top < phoneToc.pager[1].top, `${label}: pager stacks on phones`)
+
+  for (const link of phoneToc.pager) {
+    assert.ok(link.height >= 44, `${label}: pager touch target is ${link.height}px`)
+    assert.ok(link.width <= phoneToc.inner, `${label}: pager link fits the viewport`)
+  }
+
+  await page.locator("article.reader-article details > summary").click()
+
+  const phoneLinks = page.locator("article.reader-article details a")
+
+  assert.equal(await phoneLinks.count(), 3, `${label}: contents block lists three headings`)
+
+  for (const height of await phoneLinks.evaluateAll((els) =>
+    els.map((el) => el.getBoundingClientRect().height),
+  )) {
+    assert.ok(height >= 44, `${label}: contents link touch target is ${height}px`)
+  }
+
+  await phoneLinks.nth(1).click()
+  assert.equal(new URL(page.url()).hash, "#forecast", `${label}: contents link updates the hash`)
+  await assertNoPageOverflow(page, `${label} contents block`)
+
+  await goto(page, `${baseUrl}/notes/plain`)
+  assert.equal(
+    await page.locator("article.reader-article details").count(),
+    0,
+    `${label}: short note renders no contents block`,
+  )
 
   // Orchard note with eleven siblings: head, badge, six rows, expander.
   await goto(page, `${baseUrl}/orchard/note-01`)
