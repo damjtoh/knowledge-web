@@ -39,6 +39,80 @@ function CloseMobileSidebarOnNavigate() {
 }
 
 /**
+ * Reading-inset header.
+ *
+ * Lives inside SidebarProvider to read the desktop sidebar state. The
+ * header Search icon is the only search entry on phones and when the
+ * desktop sidebar is collapsed; with the sidebar open, the sidebar
+ * Search row owns desktop search, so the icon hides from md up. The
+ * phone brand row is a button only when destinations exist; otherwise it
+ * is a plain title.
+ */
+function ReaderHeader({
+  title,
+  roots,
+  hasDestinations,
+  vaultOpen,
+  onVaultOpen,
+  onSearch,
+}: {
+  title: string
+  roots: NavigationNode[]
+  hasDestinations: boolean
+  vaultOpen: boolean
+  onVaultOpen: () => void
+  onSearch: (origin: HTMLElement | null) => void
+}) {
+  const { state } = useSidebar()
+
+  return (
+    <header className="reader-header flex h-11 max-md:h-16 min-w-0 flex-wrap items-center justify-between gap-3 border-b border-border bg-background px-4">
+      <div className="reader-header-trail flex min-w-0 max-w-full flex-1 items-center gap-2">
+        <SidebarTrigger className="-ml-1 size-7 rounded-md border border-border bg-card" />
+        <div className="max-md:hidden md:contents">
+          <Separator orientation="vertical" className="mr-2 hidden h-4 w-px md:block" />
+          <ReadingBreadcrumbs roots={roots} siteTitle={title} />
+        </div>
+        {hasDestinations ? (
+          <button
+            type="button"
+            className="flex h-8 min-w-0 flex-1 items-center gap-2 md:hidden"
+            aria-haspopup="dialog"
+            aria-expanded={vaultOpen}
+            onClick={onVaultOpen}
+          >
+            <span className="truncate text-sm font-bold text-primary">{title}</span>
+            <ChevronsUpDown
+              aria-hidden="true"
+              className="size-3.5 shrink-0 text-muted-foreground"
+            />
+          </button>
+        ) : (
+          <span className="flex h-8 min-w-0 flex-1 items-center md:hidden">
+            <span className="truncate text-sm font-bold text-primary">{title}</span>
+          </span>
+        )}
+      </div>
+      <div className="reader-header-actions ml-auto flex min-w-0 flex-wrap items-center gap-2 max-md:gap-1.5">
+        <OfflineCue />
+        <button
+          type="button"
+          className={
+            state === "collapsed"
+              ? "reader-search-trigger reader-search-header inline-flex min-h-11 min-w-11 items-center justify-center rounded-md p-0 hover:bg-muted"
+              : "reader-search-trigger reader-search-header inline-flex min-h-11 min-w-11 items-center justify-center rounded-md p-0 hover:bg-muted md:hidden"
+          }
+          aria-label="Search"
+          onClick={(event) => onSearch(event.currentTarget)}
+        >
+          <Search aria-hidden="true" className="size-4 text-muted-foreground" />
+        </button>
+      </div>
+    </header>
+  )
+}
+
+/**
  * Reader shell adapted from registry sidebar-11.
  *
  * The desktop sidebar is the registry Sidebar (offcanvas, fully hidden,
@@ -46,8 +120,9 @@ function CloseMobileSidebarOnNavigate() {
  * Search), SidebarContent (published tree), and SidebarFooter
  * (appearance plus offline status/actions). The reading inset holds a
  * header with the registry SidebarTrigger, Separator, Breadcrumb route
- * trail, a compact phone-only offline cue, and Search, plus the reading
- * column. There is no page footer: the old footer offline control moved
+ * trail, a compact phone-only offline cue (only for meaningful states),
+ * and a Search icon (phone, or desktop with the sidebar collapsed), plus
+ * the reading column. There is no page footer: the old footer offline control moved
  * into the sidebar footer. Block sample data is not used: shell
  * structure only.
  *
@@ -55,8 +130,10 @@ function CloseMobileSidebarOnNavigate() {
  * AppSidebar slides in from the left over a dimmed overlay. The registry
  * Sheet primitive owns focus containment, Escape and overlay dismissal,
  * and background scroll lock; dismissing returns focus to the trigger.
- * The phone header brand row is a button opening its own VaultSheet
- * bottom sheet, so vaults switch without opening the drawer.
+ * With owner-declared destinations the phone header brand row is a
+ * button opening its own VaultSheet bottom sheet, so vaults switch
+ * without opening the drawer; with none it is a plain title and no sheet
+ * mounts.
  * The registry SidebarTrigger is visible at every width and routes to
  * the mobile sheet below 768px. One OfflineProvider at the shell root
  * shares a single mounted offline state between the sidebar footer and
@@ -141,51 +218,28 @@ export default function ReaderShell({
               onSearch={openSearch}
             />
             <SidebarInset>
-              <header className="reader-header flex h-11 max-md:h-16 min-w-0 flex-wrap items-center justify-between gap-3 border-b border-border bg-background px-4">
-                <div className="reader-header-trail flex min-w-0 max-w-full flex-1 items-center gap-2">
-                  <SidebarTrigger className="-ml-1 size-7 rounded-md border border-border bg-card" />
-                  <div className="max-md:hidden md:contents">
-                    <Separator orientation="vertical" className="mr-2 hidden h-4 w-px md:block" />
-                    <ReadingBreadcrumbs roots={roots} siteTitle={title} />
-                  </div>
-                  <button
-                    type="button"
-                    className="flex h-8 min-w-0 flex-1 items-center gap-2 md:hidden"
-                    aria-haspopup="dialog"
-                    aria-expanded={vaultOpen}
-                    onClick={() => setVaultOpen(true)}
-                  >
-                    <span className="truncate text-sm font-bold text-primary">{title}</span>
-                    <ChevronsUpDown
-                      aria-hidden="true"
-                      className="size-3.5 shrink-0 text-muted-foreground"
-                    />
-                  </button>
-                </div>
-                <div className="reader-header-actions ml-auto flex min-w-0 flex-wrap items-center gap-2 max-md:gap-1.5">
-                  <OfflineCue />
-                  <button
-                    type="button"
-                    className="reader-search-trigger reader-search-header inline-flex min-h-11 min-w-11 items-center justify-center rounded-md p-0 hover:bg-muted"
-                    aria-label="Search"
-                    onClick={(event) => openSearch(event.currentTarget)}
-                  >
-                    <Search aria-hidden="true" className="size-4 text-muted-foreground" />
-                  </button>
-                </div>
-              </header>
+              <ReaderHeader
+                title={title}
+                roots={roots}
+                hasDestinations={destinations.length > 0}
+                vaultOpen={vaultOpen}
+                onVaultOpen={() => setVaultOpen(true)}
+                onSearch={openSearch}
+              />
               <div className="reader-shell mx-auto flex w-full min-w-0 max-w-275 gap-8 px-4 pt-6 pb-12 max-md:flex-col max-md:gap-4 max-md:pt-5 max-md:pb-8">
                 <div className="reader-main max-w-full min-w-0 flex-1 overflow-x-clip p-0">
                   {children}
                 </div>
               </div>
               <SearchDialog open={searchOpen} onOpenChange={handleSearchOpenChange} />
-              <VaultSheet
-                current={title}
-                destinations={destinations}
-                open={vaultOpen}
-                onOpenChange={setVaultOpen}
-              />
+              {destinations.length > 0 ? (
+                <VaultSheet
+                  current={title}
+                  destinations={destinations}
+                  open={vaultOpen}
+                  onOpenChange={setVaultOpen}
+                />
+              ) : null}
             </SidebarInset>
           </SidebarProvider>
         </OfflineProvider>

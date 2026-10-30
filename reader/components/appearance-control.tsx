@@ -99,8 +99,9 @@ export function AppearanceProvider({ children }: { children: React.ReactNode }) 
 /**
  * Appearance control: Light, Dark, System.
  *
- * Segmented control built on the registry ToggleGroup (single-select) in a
- * muted pill. Sun/moon/monitor icons are lucide only; each option keeps
+ * One compact row: a sentence-case label on the left and a segmented
+ * control built on the registry ToggleGroup (single-select) in a muted
+ * pill on the right. Sun/moon/monitor icons are lucide only; each option keeps
  * its readable name in a screen-reader label so keyboard and assistive
  * operation stay explicit. System is the initial state when nothing is
  * saved and follows later device changes via matchMedia. An explicit
@@ -122,14 +123,12 @@ export default function AppearanceControl() {
     <div
       role="group"
       aria-label="Appearance"
-      className="reader-appearance flex min-w-0 max-w-full w-full flex-col gap-2"
+      className="reader-appearance flex min-h-11 min-w-0 max-w-full w-full items-center justify-between gap-2"
       data-appearance={appearance}
     >
       <div className="flex items-center gap-1.5">
-        <span className="text-2xs font-semibold tracking-label text-muted-foreground">
-          APPEARANCE
-        </span>
-        <Palette aria-hidden="true" className="size-3 text-muted-foreground ml-auto" />
+        <Palette aria-hidden="true" className="size-4 text-muted-foreground" />
+        <span className="text-xs font-medium text-muted-foreground">Appearance</span>
       </div>
       <ToggleGroup
         value={[appearance]}
@@ -139,7 +138,7 @@ export default function AppearanceControl() {
           if (next === "light" || next === "dark" || next === "system") choose(next)
         }}
         aria-label="Appearance options"
-        className="bg-muted rounded-full p-0.5 gap-0.5 w-full"
+        className="bg-muted rounded-full p-0.5 gap-0.5"
       >
         {options.map(({ value, label, Icon }) => (
           <ToggleGroupItem
@@ -147,9 +146,9 @@ export default function AppearanceControl() {
             value={value}
             title={`${label} appearance`}
             aria-label={`${label} appearance`}
-            className="reader-appearance-option flex-1 rounded-full border border-transparent p-1.5 justify-center text-muted-foreground min-h-11 min-w-11 aria-pressed:bg-card aria-pressed:border-border aria-pressed:text-primary"
+            className="reader-appearance-option rounded-full border border-transparent p-1.5 justify-center text-muted-foreground min-h-11 min-w-11 aria-pressed:bg-card aria-pressed:border-border aria-pressed:text-primary"
           >
-            <Icon aria-hidden="true" className="size-3" />
+            <Icon aria-hidden="true" className="size-3.5" />
             <span className="sr-only">{label}</span>
           </ToggleGroupItem>
         ))}

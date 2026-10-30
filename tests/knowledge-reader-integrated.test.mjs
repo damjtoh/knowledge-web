@@ -1330,9 +1330,11 @@ async function pressShortcut(page, modifier) {
 }
 
 /**
- * Search dialog behavior on desktop: visible sidebar control, labelled
- * dialog with empty/no-results/results states, full keyboard journey to a
- * static route, shortcut open, Escape with focus return.
+ * Search dialog behavior on desktop: visible sidebar control (the header
+ * icon stays hidden while the sidebar is open and appears when it is
+ * collapsed), labelled dialog with empty/no-results/results states, full
+ * keyboard journey to a static route, shortcut open, Escape with focus
+ * return.
  */
 async function runSearchDialog(page, baseUrl, expect) {
   await page.goto(`${baseUrl}/`, { waitUntil: "networkidle", timeout: 15000 })
@@ -1363,21 +1365,11 @@ async function runSearchDialog(page, baseUrl, expect) {
     "desktop sidebar shows a Search control",
   )
   assert.ok(controls.sidebar.text.includes("Search"), "sidebar Search control is labeled")
-  assert.ok(controls.header.visible, "desktop header shows the Search icon trigger")
-
-  const headerMeta = await page.evaluate(() => {
-    const el = document.querySelector(".reader-search-header")
-
-    return {
-      label: el?.getAttribute("aria-label") || "",
-      text: el?.textContent?.trim() || "",
-      hasIcon: !!el?.querySelector("svg"),
-    }
-  })
-
-  assert.equal(headerMeta.label, "Search", "header Search keeps its accessible name")
-  assert.equal(headerMeta.text, "", "header Search is icon-only")
-  assert.ok(headerMeta.hasIcon, "header Search shows its icon")
+  assert.equal(
+    controls.header.visible,
+    false,
+    "desktop header hides the Search icon while the sidebar Search control is visible",
+  )
 
   await page.evaluate(() => document.querySelector(".reader-search-sidebar")?.click())
   await dialogOpen(page)
@@ -1523,7 +1515,33 @@ async function runSearchDialog(page, baseUrl, expect) {
   await page.keyboard.press("Escape")
   await dialogClosed(page)
 
-  // Desktop header icon opens the same shared dialog.
+  // With the sidebar collapsed the header icon is the desktop Search entry
+  // and opens the same shared dialog.
+  await page.evaluate(() => document.querySelector('[data-slot="sidebar-trigger"]')?.click())
+  await page.waitForFunction(
+    () =>
+      document.querySelector('[data-slot="sidebar"]')?.getAttribute("data-state") === "collapsed",
+    null,
+    { timeout: 5000 },
+  )
+
+  const headerMeta = await page.evaluate(() => {
+    const el = document.querySelector(".reader-search-header")
+    const rect = el?.getBoundingClientRect()
+
+    return {
+      visible: !!rect && rect.width > 0 && rect.height > 0,
+      label: el?.getAttribute("aria-label") || "",
+      text: el?.textContent?.trim() || "",
+      hasIcon: !!el?.querySelector("svg"),
+    }
+  })
+
+  assert.ok(headerMeta.visible, "collapsed desktop sidebar leaves the header Search icon")
+  assert.equal(headerMeta.label, "Search", "header Search keeps its accessible name")
+  assert.equal(headerMeta.text, "", "header Search is icon-only")
+  assert.ok(headerMeta.hasIcon, "header Search shows its icon")
+
   await page.evaluate(() => document.querySelector(".reader-search-header")?.click())
   await dialogOpen(page)
   await page.keyboard.press("Escape")
@@ -1534,6 +1552,12 @@ async function runSearchDialog(page, baseUrl, expect) {
     String(headerReturned).includes("reader-search-header"),
     "Escape returns focus to the header control",
   )
+
+  // Shortcut still works with the sidebar collapsed.
+  await pressShortcut(page, "Control")
+  await dialogOpen(page)
+  await page.keyboard.press("Escape")
+  await dialogClosed(page)
 }
 
 /** Loading state: the dialog announces while the static index is in flight. */
@@ -1678,11 +1702,23 @@ function deriveOfflineProbes(contentDir, metadata, journey) {
 }
 
 /**
+ * Starts an offline save the way a reader does: open the Save disclosure
+ * (which shows the size and trusted-device reminder), then confirm with
+ * the explicit "Save for offline use" action.
+ */
+async function startOfflineSave(page) {
+  await page.evaluate(() => document.querySelector(".reader-offline-save")?.click())
+  await page.waitForSelector(".reader-offline-confirm", { state: "visible", timeout: 5000 })
+  await page.evaluate(() => document.querySelector(".reader-offline-confirm")?.click())
+}
+
+/**
  * Explicit offline save plus offline browsing and search on one origin.
  *
- * Reuses the synthetic build above (no second build): the Save action is
- * visible with its size and trusted-device note, starts no worker before
- * the reader chooses it, reports progress, then reports Ready offline only
+ * Reuses the synthetic build above (no second build): the compact Save
+ * action is visible at rest, its disclosure shows the size and
+ * trusted-device note before the explicit confirm, starts no worker before
+ * the reader confirms it, reports progress, then reports Ready offline only
  * after the whole export is cached. A fresh page with the network off then
  * launches home, opens an unvisited folder and note through extensionless
  * URLs, browses the same tree, and searches to the unvisited note.
@@ -1696,8 +1732,6 @@ async function runOfflineSave(context, baseUrl, server, expect) {
 
     const pre = await page.evaluate(async () => {
       const save = document.querySelector(".reader-offline-save")
-      const size = document.querySelector(".reader-offline-size")?.textContent || ""
-      const trust = document.querySelector(".reader-offline-trust")?.textContent || ""
       let hasReg = false
       let cacheCount = 0
 
@@ -1709,12 +1743,37 @@ async function runOfflineSave(context, baseUrl, server, expect) {
         cacheCount = (await caches.keys()).length
       } catch {}
 
-      return { hasSave: !!save, size, trust, hasReg, cacheCount }
+      return {
+        hasSave: !!save,
+        trustAtRest: !!document.querySelector(".reader-offline-trust"),
+        hasReg,
+        cacheCount,
+      }
     })
 
-    assert.ok(pre.hasSave, "Save for offline use is visible")
-    assert.match(pre.size, /B/, "estimated download size is shown")
-    assert.match(pre.trust, /trust/i, "trusted-device note is shown")
+    assert.ok(pre.hasSave, "Save is visible")
+    assert.equal(
+      pre.trustAtRest,
+      false,
+      "compact row keeps the reminder behind the Save disclosure",
+    )
+
+    // The disclosure itself starts nothing; it shows the size and reminder.
+    await page.evaluate(() => document.querySelector(".reader-offline-save")?.click())
+    await page.waitForSelector(".reader-offline-confirm", { state: "visible", timeout: 5000 })
+
+    const disclosed = await page.evaluate(async () => ({
+      size: document.querySelector(".reader-offline-size")?.textContent || "",
+      trust: document.querySelector(".reader-offline-trust")?.textContent || "",
+      confirm: document.querySelector(".reader-offline-confirm")?.textContent?.trim() || "",
+      hasReg: !!(await navigator.serviceWorker.getRegistration()),
+    }))
+
+    assert.match(disclosed.size, /B/, "estimated download size is shown before saving")
+    assert.match(disclosed.trust, /trust/i, "trusted-device note is shown before saving")
+    assert.equal(disclosed.confirm, "Save for offline use", "explicit confirm names the action")
+    assert.equal(disclosed.hasReg, false, "opening the Save disclosure starts no worker")
+
     assert.equal(pre.hasReg, false, "no worker starts before Save")
     assert.equal(pre.cacheCount, 0, "no offline cache starts before Save")
 
@@ -1722,7 +1781,7 @@ async function runOfflineSave(context, baseUrl, server, expect) {
     // to a same-origin sign-in page. The integrity guard fails that fetch,
     // so the save stays incomplete with a retry and caches no login output.
     server.accessRedirectFor = expect.failureTarget
-    await page.evaluate(() => document.querySelector(".reader-offline-save")?.click())
+    await page.evaluate(() => document.querySelector(".reader-offline-confirm")?.click())
     await page.waitForSelector(".reader-offline-progress", { state: "visible", timeout: 15000 })
     await page.waitForSelector(".reader-offline-retry", { state: "visible", timeout: 90000 })
 
@@ -1768,17 +1827,14 @@ async function runOfflineSave(context, baseUrl, server, expect) {
       state: "visible",
       timeout: 15000,
     })
-    await page.evaluate(() => {
-      const retry = document.querySelector(".reader-offline-retry")
+    const hasRetry = await page.evaluate(() => !!document.querySelector(".reader-offline-retry"))
 
-      if (retry) {
-        retry.click()
+    if (hasRetry) {
+      await page.evaluate(() => document.querySelector(".reader-offline-retry")?.click())
+    } else {
+      await startOfflineSave(page)
+    }
 
-        return
-      }
-
-      document.querySelector(".reader-offline-save")?.click()
-    })
     await page.waitForSelector(".reader-offline-progress", { state: "visible", timeout: 15000 })
     await page.waitForSelector(".reader-offline-ready", { state: "visible", timeout: 90000 })
 
@@ -1843,7 +1899,7 @@ async function runOfflineSave(context, baseUrl, server, expect) {
     // Focus stays in the page before the shortcut: the offline leaf loads
     // with domcontentloaded and hydration may still be attaching the
     // shortcut listener, so retry the shortcut until the dialog answers.
-    await offline.evaluate(() => document.querySelector(".reader-search-header")?.focus())
+    await offline.evaluate(() => document.querySelector(".reader-search-sidebar")?.focus())
 
     let searchReady = false
 
@@ -2314,7 +2370,7 @@ async function runOfflineRemove(context, baseUrl, expect) {
     assert.equal(later.precacheCount, 0, "later visit does not re-download")
 
     // Explicit re-save restores the offline copy with no rebuild.
-    await page.evaluate(() => document.querySelector(".reader-offline-save")?.click())
+    await startOfflineSave(page)
     await page.waitForSelector(".reader-offline-progress", { state: "visible", timeout: 15000 })
     await page.waitForSelector(".reader-offline-ready", { state: "visible", timeout: 90000 })
     await page.waitForSelector(".reader-offline-remove", { state: "visible", timeout: 15000 })
@@ -2389,11 +2445,12 @@ async function runOfflineRemove(context, baseUrl, expect) {
 /**
  * Offline and appearance placement in the new shell (desktop).
  *
- * SidebarFooter owns Light/Dark/System plus detailed offline
- * status/actions from one mounted state; the old page footer is gone;
- * the phone cue exists for the closed drawer but stays hidden on
- * desktop; choosing appearance or toggling the sidebar never starts a
- * save; reload restores the explicit choice.
+ * SidebarFooter owns Light/Dark/System plus compact offline
+ * status/actions from one mounted state and stays short at rest (one
+ * offline row, one appearance row); the old page footer is gone; the
+ * phone cue renders only for meaningful states, so idle desktop has none;
+ * choosing appearance or toggling the sidebar never starts a save; reload
+ * restores the explicit choice.
  */
 async function runOfflineAppearancePlacement(page, baseUrl) {
   await page.goto(`${baseUrl}/`, { waitUntil: "networkidle", timeout: 15000 })
@@ -2414,10 +2471,12 @@ async function runOfflineAppearancePlacement(page, baseUrl) {
     return {
       present: true,
       visible: style.display !== "none" && rect.width > 0 && rect.height > 0,
+      height: rect.height,
     }
   })
 
   assert.ok(footer.present && footer.visible, "desktop SidebarFooter is visible")
+  assert.ok(footer.height <= 130, `compact SidebarFooter is ${footer.height}px at rest`)
 
   const appearance = await page.evaluate(() => {
     const group = document.querySelector(
@@ -2453,36 +2512,41 @@ async function runOfflineAppearancePlacement(page, baseUrl) {
     return {
       hasSave: !!save,
       visible: !!save && rect.width > 0 && rect.height > 0,
-      size:
-        document.querySelector(".reader-sidebar-footer .reader-offline-size")?.textContent || "",
-      trust:
-        document.querySelector(".reader-sidebar-footer .reader-offline-trust")?.textContent || "",
+      label:
+        document.querySelector(".reader-sidebar-footer .reader-offline")?.textContent?.trim() || "",
+      trustAtRest: !!document.querySelector(".reader-sidebar-footer .reader-offline-trust"),
     }
   })
 
-  assert.ok(offline.hasSave && offline.visible, "SidebarFooter shows Save for offline use")
-  assert.match(offline.size, /B/, "estimated download size is shown")
-  assert.match(offline.trust, /trust/i, "trusted-device note is shown")
+  assert.ok(offline.hasSave && offline.visible, "SidebarFooter shows the Save action")
+  assert.match(offline.label, /Not saved offline/, "SidebarFooter states the offline status")
+  assert.equal(offline.trustAtRest, false, "reminder stays behind the Save disclosure at rest")
 
-  const cue = await page.evaluate(() => {
-    const el = document.querySelector(".reader-offline-cue")
-
-    if (!el) return null
-    const style = getComputedStyle(el)
-    const rect = el.getBoundingClientRect()
-
-    return {
-      text: el.textContent?.trim() || "",
-      state: el.getAttribute("data-offline-state") || "",
-      visible: style.display !== "none" && rect.width > 0 && rect.height > 0,
-      tag: el.tagName,
-    }
+  await page.evaluate(() =>
+    document.querySelector(".reader-sidebar-footer .reader-offline-save")?.click(),
+  )
+  await page.waitForSelector(".reader-sidebar-footer .reader-offline-confirm", {
+    state: "visible",
+    timeout: 5000,
   })
 
-  assert.ok(cue, "offline cue exists for the phone header")
-  assert.equal(cue.tag, "P", "cue never initiates a save")
-  assert.ok(cue.text.length > 0, "cue renders its label instead of disappearing")
-  assert.equal(cue.visible, false, "cue stays hidden on desktop")
+  const disclosed = await page.evaluate(() => ({
+    size: document.querySelector(".reader-sidebar-footer .reader-offline-size")?.textContent || "",
+    trust:
+      document.querySelector(".reader-sidebar-footer .reader-offline-trust")?.textContent || "",
+  }))
+
+  assert.match(disclosed.size, /B/, "estimated download size is shown before saving")
+  assert.match(disclosed.trust, /trust/i, "trusted-device note is shown before saving")
+  await page.evaluate(() =>
+    document.querySelector(".reader-sidebar-footer .reader-offline-save")?.click(),
+  )
+
+  assert.equal(
+    await page.evaluate(() => !!document.querySelector(".reader-offline-cue")),
+    false,
+    "idle offline state renders no header cue",
+  )
 
   await page.evaluate(() => {
     const buttons = Array.from(
@@ -3778,8 +3842,8 @@ async function runBreadcrumbsDetail(page, baseUrl, expect) {
 /**
  * Projection switcher on desktop, folded from the retired projection suite
  * minus its zero-destination variant (the canonical fixture declares two
- * destinations; emptiness is covered by stage-destinations validation):
- * the trigger always names the current Web Projection, the menu lists only
+ * destinations; the plain-title shape has its own build below): the trigger
+ * names the current Web Projection, the menu lists only
  * the declared destinations as ordinary anchors to distinct HTTPS origins,
  * and keyboard open/close returns focus. The real cross-origin probe runs
  * last because it leaves the export origin.
@@ -4497,7 +4561,7 @@ async function closeDrawer(page) {
 }
 
 /** Phone drawer is the registry mobile sidebar sheet: the real AppSidebar slides in from the left over a dimmed overlay. */
-async function assertPhoneDrawerViewport(page, label) {
+async function assertPhoneDrawerViewport(page, label, { hasSwitcher = true } = {}) {
   const drawer = await page.evaluate(() => {
     const el = document.querySelector('[data-sidebar="sidebar"][data-mobile="true"]')
 
@@ -4550,7 +4614,11 @@ async function assertPhoneDrawerViewport(page, label) {
     drawer.drawerSearchHeight >= 44,
     `${label}: drawer Search is ${drawer.drawerSearchHeight}px (expected >= 44)`,
   )
-  assert.ok(drawer.switcherVisible, `${label}: drawer switcher stays reachable`)
+  assert.equal(
+    drawer.switcherVisible,
+    hasSwitcher,
+    `${label}: drawer switcher is a control only when destinations exist`,
+  )
   assert.ok(
     drawer.dialogRole === "dialog" || drawer.dialogRole === "alertdialog",
     `${label}: drawer is a dialog (role ${drawer.dialogRole})`,
@@ -4575,12 +4643,15 @@ async function assertBackgroundScrollLock(page, label) {
 }
 
 /**
- * Phone header composition: hamburger plus a brand button on the left
- * (opens the vault bottom sheet) and the status cue plus search on the
- * right. The desktop separator and breadcrumb trail stay mounted for
+ * Phone header composition: hamburger plus a brand title on the left and
+ * search on the right. With owner-declared destinations the brand is a
+ * button that opens the vault bottom sheet; with none it is plain text.
+ * The offline cue renders only for meaningful states, so the idle header
+ * shows none. The desktop separator and breadcrumb trail stay mounted for
  * desktop parity but hidden on phones.
  */
 async function runPhoneHeaderComposition(page, baseUrl, expect, label) {
+  const hasDestinations = (expect.destinations ?? []).length > 0
   await goto(page, `${baseUrl}/`)
 
   const header = await page.evaluate(() => {
@@ -4632,6 +4703,7 @@ async function runPhoneHeaderComposition(page, baseUrl, expect, label) {
         separatorStyle.display !== "none" &&
         separatorRect.width > 0 &&
         separatorRect.height > 0,
+      cuePresent: !!cue,
       cueVisible:
         !!cue &&
         !!cueRect &&
@@ -4650,15 +4722,22 @@ async function runPhoneHeaderComposition(page, baseUrl, expect, label) {
     header.brandText.includes(expect.projection),
     `${label}: brand text is the site title (got ${header.brandText})`,
   )
-  assert.equal(header.brandTag, "BUTTON", `${label}: brand row is a button`)
-  assert.equal(header.brandIsButton, true, `${label}: brand row opens the vault sheet`)
-  assert.equal(header.brandType, "button", `${label}: brand row is a plain button`)
-  assert.equal(header.brandHaspopup, "dialog", `${label}: brand row announces the vault dialog`)
-  assert.equal(header.brandExpanded, "false", `${label}: vault sheet starts closed`)
-  assert.ok(header.iconVisible, `${label}: brand swap icon is visible`)
+  assert.equal(
+    header.brandIsButton,
+    hasDestinations,
+    `${label}: brand row is a button only when destinations exist`,
+  )
+
+  if (hasDestinations) {
+    assert.equal(header.brandType, "button", `${label}: brand row is a plain button`)
+    assert.equal(header.brandHaspopup, "dialog", `${label}: brand row announces the vault dialog`)
+    assert.equal(header.brandExpanded, "false", `${label}: vault sheet starts closed`)
+    assert.ok(header.iconVisible, `${label}: brand swap icon is visible`)
+  }
+
   assert.equal(header.crumbsVisible, false, `${label}: breadcrumbs leave the phone header`)
   assert.equal(header.separatorVisible, false, `${label}: separator leaves the phone header`)
-  assert.ok(header.cueVisible, `${label}: status cue stays right`)
+  assert.equal(header.cuePresent, false, `${label}: idle header carries no status cue`)
   assert.ok(header.searchVisible, `${label}: search stays right`)
 }
 
@@ -4683,7 +4762,9 @@ async function runPhoneJourney(page, baseUrl, expect, label) {
     true,
     `${label}: trigger opens the drawer`,
   )
-  await assertPhoneDrawerViewport(page, `${label} drawer`)
+  await assertPhoneDrawerViewport(page, `${label} drawer`, {
+    hasSwitcher: (expect.destinations ?? []).length > 0,
+  })
   await assertBackgroundScrollLock(page, `${label} drawer`)
   await assertLandmarks(page, `${label} drawer`)
 
@@ -5563,11 +5644,12 @@ async function runPhoneSearchDialog(page, baseUrl, expect, label) {
 /**
  * Offline and appearance placement on phones.
  *
- * The closed drawer leaves a compact display-only cue in the reading
- * header; opening the drawer reveals appearance plus detailed offline
- * actions in a fixed footer that stays reachable while the tree scrolls.
- * Both read one mounted state. Choosing appearance or opening the drawer
- * never starts a save; the old page footer is gone.
+ * The closed header shows a compact display-only cue only for meaningful
+ * states (never while idle); opening the drawer reveals appearance plus
+ * compact offline actions in a fixed footer that stays reachable while
+ * the tree scrolls. Both read one mounted state. Choosing appearance or
+ * opening the drawer never starts a save; only the confirmed Save does,
+ * after which the cue reports the saved copy. The old page footer is gone.
  */
 async function runPhoneOfflinePlacement(page, baseUrl, label) {
   await goto(page, `${baseUrl}/`)
@@ -5576,81 +5658,18 @@ async function runPhoneOfflinePlacement(page, baseUrl, label) {
     false,
     `${label}: old page footer does not duplicate shell controls`,
   )
-  await page.waitForSelector(".reader-offline-cue", { state: "visible", timeout: 15000 })
-
-  const cue = await page.evaluate(() => {
-    const el = document.querySelector(".reader-offline-cue")
-
-    if (!el) return null
-    const style = getComputedStyle(el)
-    const rect = el.getBoundingClientRect()
-
-    return {
-      text: el.textContent?.trim() || "",
-      state: el.getAttribute("data-offline-state") || "",
-      visible: style.display !== "none" && rect.width > 0 && rect.height > 0,
-      tag: el.tagName,
-    }
-  })
-
-  assert.ok(cue && cue.visible, `${label}: closed drawer leaves a compact offline cue`)
-  assert.equal(cue.tag, "P", `${label}: cue never initiates a save`)
-  await page.waitForFunction(
-    () =>
-      document.querySelector(".reader-offline-cue")?.getAttribute("data-offline-state") === "idle",
-    null,
-    { timeout: 20000 },
+  // Not saved is not worth a header chip: the idle header carries no cue.
+  assert.equal(
+    await page.evaluate(() => !!document.querySelector(".reader-offline-cue")),
+    false,
+    `${label}: idle header carries no offline cue`,
   )
-  assert.match(
-    await page.evaluate(
-      () => document.querySelector(".reader-offline-cue")?.textContent?.trim() || "",
-    ),
-    /^Not saved$/,
-    `${label}: idle chip reads Not saved`,
-  )
-
-  const chip = await page.evaluate(() => {
-    const el = document.querySelector(".reader-offline-cue")
-
-    if (!el) return null
-
-    return {
-      iconPresent: !!el.querySelector("svg"),
-      role: el.getAttribute("role"),
-      live: el.getAttribute("aria-live"),
-      online: el.getAttribute("data-online"),
-      update: el.getAttribute("data-update"),
-    }
-  })
-
-  assert.ok(chip?.iconPresent, `${label}: idle chip carries the Not saved icon`)
-  assert.equal(chip?.role, "status", `${label}: idle chip announces politely`)
-  assert.equal(chip?.live, "polite", `${label}: idle chip live region is polite`)
-  assert.equal(chip?.online, null, `${label}: online chip carries no offline marker`)
-  assert.equal(chip?.update, null, `${label}: chip carries no update marker without an update`)
-
-  await page.evaluate(() => document.querySelector(".reader-offline-cue")?.click())
-  await new Promise((resolve) => setTimeout(resolve, 500))
-
-  const afterCue = await page.evaluate(async () => {
-    let hasReg = false
-    let count = 0
-
-    try {
-      hasReg = !!(await navigator.serviceWorker.getRegistration())
-    } catch {}
-
-    try {
-      count = (await caches.keys()).length
-    } catch {}
-
-    return { hasReg, count }
-  })
-
-  assert.equal(afterCue.hasReg, false, `${label}: cue does not start a save`)
-  assert.equal(afterCue.count, 0, `${label}: cue downloads nothing`)
 
   await openDrawer(page)
+  await page.waitForSelector(
+    '[data-sidebar="sidebar"][data-mobile="true"] .reader-offline[data-offline-state="idle"]',
+    { state: "visible", timeout: 20000 },
+  )
 
   const afterOpen = await page.evaluate(async () => {
     let hasReg = false
@@ -5700,8 +5719,7 @@ async function runPhoneOfflinePlacement(page, baseUrl, label) {
       hasAppearance: !!group,
       appearanceText: group?.textContent?.trim() || "",
       hasSave: !!document.querySelector(`${scope} .reader-offline-save`),
-      size: document.querySelector(`${scope} .reader-offline-size`)?.textContent || "",
-      trust: document.querySelector(`${scope} .reader-offline-trust`)?.textContent || "",
+      trustAtRest: !!document.querySelector(`${scope} .reader-offline-trust`),
     }
   })
 
@@ -5712,20 +5730,31 @@ async function runPhoneOfflinePlacement(page, baseUrl, label) {
       drawer.appearanceText.includes("System"),
     `${label}: drawer footer shows appearance`,
   )
-  assert.ok(drawer.hasSave, `${label}: drawer footer shows Save for offline use`)
-  assert.match(drawer.size, /B/, `${label}: estimated size stays clear`)
-  assert.match(drawer.trust, /trust/i, `${label}: trusted-device reminder stays clear`)
+  assert.ok(drawer.hasSave, `${label}: drawer footer shows Save`)
+  assert.equal(drawer.trustAtRest, false, `${label}: reminder stays behind the Save disclosure`)
+
+  await page.evaluate(() => document.querySelector(".reader-offline-save")?.click())
+  await page.waitForSelector(".reader-offline-confirm", { state: "visible", timeout: 5000 })
+
+  const disclosed = await page.evaluate(() => ({
+    size: document.querySelector(".reader-offline-size")?.textContent || "",
+    trust: document.querySelector(".reader-offline-trust")?.textContent || "",
+  }))
+
+  assert.match(disclosed.size, /B/, `${label}: estimated size shows before saving`)
+  assert.match(disclosed.trust, /trust/i, `${label}: trusted-device reminder shows before saving`)
+  await page.evaluate(() => document.querySelector(".reader-offline-save")?.click())
 
   const shared = await page.evaluate(() => ({
-    cue: document.querySelector(".reader-offline-cue")?.getAttribute("data-offline-state") || "",
+    cue: !!document.querySelector(".reader-offline-cue"),
     detail:
       document
         .querySelector('[data-sidebar="sidebar"][data-mobile="true"] .reader-offline')
         ?.getAttribute("data-offline-state") || "",
   }))
 
-  assert.equal(shared.cue, "idle", `${label}: cue shares the mounted offline state`)
-  assert.equal(shared.detail, "idle", `${label}: drawer details share the mounted offline state`)
+  assert.equal(shared.cue, false, `${label}: idle state renders no cue`)
+  assert.equal(shared.detail, "idle", `${label}: drawer details show the mounted offline state`)
 
   const scroll = await page.evaluate(() => {
     const tree = document.querySelector(
@@ -5785,12 +5814,34 @@ async function runPhoneOfflinePlacement(page, baseUrl, label) {
 
     buttons.find((button) => (button.textContent || "").includes("System"))?.click()
   })
-  await closeDrawer(page)
   assert.equal(
-    await isVisible(page, ".reader-offline-cue"),
-    true,
-    `${label}: cue remains after the drawer closes`,
+    await page.evaluate(() => !!document.querySelector(".reader-offline-cue")),
+    false,
+    `${label}: appearance changes leave the idle header cue-free`,
   )
+
+  // An explicit confirmed Save is the only action that downloads; the
+  // closed header then shows the display-only saved cue.
+  await startOfflineSave(page)
+  await page.waitForSelector(".reader-offline-ready", { state: "visible", timeout: 90000 })
+  await closeDrawer(page)
+  await page.waitForSelector(".reader-offline-cue", { state: "visible", timeout: 15000 })
+
+  const savedCue = await page.evaluate(() => {
+    const el = document.querySelector(".reader-offline-cue")
+
+    return {
+      tag: el?.tagName || "",
+      state: el?.getAttribute("data-offline-state") || "",
+      text: el?.textContent?.trim() || "",
+      role: el?.getAttribute("role") || "",
+    }
+  })
+
+  assert.equal(savedCue.tag, "P", `${label}: cue never initiates a save`)
+  assert.equal(savedCue.state, "ready", `${label}: cue shares the mounted offline state`)
+  assert.match(savedCue.text, /saved/, `${label}: cue reports the saved copy`)
+  assert.equal(savedCue.role, "status", `${label}: saved cue announces politely`)
 }
 
 /**
@@ -6178,7 +6229,7 @@ async function runPhoneNoteDetail(page, baseUrl, label) {
 
 /**
  * Reads the open vault bottom sheet: the current row, ordered
- * destination anchors, row order, and the trailing Add mock button.
+ * destination anchors, and row order (there is no add-vault row).
  * Null when no vault sheet is open (the drawer sidebar renders its own
  * sheet content without the "Switch vault" list, so the two are never
  * confused).
@@ -6208,8 +6259,6 @@ async function readVaultSheet(page) {
         })
       : []
 
-    const add = list?.querySelector(":scope > li > button") || null
-
     return {
       title: title?.textContent?.trim() || "",
       closeVisible: !!closeRect && closeRect.width > 0 && closeRect.height > 0,
@@ -6237,15 +6286,6 @@ async function readVaultSheet(page) {
         }
       }),
       rows,
-      add: add
-        ? {
-            tag: add.tagName,
-            text: add.textContent?.trim() || "",
-            type: add.getAttribute("type"),
-            hasHref: add.hasAttribute("href"),
-            disabled: add.hasAttribute("disabled") || add.hasAttribute("aria-disabled"),
-          }
-        : null,
     }
   })
 }
@@ -6284,22 +6324,16 @@ function assertVaultSheetRows(sheet, expect, label) {
     )
   }
 
-  assert.ok(sheet.add, `${label}: sheet renders the Add new vault mock row`)
-  assert.equal(sheet.add.tag, "BUTTON", `${label}: add-vault row is a button, not an anchor`)
-  assert.equal(sheet.add.text, "Add new vault", `${label}: add-vault row keeps its label`)
-  assert.equal(sheet.add.type, "button", `${label}: add-vault row is a plain button`)
-  assert.equal(sheet.add.hasHref, false, `${label}: add-vault row carries no navigation target`)
-  assert.equal(sheet.add.disabled, false, `${label}: add-vault row stays focusable, not disabled`)
   assert.equal(
     sheet.rows.length,
-    sheet.choices.length + 2,
-    `${label}: sheet lists the current row, destinations, then the mock`,
+    sheet.choices.length + 1,
+    `${label}: sheet lists the current row then the destinations only`,
   )
-  assert.equal(
-    sheet.rows[sheet.rows.length - 1]?.tag,
-    "BUTTON",
-    `${label}: add-vault row sits last, ordered after destinations`,
+  assert.ok(
+    sheet.rows.every((row) => row.tag !== "BUTTON"),
+    `${label}: sheet carries no button row such as an add-vault mock`,
   )
+  assert.ok(!sheet.text.includes("Add new vault"), `${label}: sheet offers no add-vault action`)
 }
 
 async function vaultSheetOpen(page) {
@@ -6333,32 +6367,6 @@ async function vaultSheetClosed(page) {
     null,
     { timeout: 5000 },
   )
-}
-
-/**
- * Add-vault mock no-op: activating the trailing button navigates nowhere
- * and leaves the vault sheet open (parity item 2 pins the mock semantics).
- */
-async function assertAddVaultMockNoop(page, label) {
-  const urlBefore = page.url()
-
-  await page.evaluate(() => {
-    const root = Array.from(document.querySelectorAll('[data-slot="sheet-content"]')).find((el) =>
-      el.querySelector('[aria-label="Switch vault"]'),
-    )
-
-    root?.querySelector('[aria-label="Switch vault"] > li > button')?.click()
-  })
-  await page.waitForTimeout(300)
-  assert.equal(page.url(), urlBefore, `${label}: add-vault mock navigates nowhere`)
-
-  const stillOpen = await page.evaluate(() =>
-    Array.from(document.querySelectorAll('[data-slot="sheet-content"]')).some((el) =>
-      el.querySelector('[aria-label="Switch vault"]'),
-    ),
-  )
-
-  assert.ok(stillOpen, `${label}: add-vault mock leaves the sheet open`)
 }
 
 /**
@@ -6434,7 +6442,6 @@ async function runPhoneHeaderVaultSheet(page, baseUrl, expect, label) {
     false,
     `${label}: header vault switch needs no drawer`,
   )
-  await assertAddVaultMockNoop(page, label)
 
   await page.evaluate(() => {
     const root = Array.from(document.querySelectorAll('[data-slot="sheet-content"]')).find((el) =>
@@ -6555,6 +6562,7 @@ test("synthetic phone journey covers drawer, overflow, keyboard, and refresh", a
       entry.kind === "directory" ? "folder" : "note",
     ),
     projection: built.metadata.title,
+    destinations: SYNTHETIC_DESTINATIONS,
   }
 
   try {
@@ -6571,20 +6579,10 @@ test("synthetic phone journey covers drawer, overflow, keyboard, and refresh", a
       await runPhoneBreadcrumbsDetail(page, built.baseUrl, built.contentDir, "narrow phone")
     })
     await withPhonePage(browser, "narrow", async (page) => {
-      await runPhoneDrawerSwitcher(
-        page,
-        built.baseUrl,
-        { ...expect, destinations: SYNTHETIC_DESTINATIONS },
-        "narrow phone",
-      )
+      await runPhoneDrawerSwitcher(page, built.baseUrl, expect, "narrow phone")
     })
     await withPhonePage(browser, "narrow", async (page) => {
-      await runPhoneHeaderVaultSheet(
-        page,
-        built.baseUrl,
-        { ...expect, destinations: SYNTHETIC_DESTINATIONS },
-        "narrow phone",
-      )
+      await runPhoneHeaderVaultSheet(page, built.baseUrl, expect, "narrow phone")
     })
     await withPhonePage(browser, "narrow", async (page) => {
       await runDerivedOverflowProbes(page, built.baseUrl, built.contentDir, "narrow phone", {
@@ -7238,6 +7236,81 @@ test("offline generation rejects an export file omitted from the precache", asyn
   )
 })
 
+test("synthetic build without destinations shows a plain projection title", async () => {
+  assert.ok(
+    fs.existsSync(path.join(READER_ROOT, "node_modules", "next")),
+    "reader dependencies must be installed (run `npm ci` in reader/)",
+  )
+  // A second, destination-free build: it replaces the shared export, so this
+  // test runs after every test that reads the shared outDir.
+  const kb = makeSyntheticKb()
+  const manifestFile = path.join(kb, "publication.manifest.yaml")
+  const manifestText = fs.readFileSync(manifestFile, "utf8")
+  fs.writeFileSync(manifestFile, manifestText.slice(0, manifestText.indexOf("destinations:")))
+
+  const work = tmpdir("synthetic-plain")
+  const contentDir = path.join(work, "content")
+  const identityFile = path.join(work, "site-identity.json")
+  await stageKb(kb, contentDir, identityFile)
+  const metadata = JSON.parse(fs.readFileSync(identityFile, "utf8"))
+  assert.deepEqual(metadata.destinations ?? [], [], "identity declares no destinations")
+  cleanReaderArtifacts()
+  await buildReader(contentDir, identityFile)
+  const { server, baseUrl } = await serveOut(path.join(READER_ROOT, "out"))
+  const browser = await launchBrowser()
+  const expect = { projection: metadata.title, destinations: [] }
+
+  try {
+    await withDesktopPage(browser, async (page) => {
+      await page.goto(`${baseUrl}/`, { waitUntil: "networkidle", timeout: 15000 })
+
+      const plain = await page.evaluate(() => {
+        const switcher = document.querySelector(".reader-projection-switcher")
+
+        return {
+          name: switcher?.querySelector(".reader-projection-name")?.textContent?.trim() || "",
+          interactive: !!switcher?.querySelector("button, a, [aria-haspopup]"),
+          icons: switcher?.querySelectorAll("svg").length ?? 0,
+          trigger: !!document.querySelector(".reader-projection-trigger"),
+        }
+      })
+
+      assert.equal(plain.name, expect.projection, "desktop switcher names the projection")
+      assert.equal(plain.interactive, false, "desktop switcher is a plain title, not a control")
+      assert.equal(plain.icons, 1, "desktop switcher keeps only its brand icon, no chevron")
+      assert.equal(plain.trigger, false, "desktop switcher has no trigger")
+    })
+    await withPhonePage(browser, "narrow", async (page) => {
+      await runPhoneHeaderComposition(page, baseUrl, expect, "plain phone header")
+      await openDrawer(page)
+      await assertPhoneDrawerViewport(page, "plain phone drawer", { hasSwitcher: false })
+
+      const drawerSheet = await page.evaluate(() => ({
+        title: !!document.querySelector(
+          '[data-sidebar="sidebar"][data-mobile="true"] .reader-projection-name',
+        ),
+        list: !!document.querySelector('[aria-label="Switch vault"]'),
+      }))
+
+      assert.ok(drawerSheet.title, "plain phone drawer still shows the title")
+      assert.equal(drawerSheet.list, false, "no vault sheet is mounted without destinations")
+      await closeDrawer(page)
+      await page.evaluate(() => {
+        document.querySelector(".reader-header-trail span.truncate")?.click()
+      })
+      await page.waitForTimeout(300)
+      assert.equal(
+        await page.evaluate(() => !!document.querySelector('[aria-label="Switch vault"]')),
+        false,
+        "tapping the plain header title opens nothing",
+      )
+    })
+  } finally {
+    await browser.close()
+    await closeServer(server)
+  }
+})
+
 test("generic real corpus builds a complete static export from staged content only", async (t) => {
   const kbRoot = process.env.KNOWLEDGE_BASE_ROOT
 
@@ -7405,6 +7478,7 @@ test("generic real phone journey covers drawer open/close and home to note", asy
     leafTitle: built.journey.leafTitle,
     leafRoute: built.journey.leafRoute,
     projection: built.metadata.title,
+    destinations: built.metadata.destinations ?? [],
   }
 
   try {

@@ -106,6 +106,7 @@ const config: OxlintConfig = {
                 allow: [
                   "reader-appearance-option",
                   "reader-offline-save",
+                  "reader-offline-confirm",
                   "reader-offline-retry",
                   "reader-offline-reload",
                   "reader-offline-remove",
@@ -372,18 +373,19 @@ const config: OxlintConfig = {
               // Footer element renders no wrapper DOM, so the hook must
               // stay on the footer itself; a parent would scope the wrong
               // element and break the fixed-footer/tree-scroll split.
-              // Design footer stack adds a top border-border with padded gaps
-              // plus overflow-y-auto so the 45dvh-capped footer scrolls; the
-              // divider between On Device and Appearance is the
-              // registry Separator with no wrapper.
+              // The compact footer stack (two 44px rows) adds a top
+              // border-border with tight padding and gap plus
+              // overflow-y-auto so the 45dvh-capped footer scrolls when the
+              // Save confirm is open.
               {
                 pattern: "^SidebarFooter$",
                 allow: [
                   "reader-sidebar-footer",
-                  "gap-4",
+                  "gap-1",
                   "border-t",
                   "border-border",
-                  "p-4",
+                  "px-3",
+                  "py-2",
                   "overflow-y-auto",
                 ],
               },
@@ -483,6 +485,7 @@ const config: OxlintConfig = {
               "reader-offline-remove-error",
               "reader-offline",
               "reader-offline-save",
+              "reader-offline-confirm",
               "reader-offline-retry",
               "reader-offline-reload",
               "reader-offline-remove",
