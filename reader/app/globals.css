@@ -84,8 +84,8 @@ body {
    the link plus the trailing toggle zone. The link inside an open row stays
    transparent at rest and on hover so exactly one wash layer paints. This
    stays unlayered so it beats the layered SidebarMenuButton
-   data-active/hover washes from the registry primitive. Non-open
-   a.is-active rows keep their own bg-border wash from utilities. */
+   data-active/hover washes from the registry primitive. The exact
+   current row paints its bg-border wash on the row from utilities. */
 .reader-sidebar-nav .reader-tree-row.reader-tree-open a,
 .reader-sidebar-nav .reader-tree-row.reader-tree-open a:hover {
   background: transparent;

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { usePathname } from "next/navigation"
 import { ChevronDown, ChevronRight, File, Folder } from "lucide-react"
 import type { NavigationNode } from "../lib/navigation"
@@ -15,7 +15,7 @@ import {
 
 const STORAGE_KEY = "knowledge-reader-tree"
 
-const INITIAL_WINDOW = 4
+const INITIAL_WINDOW = 8
 
 const PAGE_SIZE = 20
 
@@ -100,11 +100,18 @@ interface TreeState {
  * rows reveal a chevron-right there on hover or focus via group-hover and
  * group-focus-within opacity utilities; expanded rows leave it empty).
  * Row, link, label, toggle, indent, washes, and containment live in JSX
- * utilities; hooks stay as non-visual DOM/test selectors. The open-row
- * wash lives on the row (bg-border) with the link forced transparent by
- * scoped CSS so exactly one wash layer paints in dark mode.
+ * utilities; hooks stay as non-visual DOM/test selectors. Only the exact
+ * current page paints a wash (bg-border) plus a leading accent bar on the
+ * row, with the link transparent so exactly one wash layer paints in dark
+ * mode; scoped CSS keeps links inside open rows transparent against the
+ * layered SidebarMenuButton washes. Open folders and ancestors of the
+ * current page stay unfilled so "open" never reads as "you are here".
  * The row itself shows only a leading cue plus label: the folder icon when
  * collapsed, a chevron-down when expanded.
+ *
+ * Each branch renders its first INITIAL_WINDOW children and extends that
+ * window to include the child on the current page's path, so the current
+ * page and its ancestors are never hidden behind a more-row.
  */
 function TreeNode({ node, state }: { node: NavigationNode; state: TreeState }) {
   const url = normalize(node.url)
@@ -114,12 +121,12 @@ function TreeNode({ node, state }: { node: NavigationNode; state: TreeState }) {
   const open = state.isOpen(node.url)
   // Collapsed folder rows keep the folder cue with a medium label; the
   // expanded header swaps in a leading chevron-down with a semibold label
-  // instead. Note rows always keep the note cue with a truncated label.
+  // instead. Note rows always keep the note cue with a wrapping label.
   const LeadingIcon = node.isFolder ? (open ? ChevronDown : Folder) : File
 
   const labelClassName = node.isFolder
     ? `reader-tree-label text-13 min-w-0 flex-1 wrap-break-word leading-snug ${open ? "font-semibold" : "font-medium"} text-primary`
-    : "reader-tree-label text-xs min-w-0 flex-1 wrap-break-word leading-snug font-normal text-muted-foreground truncate"
+    : `reader-tree-label text-13 min-w-0 flex-1 wrap-break-word leading-snug ${isExact ? "font-medium text-foreground" : "font-normal text-sidebar-foreground/80 group-hover:text-foreground"}`
 
   const [visibleCount, setVisibleCount] = useState(INITIAL_WINDOW)
 
@@ -127,13 +134,27 @@ function TreeNode({ node, state }: { node: NavigationNode; state: TreeState }) {
     if (!open) setVisibleCount(INITIAL_WINDOW)
   }, [open])
 
-  const linkClassName = open
-    ? isActive
-      ? "is-active min-h-11 w-auto min-w-0 flex-1 gap-2 rounded-md bg-transparent px-3 py-2.5 no-underline wrap-break-word hover:bg-transparent data-active:bg-transparent"
-      : "min-h-11 w-auto min-w-0 flex-1 gap-2 rounded-md bg-transparent px-3 py-2.5 no-underline wrap-break-word hover:bg-transparent data-active:bg-transparent"
-    : isActive
-      ? "is-active min-h-11 w-auto min-w-0 flex-1 gap-2 rounded-md bg-border px-3 py-2.5 no-underline wrap-break-word hover:bg-muted data-active:bg-border"
-      : "min-h-11 w-auto min-w-0 flex-1 gap-2 rounded-md px-3 py-2.5 no-underline wrap-break-word hover:bg-muted"
+  // Fills live on the row, so the link stays transparent when the row
+  // already paints (open or exact) and only hover-washes otherwise. The
+  // trailing span overrides the registry button's last-child truncate so
+  // long titles wrap.
+  const wrapClassName =
+    "[&>span:last-child]:overflow-visible [&>span:last-child]:text-clip [&>span:last-child]:whitespace-normal"
+
+  const linkBase = `min-h-11 w-auto min-w-0 flex-1 gap-2 rounded-md px-3 py-2.5 no-underline wrap-break-word ${wrapClassName}`
+
+  const linkClassName =
+    open || isExact
+      ? `${isActive ? "is-active " : ""}${linkBase} bg-transparent hover:bg-transparent data-active:bg-transparent`
+      : `${isActive ? "is-active " : ""}${linkBase} bg-transparent hover:bg-muted data-active:bg-transparent data-active:hover:bg-muted`
+
+  const rowBase =
+    "reader-tree-row group relative flex min-w-0 max-w-full items-stretch gap-1 rounded-md"
+
+  // Exact current page: stronger wash plus a leading accent bar.
+  const rowClassName = isExact
+    ? `${rowBase} bg-border before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-primary`
+    : rowBase
 
   const link = (
     <SidebarMenuButton
@@ -157,15 +178,22 @@ function TreeNode({ node, state }: { node: NavigationNode; state: TreeState }) {
   if (!node.isFolder || node.children.length === 0) {
     return (
       <SidebarMenuItem data-tree-url={node.url} className="min-w-0 max-w-full">
-        <div className="reader-tree-row group flex min-w-0 max-w-full items-stretch gap-1 rounded-md">
-          {link}
-        </div>
+        <div className={rowClassName}>{link}</div>
       </SidebarMenuItem>
     )
   }
 
   const total = node.children.length
-  const visible = node.children.slice(0, visibleCount)
+
+  const activeIndex = node.children.findIndex((child) => {
+    const childUrl = normalize(child.url)
+
+    return state.pathname === childUrl || state.pathname.startsWith(`${childUrl}/`)
+  })
+
+  // The window always reaches the child on the current page's path.
+  const shown = Math.min(Math.max(visibleCount, activeIndex + 1), total)
+  const visible = node.children.slice(0, shown)
   const hidden = total - visible.length
 
   return (
@@ -175,13 +203,7 @@ function TreeNode({ node, state }: { node: NavigationNode; state: TreeState }) {
         open={open}
         onOpenChange={(next) => state.setOpen(node.url, next)}
       >
-        <div
-          className={
-            open
-              ? "reader-tree-row reader-tree-open group flex min-w-0 max-w-full items-stretch gap-1 rounded-md bg-border"
-              : "reader-tree-row group flex min-w-0 max-w-full items-stretch gap-1 rounded-md"
-          }
-        >
+        <div className={open ? `${rowClassName} reader-tree-open` : rowClassName}>
           {link}
           <CollapsibleTrigger
             className="reader-tree-toggle flex min-h-11 w-6 shrink-0 cursor-pointer items-center justify-center self-stretch rounded-md border border-transparent bg-transparent p-0"
@@ -206,7 +228,7 @@ function TreeNode({ node, state }: { node: NavigationNode; state: TreeState }) {
                   <button
                     type="button"
                     data-tree-more
-                    onClick={() => setVisibleCount((count) => Math.min(count + PAGE_SIZE, total))}
+                    onClick={() => setVisibleCount(Math.min(shown + PAGE_SIZE, total))}
                     className="w-full rounded-md px-1.5 py-1 text-left font-mono text-2xs text-muted-foreground focus-visible:ring-2 focus-visible:outline-solid"
                   >
                     {`+ ${hidden} more in ${node.title}`}
@@ -255,6 +277,7 @@ export default function Sidebar({ roots }: { roots: NavigationNode[] }) {
   })
 
   const [hydrated, setHydrated] = useState(false)
+  const navRef = useRef<HTMLElement>(null)
 
   // Any navigation releases deliberate closes: the close belonged to
   // the previous page, and the new page arrives with its ancestors
@@ -303,6 +326,28 @@ export default function Sidebar({ roots }: { roots: NavigationNode[] }) {
     return () => window.removeEventListener("pageshow", onPageShow)
   }, [pathname])
 
+  // Bring the current page's row into view inside the sidebar scroll
+  // container on arrival and route change. Runs again once session-kept
+  // branches merge, since they can move the row. The container is scrolled
+  // directly (instant, so reduced-motion needs no special case) because
+  // scrollIntoView could also scroll the document.
+  useEffect(() => {
+    const row = navRef.current?.querySelector<HTMLElement>('a[aria-current="page"]')
+    const container = row?.closest<HTMLElement>('[data-slot="sidebar-content"]')
+
+    if (!row || !container || container.clientHeight === 0) return
+
+    const rowRect = row.getBoundingClientRect()
+    const box = container.getBoundingClientRect()
+
+    if (rowRect.top >= box.top && rowRect.bottom <= box.bottom) return
+
+    container.scrollTo({
+      top: container.scrollTop + rowRect.top - box.top - (box.height - rowRect.height) / 2,
+      behavior: "instant",
+    })
+  }, [pathname, hydrated])
+
   const ancestors = ancestorBranches(roots, pathname)
   const suppressed = closed.page === pathname ? closed.urls : []
 
@@ -333,7 +378,11 @@ export default function Sidebar({ roots }: { roots: NavigationNode[] }) {
   }
 
   return (
-    <nav aria-label="Published sections" className="reader-sidebar-nav min-w-0 max-w-full">
+    <nav
+      ref={navRef}
+      aria-label="Published sections"
+      className="reader-sidebar-nav min-w-0 max-w-full"
+    >
       <SidebarGroupLabel className="text-2xs font-semibold tracking-label text-muted-foreground">
         Published
       </SidebarGroupLabel>

@@ -951,14 +951,16 @@ async function runTreeBehavior(page, baseUrl, expect) {
 }
 
 /**
- * Desktop sidebar pagination on a long folder: first 4 plus the more-row,
+ * Desktop sidebar pagination on a long folder: first 8 plus the more-row,
  * batch reveal of min(20, remaining), exhaustion removes the row, paging
- * never navigates, and the active ancestor still pages (C8).
+ * never navigates, and the current page is always rendered even beyond
+ * the window, with the more-row counting only the rows still hidden (C8).
  */
 async function runTreePagination(page, baseUrl, expect) {
   const { paginationRoute, paginationTitle, paginationChildren, deepRoute } = expect
+  const windowSize = 8
   assert.ok(
-    paginationChildren.length > 4,
+    paginationChildren.length > windowSize,
     `canonical fixture has a long folder (got ${paginationChildren.length})`,
   )
   await page.goto(`${baseUrl}/`, { waitUntil: "networkidle", timeout: 15000 })
@@ -982,14 +984,14 @@ async function runTreePagination(page, baseUrl, expect) {
   if (state === "false") await setDisclosure(page, paginationRoute, true)
 
   const initial = await directTreeChildren(page, paginationRoute)
-  assert.equal(initial.length, 4, "expanded folder renders its first 4 children")
+  assert.equal(initial.length, windowSize, "expanded folder renders its first 8 children")
   assert.deepEqual(
     initial.map((c) => c.text),
-    paginationChildren.slice(0, 4),
+    paginationChildren.slice(0, windowSize),
     "window keeps tree order",
   )
 
-  const hiddenBefore = paginationChildren.length - 4
+  const hiddenBefore = paginationChildren.length - windowSize
   const moreBefore = await treeMoreRow(page, paginationRoute)
   assert.ok(moreBefore, "trailing more-row renders when children remain")
   assert.ok(
@@ -1033,24 +1035,24 @@ async function runTreePagination(page, baseUrl, expect) {
 
       return rows.length === total
     },
-    [paginationRoute, 4 + batch],
+    [paginationRoute, windowSize + batch],
     { timeout: 5000 },
   )
 
   const after = await directTreeChildren(page, paginationRoute)
-  assert.equal(after.length, 4 + batch, "click reveals the next batch")
+  assert.equal(after.length, windowSize + batch, "click reveals the next batch")
   assert.deepEqual(
     after.map((c) => c.text),
-    paginationChildren.slice(0, 4 + batch),
+    paginationChildren.slice(0, windowSize + batch),
     "revealed rows keep tree order and links",
   )
 
   const moreAfter = await treeMoreRow(page, paginationRoute)
 
-  if (4 + batch < paginationChildren.length) {
+  if (windowSize + batch < paginationChildren.length) {
     assert.ok(
       moreAfter?.includes(
-        `+ ${paginationChildren.length - (4 + batch)} more in ${paginationTitle}`,
+        `+ ${paginationChildren.length - (windowSize + batch)} more in ${paginationTitle}`,
       ),
       "count label updates with remaining hidden",
     )
@@ -1095,10 +1097,60 @@ async function runTreePagination(page, baseUrl, expect) {
 
   assert.ok(keyboardReachable.focusable, "keyboard reaches the more-row")
 
-  // Active-route ancestor still pages: the deep leaf needs explicit paging.
+  // The current page is never hidden behind the more-row: a note beyond
+  // the window is rendered on arrival, and the more-row counts only the
+  // rows still hidden.
+  const beyondIndex = paginationChildren.indexOf("Orchard Note 10")
+  assert.ok(beyondIndex >= windowSize, "fixture note 10 sits beyond the initial window")
+
+  const beyondRoute = `${paginationRoute}/note-10`
+  await page.goto(`${baseUrl}${beyondRoute}`, { waitUntil: "networkidle", timeout: 15000 })
+  assert.ok(await treeLinkVisible(page, beyondRoute), "current note beyond the window is visible")
+  assert.equal(await treeCurrent(page), beyondRoute, "tree indicates the note beyond the window")
+
+  const arrived = await directTreeChildren(page, paginationRoute)
+  assert.equal(arrived.length, beyondIndex + 1, "window extends exactly to the current note")
+
+  const hiddenAfterArrival = paginationChildren.length - (beyondIndex + 1)
+
+  assert.ok(
+    (await treeMoreRow(page, paginationRoute))?.includes(
+      `+ ${hiddenAfterArrival} more in ${paginationTitle}`,
+    ),
+    "more-row counts only the rows still hidden",
+  )
+
+  // Current row reads as "you are here": its wash differs from the open
+  // folder header, the row is inside the sidebar scroll container, and the
+  // document itself did not scroll.
+  const here = await page.evaluate(
+    ([folder, note]) => {
+      const rowOf = (route) =>
+        document
+          .querySelector(`[data-slot="sidebar"] .reader-sidebar-nav a[href="${route}"]`)
+          ?.closest(".reader-tree-row")
+
+      const wash = (el) => (el ? getComputedStyle(el).backgroundColor : null)
+      const container = document.querySelector('[data-slot="sidebar-content"]')
+      const rect = rowOf(note)?.getBoundingClientRect()
+      const box = container?.getBoundingClientRect()
+
+      return {
+        currentWash: wash(rowOf(note)),
+        folderWash: wash(rowOf(folder)),
+        inContainer: !!rect && !!box && rect.top >= box.top - 1 && rect.bottom <= box.bottom + 1,
+        scrollY: window.scrollY,
+      }
+    },
+    [paginationRoute, beyondRoute],
+  )
+
+  assert.notEqual(here.currentWash, here.folderWash, "current row wash differs from open folder")
+  assert.ok(here.inContainer, "current row is scrolled into the sidebar view")
+  assert.equal(here.scrollY, 0, "tree scrolling leaves the document in place")
+
+  // Deep leaf under an active ancestor stays reachable.
   await page.goto(`${baseUrl}${deepRoute}`, { waitUntil: "networkidle", timeout: 15000 })
-  const ancestorMore = await treeMoreRow(page, "/notes")
-  assert.ok(ancestorMore, "active ancestor still pages")
   await revealTreeRoute(page, deepRoute)
   assert.ok(await treeLinkVisible(page, deepRoute), "deep leaf reachable through paging")
 }
