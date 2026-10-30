@@ -6,6 +6,8 @@ import { docTitle } from "../../lib/title"
 import type { MetaLineData } from "../../components/last-edited"
 import NotePage from "../../components/note-page"
 import type { SiblingNote } from "../../components/other-notes"
+import FolderListing from "../../components/folder-listing"
+import { folderRows } from "../../lib/browse-rows"
 import { mdxComponents, type MdxBody } from "../../components/mdx-components"
 import { adjacentNotes } from "../../lib/adjacent-notes"
 import { tocItemsFromData, type TocSource } from "../../lib/toc"
@@ -35,28 +37,6 @@ function readerNavigation() {
   const site = getSiteMetadata()
 
   return buildReaderNavigation(pageLikes(), site.navigation)
-}
-
-function GroupSection({ title, nodes }: { title: string; nodes: NavigationNode[] }) {
-  if (nodes.length === 0) return null
-
-  return (
-    <section aria-label={title} className="reader-group mt-10 border-t border-border pt-5">
-      <h2 className="text-xl font-semibold wrap-break-word max-md:text-base">{title}</h2>
-      <ul className="reader-group-list m-0 mt-3 grid max-w-full min-w-0 list-none gap-2 p-0">
-        {nodes.map((node) => (
-          <li key={node.url} className="max-w-full min-w-0">
-            <a
-              href={node.url}
-              className="flex max-w-full min-h-11 min-w-0 items-center border-b border-border px-1 py-3 leading-snug wrap-break-word text-muted-foreground no-underline hover:text-foreground hover:underline hover:decoration-ring hover:underline-offset-3 dark:hover:decoration-chart-3"
-            >
-              {node.title}
-            </a>
-          </li>
-        ))}
-      </ul>
-    </section>
-  )
 }
 
 /**
@@ -218,7 +198,7 @@ export default async function FolderOrNotePage({ params }: { params: Promise<Not
     // a phone-only slash trail, one shared meta line above the title on
     // every viewport (design component HMIv8), a table of contents, previous
     // and next links, and the shared Other notes sibling section on every
-    // viewport. Folder pages keep their generic Notes/Folders groups with
+    // viewport. Folder pages keep their generic Folders/Notes groups with
     // no meta line (design has no folder screen).
     if (!node.isFolder) {
       const crumbs = navigation.breadcrumbs(slug)
@@ -241,13 +221,12 @@ export default async function FolderOrNotePage({ params }: { params: Promise<Not
 
     return (
       <article className="reader-article">
-        {/* Authored folder introduction owns the Typeset scope; the Notes
-            and Folders groups stay outside as React navigation. */}
+        {/* Authored folder introduction owns the Typeset scope; the Folders
+            and Notes groups stay outside as React navigation. */}
         <div className="typeset">
           <Body components={mdxComponents} />
         </div>
-        <GroupSection title="Notes" nodes={directNotes} />
-        <GroupSection title="Folders" nodes={childFolders} />
+        <FolderListing folders={folderRows(childFolders)} notes={folderRows(directNotes)} />
       </article>
     )
   }
@@ -259,8 +238,7 @@ export default async function FolderOrNotePage({ params }: { params: Promise<Not
     return (
       <article className="reader-article">
         <h1 className="text-3xl font-bold wrap-break-word max-md:text-2xl">{node.title}</h1>
-        <GroupSection title="Notes" nodes={directNotes} />
-        <GroupSection title="Folders" nodes={childFolders} />
+        <FolderListing folders={folderRows(childFolders)} notes={folderRows(directNotes)} />
       </article>
     )
   }

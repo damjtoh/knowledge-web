@@ -14,6 +14,10 @@
  * lives in the desktop backbone journey; only the parseUpdatedAt unit test
  * stays here.
  *
+ * Browse rows reuse the same strict validation: the home Recently updated
+ * list ranks only valid stamps from notes reachable in navigation, and
+ * returns nothing (so the section is omitted) when no note has one.
+ *
  * Run with: pnpm test -- tests/knowledge-reader-last-edited.test.mjs
  */
 
@@ -25,6 +29,7 @@ import {
   relativeUpdatedAt,
   updatedAtFromData,
 } from "../reader/lib/last-edited.ts"
+import { recentNotes, shortUpdatedAt } from "../reader/lib/browse-rows.ts"
 import {
   estimateReadMinutes,
   readMinutesFromData,
@@ -176,4 +181,62 @@ test("read-time heuristic counts words at 200wpm with a one-minute floor", () =>
   assert.equal(file.data.frontmatter.read_minutes, 1)
   transform(tree, file)
   assert.equal(file.data.frontmatter.read_minutes, 1, "rebuilds do not double-inject")
+})
+
+test("recentNotes ranks valid stamps newest first, caps the list, and never invents dates", () => {
+  const note = (slug, updated_at) => ({
+    slugs: ["docs", slug],
+    url: `/docs/${slug}`,
+    title: slug,
+    page: { slugs: ["docs", slug], url: `/docs/${slug}`, data: { title: slug, updated_at } },
+    children: [],
+    isFolder: false,
+  })
+
+  const folder = (children) => ({
+    slugs: ["docs"],
+    url: "/docs",
+    title: "Docs",
+    children,
+    isFolder: true,
+  })
+
+  const stamped = Array.from({ length: 10 }, (_, i) =>
+    note(`n${i}`, `2026-01-${String(i + 1).padStart(2, "0")}T10:00:00Z`),
+  )
+
+  const roots = [
+    folder([
+      ...stamped,
+      note("date-only", "2026-12-01"),
+      note("naive", "2026-12-01T10:00:00"),
+      note("missing", undefined),
+    ]),
+  ]
+
+  const recent = recentNotes(roots)
+  assert.equal(recent.length, 8, "list is capped at eight")
+  assert.deepEqual(
+    recent.map((entry) => entry.title),
+    ["n9", "n8", "n7", "n6", "n5", "n4", "n3", "n2"],
+    "newest valid stamp first; date-only, naive, and missing stamps never appear",
+  )
+  assert.equal(recent[0].parentTitle, "Docs", "row carries its parent folder name")
+  assert.equal(recent[0].label, "Jan 10, 2026", "row carries a short source date")
+
+  assert.deepEqual(
+    recentNotes([folder([note("date-only", "2026-12-01"), note("missing", undefined)])]),
+    [],
+    "no valid stamp yields an empty list",
+  )
+})
+
+test("shortUpdatedAt formats the stamp's own wall date and omits invalid values", () => {
+  assert.deepEqual(shortUpdatedAt("2026-10-01T18:00:00+02:00"), {
+    isoDatetime: "2026-10-01T16:00:00.000Z",
+    label: "Oct 1, 2026",
+  })
+  assert.equal(shortUpdatedAt("2026-02-30T10:00:00Z"), null)
+  assert.equal(shortUpdatedAt("2026-09-20"), null)
+  assert.equal(shortUpdatedAt(undefined), null)
 })
