@@ -1,3 +1,4 @@
+import { ChevronRight } from "lucide-react"
 import type { TocItem } from "../lib/toc"
 import TocLinks from "./toc-links"
 
@@ -10,9 +11,13 @@ export function NoteTocDetails({ items }: { items: TocItem[] }) {
   if (items.length === 0) return null
 
   return (
-    <details className="my-3 border-y border-border xl:hidden">
-      <summary className="flex min-h-11 cursor-pointer items-center text-13 font-semibold">
+    <details className="group my-3 border-y border-border xl:hidden">
+      <summary className="flex min-h-11 cursor-pointer items-center justify-between gap-2 text-13 font-semibold [&::-webkit-details-marker]:hidden">
         On this page
+        <ChevronRight
+          aria-hidden="true"
+          className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90 motion-reduce:transition-none"
+        />
       </summary>
       <ul className="m-0 mb-2 list-none p-0">
         {items.map((item) => (

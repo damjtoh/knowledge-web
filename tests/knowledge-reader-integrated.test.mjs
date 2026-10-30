@@ -2994,7 +2994,7 @@ async function runStaticExportChecks({
 
   assert.deepEqual(h2sOf(nestFolder), ["Folders (1)", "Notes (13)"], "nest groups are counted")
   assert.equal(
-    countOccurrences(nestFolder, 'href="/notes/nest/trail-stop-'),
+    countOccurrences(articleHtml(nestFolder), 'href="/notes/nest/trail-stop-'),
     13,
     "static HTML lists every note without JavaScript",
   )

@@ -141,7 +141,7 @@ function TreeNode({ node, state }: { node: NavigationNode; state: TreeState }) {
   const wrapClassName =
     "[&>span:last-child]:overflow-visible [&>span:last-child]:text-clip [&>span:last-child]:whitespace-normal"
 
-  const linkBase = `min-h-11 w-auto min-w-0 flex-1 gap-2 rounded-md px-3 py-2.5 no-underline wrap-break-word ${wrapClassName}`
+  const linkBase = `h-auto min-h-11 w-auto min-w-0 flex-1 gap-2 rounded-md px-3 py-2.5 no-underline wrap-break-word ${wrapClassName}`
 
   const linkClassName =
     open || isExact
