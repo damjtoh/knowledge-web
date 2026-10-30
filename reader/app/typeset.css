@@ -351,9 +351,9 @@
 
     /* Tables. Separators sit on cells, not tr:last-child: append-safe.
        Bare tables stay real tables (keep their semantics) and wrap to fit.
-       Bounded phone exception below keeps wide tables locally scrollable so
-       narrow viewports contain them without page overflow; the table element
-       stays a real table in markup and scrolls locally. */
+       The scroll exception below keeps wide tables locally scrollable so
+       neither phones nor the note contents aside get overflowed; the table
+       element stays a real table in markup and scrolls locally. */
     &:where(table) {
       max-width: 100%;
       font-size: 1em;
@@ -366,19 +366,18 @@
       margin-block-end: 0;
     }
 
-    /* Narrow-viewport table containment (integrated overflow probe):
-       official defaults keep bare tables as real tables with max-width 100%,
-       but intrinsic min-sizing with nowrap header cells still overflows a
-       390px phone. Making the table element itself the scroll container
-       contains it locally (table client stays in-viewport, page never
-       scrolls sideways) while keeping table semantics and token styling.
-       Scoped to phones so desktop keeps pure defaults. */
-    @media (max-width: 767px) {
-      &:where(table) {
-        display: block;
-        overflow-x: auto;
-        max-width: 100%;
-      }
+    /* Table containment (integrated overflow probe): official defaults keep
+       bare tables as real tables with max-width 100%, but intrinsic
+       min-sizing with nowrap header cells still overflows the reading
+       column (390px phone; the 685px desktop measure under the contents
+       aside). Making the table element itself the scroll container
+       contains it locally (table client stays inside the column, page
+       never scrolls sideways) while keeping table semantics and token
+       styling. */
+    &:where(table) {
+      display: block;
+      overflow-x: auto;
+      max-width: 100%;
     }
 
     /* Horizontal scroll for any wide block. Wrap it and the wrapper owns the

@@ -6,6 +6,8 @@
  * virtual folder without an index, a standalone direct note, a long-title
  * note, a staged-but-unnavigated hidden note, and notes with valid (`Z`,
  * `+02:00`) plus invalid (date-only, Feb-30) `updated_at` stamps. The
+ * Field Guide note carries three h2/h3 headings (a table of contents); the
+ * Plain Meadow note carries one (no table of contents). The
  * Publication Manifest declares the title, canonical hostname, allowlist,
  * ordered navigation roots, and two HTTPS projection destinations.
  *
@@ -185,6 +187,18 @@ export function writeSyntheticKb(kbRoot) {
       "```js",
       "const alias = '[[Field Guide]]';",
       "```",
+      "",
+      "## Provisions",
+      "",
+      "Bring snacks.",
+      "",
+      "## Forecast",
+      "",
+      "Mostly dry.",
+      "",
+      "### Drizzle",
+      "",
+      "Light showers after noon.",
       "",
       "See [[Plain Meadow]] and [[Missing Page]].",
       "",

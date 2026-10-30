@@ -23,10 +23,16 @@
  * site identity comes from generated metadata at build time.
  */
 
-/* Page never scrolls sideways: overflow probes assert zero horizontal overflow. */
-html,
-body {
+/* Page never scrolls sideways: overflow probes assert zero horizontal overflow.
+   The root keeps hidden (it propagates to the viewport); body clips instead
+   of hiding so it is not a scroll container, which lets the note contents
+   aside stick to the viewport. */
+html {
   overflow-x: hidden;
+}
+
+body {
+  overflow-x: clip;
 }
 
 /* Registry sidebar-11 inset must shrink below wide article content on

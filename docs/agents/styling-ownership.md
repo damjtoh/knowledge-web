@@ -21,12 +21,13 @@ the shadcn lint stays the JSX check; no Konsistent install covers CSS.
   (`max-width`, `min-width`, `overflow-wrap`) and the layered
   `.reader-area-list` grid track in `@layer components` in `globals.css`.
   Layout rules must stay layered so utilities win over prose.
-- Bounded Typeset table exception: phone-only (`max-width: 767px`)
-  `display: block` plus `overflow-x: auto` on bare `table` in
-  `reader/app/typeset.css`. Official defaults keep real tables with
-  `max-width: 100%`, but nowrap header cells still overflow a 390px phone;
-  the exception keeps the `<table>` element and token styling while making
-  it locally scrollable so the integrated overflow probe stays contained.
+- Bounded Typeset table exception: `display: block` plus
+  `overflow-x: auto` on bare `table` in `reader/app/typeset.css`, at every
+  width. Official defaults keep real tables with `max-width: 100%`, but
+  nowrap header cells still overflow a 390px phone and the 685px desktop
+  measure beside the note contents aside; the exception keeps the `<table>`
+  element and token styling while making it locally scrollable so the
+  integrated overflow probe stays contained.
 - Library internals: `[data-slot="sidebar"]` and
   `[data-slot="sidebar-inset"]`.
 - Reviewed exceptions with the reason utilities cannot cover them:

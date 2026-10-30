@@ -3,11 +3,12 @@ import { notFound } from "next/navigation"
 import { source } from "../../lib/source"
 import { getSiteMetadata, canonicalUrl } from "../../lib/site"
 import { docTitle } from "../../lib/title"
-import MetaLine, { type MetaLineData } from "../../components/last-edited"
-import { NoteCrumbs } from "../../components/breadcrumbs"
-import OtherNotes, { type SiblingNote } from "../../components/other-notes"
+import type { MetaLineData } from "../../components/last-edited"
+import NotePage from "../../components/note-page"
+import type { SiblingNote } from "../../components/other-notes"
 import { mdxComponents, type MdxBody } from "../../components/mdx-components"
-import { readMinutesFromData } from "../../lib/reading-time"
+import { adjacentNotes } from "../../lib/adjacent-notes"
+import { tocItemsFromData, type TocSource } from "../../lib/toc"
 import {
   buildReaderNavigation,
   getDirectNotes,
@@ -215,32 +216,26 @@ export default async function FolderOrNotePage({ params }: { params: Promise<Not
 
     // Leaf notes carry the phone note treatment (design screen pWNyV):
     // a phone-only slash trail, one shared meta line above the title on
-    // every viewport (design component HMIv8; the title lives inside the
-    // MDX body h1, so above the title means before Body), and the shared
-    // Other notes sibling section on every viewport. Folder pages keep
-    // their generic Notes/Folders groups with no meta line (design has no
-    // folder screen).
+    // every viewport (design component HMIv8), a table of contents, previous
+    // and next links, and the shared Other notes sibling section on every
+    // viewport. Folder pages keep their generic Notes/Folders groups with
+    // no meta line (design has no folder screen).
     if (!node.isFolder) {
       const crumbs = navigation.breadcrumbs(slug)
       const { parent, siblings } = siblingNotes(navigation.roots, node)
-      // SAFETY: loader page data carries frontmatter fields; MetaLine reads only the named updated_at/read_minutes fields.
-      const metaSource = node.page.data as MetaLineData
 
       return (
-        <article className="reader-article">
-          <NoteCrumbs crumbs={crumbs} />
-          <MetaLine
-            parentTitle={parent?.title}
-            readMinutes={readMinutesFromData(metaSource)}
-            data={metaSource}
-          />
-          {/* Authored Markdown owns the Typeset scope; crumbs, meta, and
-              siblings stay outside so Typeset never styles React chrome. */}
-          <div className="typeset">
-            <Body components={mdxComponents} />
-          </div>
-          <OtherNotes parentTitle={parent?.title} siblings={siblings} />
-        </article>
+        <NotePage
+          crumbs={crumbs}
+          parentTitle={parent?.title}
+          // SAFETY: loader page data carries frontmatter fields; MetaLine reads only the named updated_at/read_minutes fields.
+          metaSource={node.page.data as MetaLineData}
+          Body={Body}
+          // SAFETY: loader page data carries the Fumadocs MDX toc export; tocItemsFromData reads only toc.
+          toc={tocItemsFromData(node.page.data as TocSource)}
+          adjacent={adjacentNotes(parent, node.url)}
+          siblings={siblings}
+        />
       )
     }
 
@@ -291,19 +286,15 @@ export default async function FolderOrNotePage({ params }: { params: Promise<Not
   }
 
   return (
-    <article className="reader-article">
-      <NoteCrumbs crumbs={crumbs} />
-      <MetaLine
-        parentTitle={ancestor?.title}
-        readMinutes={readMinutesFromData(metaSource)}
-        data={metaSource}
-      />
-      {/* Authored Markdown owns the Typeset scope; crumbs, meta, and
-          siblings stay outside so Typeset never styles React chrome. */}
-      <div className="typeset">
-        <Body components={mdxComponents} />
-      </div>
-      <OtherNotes parentTitle={ancestor?.title} siblings={siblings} />
-    </article>
+    <NotePage
+      crumbs={crumbs}
+      parentTitle={ancestor?.title}
+      metaSource={metaSource}
+      Body={Body}
+      // SAFETY: loader page data carries the Fumadocs MDX toc export; tocItemsFromData reads only toc.
+      toc={tocItemsFromData(page.data as TocSource)}
+      adjacent={{}}
+      siblings={siblings}
+    />
   )
 }
