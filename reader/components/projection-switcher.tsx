@@ -18,9 +18,10 @@ import { VaultSheet } from "./vault-sheet"
 /**
  * Current Web Projection switcher for the reader sidebar.
  *
- * The trigger always shows the current Web Projection, even when the owner
- * declared no destinations. The menu lists the current projection plus only
- * the explicitly declared cross-origin destinations, each as an ordinary
+ * With no owner-declared destinations the switcher is a plain,
+ * non-interactive title of the current Web Projection (no chevron, menu, or
+ * sheet). Otherwise the trigger shows the current Web Projection and the menu
+ * lists it plus only the explicitly declared cross-origin destinations, each as an ordinary
  * anchor to its distinct HTTPS origin: selecting one is a normal link
  * navigation, so browser history, access policy, offline copy, and install
  * identity remain per-origin. There is no add-projection or team action.
@@ -40,6 +41,25 @@ export function ProjectionSwitcher({
 }) {
   const { isMobile } = useSidebar()
   const [sheetOpen, setSheetOpen] = useState(false)
+
+  // Nothing to switch to: render the current projection as a plain title,
+  // with no chevron, dropdown, or sheet.
+  if (destinations.length === 0) {
+    return (
+      <SidebarMenu className="reader-projection-switcher mb-1 min-w-0 max-w-full">
+        <SidebarMenuItem className="min-w-0 max-w-full">
+          <div className="flex min-h-11 items-center gap-2 px-2">
+            <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary">
+              <Archive aria-hidden="true" className="size-4 text-card" />
+            </span>
+            <span className="reader-sidebar-brand reader-projection-name truncate min-w-0 max-w-full flex-1 text-left text-sm font-semibold wrap-break-word text-primary">
+              {current}
+            </span>
+          </div>
+        </SidebarMenuItem>
+      </SidebarMenu>
+    )
+  }
 
   if (isMobile) {
     return (
@@ -108,25 +128,21 @@ export function ProjectionSwitcher({
                 <Check aria-hidden="true" />
                 <span className="min-w-0 wrap-break-word">{current}</span>
               </DropdownMenuItem>
-              {destinations.length > 0 ? (
-                <>
-                  <DropdownMenuSeparator />
-                  {destinations.map((destination) => (
-                    <DropdownMenuItem
-                      key={destination.origin}
-                      className="reader-projection-choice min-w-0 wrap-break-word"
-                      render={
-                        <a
-                          href={destination.origin}
-                          className="reader-projection-link min-w-0 wrap-break-word"
-                        />
-                      }
-                    >
-                      <span className="min-w-0 wrap-break-word">{destination.name}</span>
-                    </DropdownMenuItem>
-                  ))}
-                </>
-              ) : null}
+              <DropdownMenuSeparator />
+              {destinations.map((destination) => (
+                <DropdownMenuItem
+                  key={destination.origin}
+                  className="reader-projection-choice min-w-0 wrap-break-word"
+                  render={
+                    <a
+                      href={destination.origin}
+                      className="reader-projection-link min-w-0 wrap-break-word"
+                    />
+                  }
+                >
+                  <span className="min-w-0 wrap-break-word">{destination.name}</span>
+                </DropdownMenuItem>
+              ))}
             </DropdownMenuGroup>
           </DropdownMenuContent>
         </DropdownMenu>

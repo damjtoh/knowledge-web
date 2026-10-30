@@ -1,17 +1,7 @@
 "use client"
 
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react"
-import {
-  Check,
-  Database,
-  Download,
-  Loader2,
-  RefreshCw,
-  Trash2,
-  TriangleAlert,
-  Wifi,
-  WifiOff,
-} from "lucide-react"
+import { createContext, useCallback, useContext, useEffect, useId, useRef, useState } from "react"
+import { Download, Loader2, RefreshCw, Trash2, TriangleAlert, Wifi, WifiOff } from "lucide-react"
 import { Button } from "./ui/button"
 
 const MANIFEST_URL = "/offline.json"
@@ -143,9 +133,11 @@ export function useOffline(): OfflineValue {
  * Device status chip for the phone header.
  *
  * Display only: shares the provider state with the detailed footer
- * actions and never starts a save. Every status renders a pill with a
- * 12px icon plus an 11px label; unsupported renders the "Not saved"
- * variant instead of hiding, so the cue never disappears.
+ * actions and never starts a save. The pill (12px icon plus 11px label)
+ * appears only for meaningful states: saving progress, saved, update
+ * ready, and errors. Checking, unsupported, and not-saved render nothing,
+ * so the closed header stays uncrowded until the device has something
+ * to report.
  */
 export function OfflineCue() {
   const { status, manifest, done, updateAvailable } = useOffline()
@@ -172,13 +164,9 @@ export function OfflineCue() {
 
   let text = ""
   let Icon: typeof Wifi | null = null
-  let muted = false
   let role: "status" | "alert" = "status"
 
-  if (status === "checking") {
-    text = "Checking…"
-    muted = true
-  } else if (status === "saving") {
+  if (status === "saving") {
     text = total > 0 ? `Saving… ${done} of ${total}` : "Saving…"
   } else if (status === "ready" && updateAvailable) {
     Icon = Wifi
@@ -193,18 +181,12 @@ export function OfflineCue() {
     text = "Couldn't remove offline copy"
     role = "alert"
   } else {
-    Icon = Database
-    text = "Not saved"
-    muted = true
+    return null
   }
 
   return (
     <p
-      className={
-        muted
-          ? "reader-offline-cue hidden h-7 max-w-40 items-center gap-1.5 rounded-full bg-muted px-3 text-2xs text-muted-foreground max-md:inline-flex"
-          : "reader-offline-cue hidden h-7 max-w-40 items-center gap-1.5 rounded-full bg-muted px-3 text-2xs text-primary max-md:inline-flex"
-      }
+      className="reader-offline-cue hidden h-7 max-w-40 items-center gap-1.5 rounded-full bg-muted px-3 text-2xs text-primary max-md:inline-flex"
       data-offline-state={status}
       data-update={updateAvailable ? "true" : undefined}
       data-online={online ? undefined : "false"}
@@ -608,12 +590,13 @@ export function OfflineProvider({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * Shared offline section frame and label row.
+ * Shared offline section frame and status row.
  *
- * One local seam for the repeated states below: the frame owns the grid
- * container visuals (grid gap-2 with min/max containment) and the label
- * owns the ON DEVICE row. Hooks stay as non-visual DOM/test selectors.
- * Copy, roles, live regions, and actions stay per state.
+ * One local seam for the compact states below: the frame owns the grid
+ * container visuals (grid gap-2 with min/max containment) and the row
+ * owns the icon, text block, and trailing action line. Hooks stay as
+ * non-visual DOM/test selectors. Copy, roles, live regions, and actions
+ * stay per state.
  */
 function OfflineSection({ state, children }: { state: string; children: React.ReactNode }) {
   return (
@@ -627,33 +610,40 @@ function OfflineSection({ state, children }: { state: string; children: React.Re
   )
 }
 
-function OfflineLabel({ trailing }: { trailing: React.ReactNode }) {
+function OfflineRow({
+  icon,
+  action,
+  children,
+}: {
+  icon: React.ReactNode
+  action?: React.ReactNode
+  children: React.ReactNode
+}) {
   return (
-    <div className="flex items-center gap-1.5">
-      <Check aria-hidden="true" className="size-3 text-success" />
-      <span className="text-2xs font-semibold tracking-label text-muted-foreground">ON DEVICE</span>
-      {trailing}
+    <div className="flex min-h-11 min-w-0 items-center gap-2">
+      {icon}
+      <div className="min-w-0 flex-1">{children}</div>
+      {action}
     </div>
   )
 }
 
 /**
- * Detailed offline actions for the sidebar and drawer footers.
+ * Compact offline actions for the sidebar and drawer footers.
  *
  * Reads the single shell provider state; two mounted details (desktop
- * SidebarFooter and phone drawer footer) stay in sync. Presentation
- * follows the design On Device skeleton: a label row (check plus ON
- * DEVICE plus a state icon), a title line, a description line, and an
- * actions row of registry Button pills. Utilities own container, label,
- * text (text-sm muted with text-primary font-semibold on ready,
- * wrap-break-word), Button pills
- * (min-h-11 floors with token hover/dark), and progress (w-full h-3
- * max-w-96); hooks stay as non-visual selectors. Copy reuses the existing real
- * data and formatBytes output with its honest About rounding. Every
+ * SidebarFooter and phone drawer footer) stay in sync. Each state is one
+ * short row: a state icon, a one-line status, and a trailing action of
+ * registry Button pills (min-h-11 floors). At rest the row reads "Not
+ * saved offline" with a small Save disclosure. Opening it reveals the
+ * estimated download size, the trusted-device reminder, and the explicit
+ * "Save for offline use" confirm, so the reminder is always shown before
+ * a save can start; Save alone never downloads. Copy reuses the existing
+ * real data and formatBytes output with its honest About rounding. Every
  * real status keeps working: checking, idle with explicit Save, saving
  * with progress, ready, update-ready Reload, incomplete with retry,
- * named Remove, and remove-failed retry. The remove action is
- * icon-only with an explicit accessible name.
+ * named Remove, and remove-failed retry. The remove action is icon-only
+ * with an explicit accessible name.
  */
 export default function OfflineSave() {
   const {
@@ -669,27 +659,28 @@ export default function OfflineSave() {
     removeCopy,
   } = useOffline()
 
+  const [confirming, setConfirming] = useState(false)
+  const confirmId = useId()
+
   if (status === "checking") {
     return (
       <OfflineSection state="checking">
-        <OfflineLabel
-          trailing={
+        <OfflineRow
+          icon={
             <Loader2
               aria-hidden="true"
-              className="size-3 text-muted-foreground ml-auto animate-spin"
+              className="size-4 shrink-0 text-muted-foreground animate-spin"
             />
           }
-        />
-        <p
-          className="reader-offline-status m-0 text-sm font-semibold text-muted-foreground wrap-break-word"
-          role="status"
-          aria-live="polite"
         >
-          Checking offline status…
-        </p>
-        <p className="m-0 text-2xs text-muted-foreground wrap-break-word">
-          Looking for a saved copy on this device.
-        </p>
+          <p
+            className="reader-offline-status m-0 text-xs text-muted-foreground wrap-break-word"
+            role="status"
+            aria-live="polite"
+          >
+            Checking offline status…
+          </p>
+        </OfflineRow>
       </OfflineSection>
     )
   }
@@ -697,32 +688,24 @@ export default function OfflineSave() {
   if (status === "unsupported" || !manifest) {
     return (
       <OfflineSection state="unsupported">
-        <OfflineLabel
-          trailing={<WifiOff aria-hidden="true" className="size-3 text-muted-foreground ml-auto" />}
-        />
-        <p className="m-0 text-xs font-semibold text-primary wrap-break-word">
-          Not saved on this device
-        </p>
-        {manifest ? (
-          <p className="reader-offline-size m-0 text-sm text-muted-foreground wrap-break-word">
-            {formatBytes(manifest.totalBytes)} to download.
+        <OfflineRow
+          icon={<WifiOff aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />}
+          action={
+            <Button
+              type="button"
+              variant="outline"
+              className="reader-offline-save rounded-full px-2.5 min-h-11"
+              disabled
+              title="Saving is not available in this browser"
+            >
+              <span className="text-xs font-semibold">Save</span>
+            </Button>
+          }
+        >
+          <p className="m-0 text-xs font-semibold text-primary wrap-break-word">
+            Not saved offline
           </p>
-        ) : null}
-        <p className="reader-offline-trust m-0 text-sm text-muted-foreground wrap-break-word">
-          Saved pages stay on this device. Only save on a device you trust.
-        </p>
-        <div className="flex items-center gap-1.5">
-          <Button
-            type="button"
-            variant="outline"
-            className="reader-offline-save flex-1 rounded-full px-2.5 py-1.5 gap-1.5 min-h-11"
-            disabled
-            title="Saving is not available in this browser"
-          >
-            <Download aria-hidden="true" className="size-3" />
-            <span className="text-2xs font-semibold">Save for offline use</span>
-          </Button>
-        </div>
+        </OfflineRow>
       </OfflineSection>
     )
   }
@@ -732,56 +715,59 @@ export default function OfflineSave() {
   if (status === "ready") {
     return (
       <OfflineSection state="ready">
-        <OfflineLabel
-          trailing={
+        <OfflineRow
+          icon={
             updateAvailable ? (
-              <RefreshCw aria-hidden="true" className="size-3 text-success ml-auto" />
+              <RefreshCw aria-hidden="true" className="size-4 shrink-0 text-success" />
             ) : (
-              <Wifi aria-hidden="true" className="size-3 text-success ml-auto" />
+              <Wifi aria-hidden="true" className="size-4 shrink-0 text-success" />
             )
           }
-        />
-        <p className="m-0 text-xs font-semibold text-primary wrap-break-word">
-          {updateAvailable ? "Update ready" : "Saved on this device"}
-        </p>
-        <p
-          className="reader-offline-ready m-0 text-sm font-semibold text-primary wrap-break-word"
-          role="status"
-          aria-live="polite"
-        >
-          Ready offline ({formatBytes(manifest.totalBytes).toLowerCase()} saved on this device).
-        </p>
-        <div className="flex items-center gap-1.5">
-          {updateAvailable ? (
+          action={
             <Button
               type="button"
               variant="outline"
-              className="reader-offline-reload flex-1 rounded-full px-2.5 py-1.5 gap-1.5 min-h-11"
+              className="reader-offline-remove rounded-full px-2.5 min-h-11 min-w-11"
+              onClick={removeCopy}
+              disabled={removing}
+              aria-label={removing ? "Removing…" : "Remove offline copy"}
+              title={removing ? "Removing…" : "Remove offline copy"}
+            >
+              {removing ? (
+                <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
+              ) : (
+                <Trash2 aria-hidden="true" className="size-3.5" />
+              )}
+            </Button>
+          }
+        >
+          <p
+            className="reader-offline-ready m-0 text-xs font-semibold text-primary wrap-break-word"
+            role="status"
+            aria-live="polite"
+          >
+            Ready offline
+          </p>
+          <p className="m-0 text-xs text-muted-foreground wrap-break-word">
+            {formatBytes(manifest.totalBytes)} on this device
+          </p>
+        </OfflineRow>
+        {updateAvailable ? (
+          <div className="flex">
+            <Button
+              type="button"
+              variant="outline"
+              className="reader-offline-reload flex-1 rounded-full px-2.5 min-h-11"
               onClick={reloadUpdate}
               disabled={reloading}
             >
-              <RefreshCw aria-hidden="true" className="size-3" />
-              <span className="text-2xs font-semibold">
+              <RefreshCw aria-hidden="true" className="size-3.5" />
+              <span className="text-xs font-semibold">
                 {reloading ? "Reloading…" : "Update ready — Reload"}
               </span>
             </Button>
-          ) : null}
-          <Button
-            type="button"
-            variant="outline"
-            className="reader-offline-remove rounded-full px-2.5 py-1.5 gap-1.5 min-h-11 min-w-11"
-            onClick={removeCopy}
-            disabled={removing}
-            aria-label={removing ? "Removing…" : "Remove offline copy"}
-            title={removing ? "Removing…" : "Remove offline copy"}
-          >
-            {removing ? (
-              <Loader2 aria-hidden="true" className="size-3 animate-spin" />
-            ) : (
-              <Trash2 aria-hidden="true" className="size-3" />
-            )}
-          </Button>
-        </div>
+          </div>
+        ) : null}
       </OfflineSection>
     )
   }
@@ -789,32 +775,28 @@ export default function OfflineSave() {
   if (status === "saving") {
     return (
       <OfflineSection state="saving">
-        <OfflineLabel
-          trailing={
+        <OfflineRow
+          icon={
             <Loader2
               aria-hidden="true"
-              className="size-3 text-muted-foreground ml-auto animate-spin"
+              className="size-4 shrink-0 text-muted-foreground animate-spin"
             />
           }
-        />
-        <p className="m-0 text-xs font-semibold text-primary wrap-break-word">
-          Saving… {done} of {total}
-        </p>
-        <p
-          className="reader-offline-status m-0 text-sm text-muted-foreground wrap-break-word"
-          role="status"
-          aria-live="polite"
         >
-          Saving… {done} of {total}. Keep this page open.
-        </p>
-        <div className="flex items-center gap-1.5">
-          <progress
-            className="reader-offline-progress h-3 w-full max-w-96"
-            value={done}
-            max={Math.max(1, total)}
-            aria-label="Offline save progress"
-          />
-        </div>
+          <p
+            className="reader-offline-status m-0 text-xs text-muted-foreground wrap-break-word"
+            role="status"
+            aria-live="polite"
+          >
+            Saving… {done} of {total}. Keep this page open.
+          </p>
+        </OfflineRow>
+        <progress
+          className="reader-offline-progress h-2 w-full max-w-96"
+          value={done}
+          max={Math.max(1, total)}
+          aria-label="Offline save progress"
+        />
       </OfflineSection>
     )
   }
@@ -822,37 +804,33 @@ export default function OfflineSave() {
   if (status === "remove-failed") {
     return (
       <OfflineSection state="remove-failed">
-        <OfflineLabel
-          trailing={
-            <TriangleAlert aria-hidden="true" className="size-3 text-destructive ml-auto" />
+        <OfflineRow
+          icon={<TriangleAlert aria-hidden="true" className="size-4 shrink-0 text-destructive" />}
+          action={
+            <Button
+              type="button"
+              variant="outline"
+              className="reader-offline-remove rounded-full px-2.5 min-h-11 min-w-11"
+              onClick={removeCopy}
+              disabled={removing}
+              aria-label={removing ? "Removing…" : "Retry removal"}
+              title={removing ? "Removing…" : "Retry removal"}
+            >
+              {removing ? (
+                <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
+              ) : (
+                <Trash2 aria-hidden="true" className="size-3.5" />
+              )}
+            </Button>
           }
-        />
-        <p className="m-0 text-xs font-semibold text-primary wrap-break-word">
-          Couldn’t remove the offline copy
-        </p>
-        <p
-          className="reader-offline-status reader-offline-remove-error m-0 text-sm text-muted-foreground wrap-break-word"
-          role="alert"
         >
-          Couldn’t remove the offline copy. Try again before leaving this device.
-        </p>
-        <div className="flex items-center gap-1.5">
-          <Button
-            type="button"
-            variant="outline"
-            className="reader-offline-remove rounded-full px-2.5 py-1.5 gap-1.5 min-h-11 min-w-11"
-            onClick={removeCopy}
-            disabled={removing}
-            aria-label={removing ? "Removing…" : "Retry removal"}
-            title={removing ? "Removing…" : "Retry removal"}
+          <p
+            className="reader-offline-status reader-offline-remove-error m-0 text-xs text-muted-foreground wrap-break-word"
+            role="alert"
           >
-            {removing ? (
-              <Loader2 aria-hidden="true" className="size-3 animate-spin" />
-            ) : (
-              <Trash2 aria-hidden="true" className="size-3" />
-            )}
-          </Button>
-        </div>
+            Couldn’t remove the offline copy. Try again before leaving this device.
+          </p>
+        </OfflineRow>
       </OfflineSection>
     )
   }
@@ -860,31 +838,31 @@ export default function OfflineSave() {
   if (status === "incomplete") {
     return (
       <OfflineSection state="incomplete">
-        <OfflineLabel
-          trailing={<WifiOff aria-hidden="true" className="size-3 text-destructive ml-auto" />}
-        />
-        <p className="m-0 text-xs font-semibold text-primary wrap-break-word">Save incomplete</p>
-        <p
-          className="reader-offline-status m-0 text-sm text-muted-foreground wrap-break-word"
-          role="alert"
+        <OfflineRow
+          icon={<WifiOff aria-hidden="true" className="size-4 shrink-0 text-destructive" />}
         >
-          {failure === "access"
-            ? "Save incomplete. Couldn’t reach the publication — check your connection or sign-in, then retry."
-            : failure === "storage"
-              ? "Save incomplete. Not enough storage — free space, then retry."
-              : failure === "cleared"
-                ? "Saved data was cleared on this device. Save again for offline reading."
-                : "Save incomplete. Some pages didn’t save."}
-        </p>
-        <div className="flex items-center gap-1.5">
+          <p
+            className="reader-offline-status m-0 text-xs text-muted-foreground wrap-break-word"
+            role="alert"
+          >
+            {failure === "access"
+              ? "Save incomplete. Couldn’t reach the publication — check your connection or sign-in, then retry."
+              : failure === "storage"
+                ? "Save incomplete. Not enough storage — free space, then retry."
+                : failure === "cleared"
+                  ? "Saved data was cleared on this device. Save again for offline reading."
+                  : "Save incomplete. Some pages didn’t save."}
+          </p>
+        </OfflineRow>
+        <div className="flex">
           <Button
             type="button"
             variant="outline"
-            className="reader-offline-retry flex-1 rounded-full px-2.5 py-1.5 gap-1.5 min-h-11"
+            className="reader-offline-retry flex-1 rounded-full px-2.5 min-h-11"
             onClick={save}
           >
-            <RefreshCw aria-hidden="true" className="size-3" />
-            <span className="text-2xs font-semibold">Retry save</span>
+            <RefreshCw aria-hidden="true" className="size-3.5" />
+            <span className="text-xs font-semibold">Retry save</span>
           </Button>
         </div>
       </OfflineSection>
@@ -893,29 +871,46 @@ export default function OfflineSave() {
 
   return (
     <OfflineSection state="idle">
-      <OfflineLabel
-        trailing={<WifiOff aria-hidden="true" className="size-3 text-muted-foreground ml-auto" />}
-      />
-      <p className="m-0 text-xs font-semibold text-primary wrap-break-word">
-        Not saved on this device
-      </p>
-      <p className="reader-offline-size m-0 text-sm text-muted-foreground wrap-break-word">
-        {formatBytes(manifest.totalBytes)} to download.
-      </p>
-      <p className="reader-offline-trust m-0 text-sm text-muted-foreground wrap-break-word">
-        Saved pages stay on this device. Only save on a device you trust.
-      </p>
-      <div className="flex items-center gap-1.5">
-        <Button
-          type="button"
-          variant="outline"
-          className="reader-offline-save flex-1 rounded-full px-2.5 py-1.5 gap-1.5 min-h-11"
-          onClick={save}
-        >
-          <Download aria-hidden="true" className="size-3" />
-          <span className="text-2xs font-semibold">Save for offline use</span>
-        </Button>
-      </div>
+      <OfflineRow
+        icon={<WifiOff aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />}
+        action={
+          <Button
+            type="button"
+            variant="outline"
+            className="reader-offline-save rounded-full px-2.5 min-h-11"
+            aria-expanded={confirming}
+            aria-controls={confirmId}
+            onClick={() => setConfirming((open) => !open)}
+          >
+            <span className="text-xs font-semibold">Save</span>
+          </Button>
+        }
+      >
+        <p className="m-0 text-xs font-semibold text-primary wrap-break-word">Not saved offline</p>
+      </OfflineRow>
+      {confirming ? (
+        <div id={confirmId} className="grid min-w-0 gap-2">
+          <p className="reader-offline-size m-0 text-xs text-muted-foreground wrap-break-word">
+            {formatBytes(manifest.totalBytes)} to download.
+          </p>
+          <p className="reader-offline-trust m-0 text-xs text-muted-foreground wrap-break-word">
+            Saved pages stay on this device. Only save on a device you trust.
+          </p>
+          <div className="flex">
+            <Button
+              type="button"
+              className="reader-offline-confirm flex-1 rounded-full px-2.5 min-h-11"
+              onClick={() => {
+                setConfirming(false)
+                void save()
+              }}
+            >
+              <Download aria-hidden="true" className="size-3.5" />
+              <span className="text-xs font-semibold">Save for offline use</span>
+            </Button>
+          </div>
+        </div>
+      ) : null}
     </OfflineSection>
   )
 }

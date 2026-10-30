@@ -18,7 +18,6 @@ import {
 } from "./ui/sidebar"
 import { ProjectionSwitcher } from "./projection-switcher"
 import { Kbd } from "./ui/kbd"
-import { Separator } from "./ui/separator"
 import AppearanceControl from "./appearance-control"
 import OfflineSave from "./offline-save"
 import ReaderTree from "./sidebar"
@@ -30,10 +29,12 @@ import ReaderTree from "./sidebar"
  * current Web Projection switcher (current plus only owner-declared
  * destinations) with Home and Search, and the scrollable content
  * is the published folder-and-note tree in metadata order. The registry
- * SidebarFooter holds appearance and offline status/actions, so the
- * sidebar bottom owns Light/Dark/System plus the explicit whole-
- * projection Save, progress, Ready, update Reload, retry, and named
- * Remove offline copy. Collapse uses
+ * SidebarFooter holds two compact rows, offline status/actions and
+ * appearance, so the sidebar bottom owns the explicit whole-
+ * projection Save (behind a trusted-device confirm), progress, Ready,
+ * update Reload, retry, and named Remove offline copy, plus
+ * Light/Dark/System. The Search row here is the desktop search entry;
+ * the header search icon only appears when the sidebar is collapsed. Collapse uses
  * offcanvas so hiding removes the sidebar fully (no icon rail) and
  * restoring exposes the same mounted tree.
  */
@@ -89,9 +90,8 @@ export function AppSidebar({
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter className="reader-sidebar-footer gap-4 border-t border-border p-4 overflow-y-auto">
+      <SidebarFooter className="reader-sidebar-footer gap-1 border-t border-border px-3 py-2 overflow-y-auto">
         <OfflineSave />
-        <Separator />
         <AppearanceControl />
       </SidebarFooter>
       <SidebarRail />

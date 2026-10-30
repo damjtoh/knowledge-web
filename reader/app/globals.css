@@ -505,9 +505,9 @@ body {
 /**
  * Sidebar footer owns offline plus appearance.
  *
- * Utilities on app-sidebar.tsx own footer layout (SidebarFooter gap-4
- * border-t border-border p-4 with overflow-y-auto so the capped footer
- * scrolls). Tokens flip the border in dark mode, so no dark override
+ * Utilities on app-sidebar.tsx own footer layout (a compact SidebarFooter
+ * gap-1 border-t border-border px-3 py-2 with overflow-y-auto so the capped
+ * footer scrolls when the Save confirm is open). Tokens flip the border in dark mode, so no dark override
  * remains. One scoped rule stays: the 45dvh cap keeps controls reachable
  * on short viewports while the tree scrolls independently. It cannot move
  * to utilities because shadcn/no-arbitrary-values bans bracket values
